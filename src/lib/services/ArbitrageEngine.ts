@@ -7,7 +7,7 @@ import { RollingWindow } from "./RollingWindow";
 
 export class ArbitrageEngine {
   private readonly books = new Map<string, NormalizedOrderBook>();
-  private readonly spreadWindow = new RollingWindow(60000);
+  private readonly spreadWindows = new Map<string, RollingWindow>();
   private readonly historicalSuccess = new Map<string, number>();
   private readonly edgeTensor = new EdgeTensor();
 
@@ -44,6 +44,15 @@ export class ArbitrageEngine {
         realizedPnlUsd: pnlUsd
       });
     }
+  }
+
+  recordShadowOutcome(route: string, predictedSurvival: number, pnlUsd: number): void {
+    this.edgeTensor.recordOutcome({
+      route,
+      predictedSurvival,
+      realizedPnlUsd: pnlUsd,
+      weight: 0.22
+    });
   }
 
   private detectCrossExchange(startedAt: number): Opportunity[] {
@@ -255,67 +264,78 @@ export class ArbitrageEngine {
   }
 
   private detectStatistical(startedAt: number): Opportunity[] {
-    const binance = this.books.get(bookKey("binance", "BTC/USDT"));
-    const kraken = this.books.get(bookKey("kraken", "BTC/USDT"));
-    if (!binance || !kraken) return [];
-    const binanceMid = midPrice(binance);
-    const krakenMid = midPrice(kraken);
-    if (!binanceMid || !krakenMid) return [];
-    const spread = binanceMid.minus(krakenMid).toNumber();
+    const btcBooks = this.booksForSymbol("BTC/USDT");
+    const opportunities: Opportunity[] = [];
     const now = Date.now();
-    this.spreadWindow.push({ time: now, value: spread });
-    const mean = this.spreadWindow.mean(now);
-    const stdDev = this.spreadWindow.stdDev(now);
-    if (stdDev <= 0) return [];
-    const zScore = (spread - mean) / stdDev;
-    if (this.spreadWindow.count(now) < 12 || Math.abs(zScore) <= 1.15) return [];
 
-    const reversion = estimateOuReversion(this.spreadWindow.values(now));
-    const expectedMoveUsd = d(Math.abs(spread - mean)).mul("0.56");
-    const size = d("0.08");
-    const hedgeCostRate = d("0.00008")
-      .plus(d(Math.max(0, 2 - Math.abs(zScore))).mul("0.000035"))
-      .plus(d(Math.max(0, reversion.halfLifeSamples - 60)).mul("0.000001"));
-    const expectedProfit = expectedMoveUsd.mul(size).minus(binanceMid.mul(size).mul(hedgeCostRate));
-    const longExchange: ExchangeId = zScore > 0 ? "kraken" : "binance";
-    const shortExchange: ExchangeId = zScore > 0 ? "binance" : "kraken";
-    const route = `STAT ARB SIGNAL ${label(longExchange)} long / ${label(shortExchange)} short`;
-    const netSpreadPct = expectedProfit.div(binanceMid.mul(size));
+    for (let left = 0; left < btcBooks.length; left += 1) {
+      for (let right = left + 1; right < btcBooks.length; right += 1) {
+        const leftBook = btcBooks[left];
+        const rightBook = btcBooks[right];
+        const leftMid = midPrice(leftBook);
+        const rightMid = midPrice(rightBook);
+        if (!leftMid || !rightMid) continue;
 
-    return [
-      {
-        id: cryptoId("stat"),
-        type: "STAT_ARB",
-        executionStyle: "STAT_MEAN_REVERSION",
-        status: expectedProfit.greaterThan("0.05") ? "DETECTED" : "REJECTED",
-        route,
-        createdAt: now,
-        expiresAt: now + 500,
-        detectionLatencyMs: performanceNow() - startedAt,
-        buyExchange: longExchange,
-        sellExchange: shortExchange,
-        grossSpreadPct: pct(d(Math.abs(spread)).div(binanceMid)),
-        netSpreadPct: pct(netSpreadPct),
-        tradeSizeBtc: size.toFixed(8),
-        expectedProfitUsd: usd(expectedProfit),
-        grossProfitUsd: usd(expectedMoveUsd.mul(size)),
-        totalFeesUsd: usd(binanceMid.mul(size).mul(hedgeCostRate)),
-        slippageUsd: usd(binanceMid.mul(size).mul("0.0002")),
-        networkCostUsd: "0.00",
-        score: this.scoreOpportunity({
+        const pairKey = [leftBook.exchange, rightBook.exchange].sort().join(":");
+        const window = this.spreadWindows.get(pairKey) ?? new RollingWindow(60000);
+        this.spreadWindows.set(pairKey, window);
+        const spread = leftMid.minus(rightMid).toNumber();
+        window.push({ time: now, value: spread });
+        const mean = window.mean(now);
+        const stdDev = window.stdDev(now);
+        if (stdDev <= 0 || window.count(now) < 12) continue;
+        const zScore = (spread - mean) / stdDev;
+        if (Math.abs(zScore) <= 1.05) continue;
+
+        const reversion = estimateOuReversion(window.values(now));
+        const expectedMoveUsd = d(Math.abs(spread - mean)).mul("0.54").mul(d(reversion.quality).plus("0.25"));
+        const size = d("0.06");
+        const referenceMid = leftMid.plus(rightMid).div(2);
+        const hedgeCostRate = d("0.00007")
+          .plus(d(Math.max(0, 1.8 - Math.abs(zScore))).mul("0.00003"))
+          .plus(d(Math.max(0, reversion.halfLifeSamples - 80)).mul("0.0000008"));
+        const expectedProfit = expectedMoveUsd.mul(size).minus(referenceMid.mul(size).mul(hedgeCostRate));
+        const longExchange: ExchangeId = zScore > 0 ? rightBook.exchange : leftBook.exchange;
+        const shortExchange: ExchangeId = zScore > 0 ? leftBook.exchange : rightBook.exchange;
+        const route = `STAT ARB SIGNAL ${label(longExchange)} long / ${label(shortExchange)} short`;
+        const netSpreadPct = expectedProfit.div(referenceMid.mul(size));
+
+        opportunities.push({
+          id: cryptoId("stat"),
+          type: "STAT_ARB",
+          executionStyle: "STAT_MEAN_REVERSION",
+          status: expectedProfit.greaterThan("0.03") && reversion.quality > 0.08 ? "DETECTED" : "REJECTED",
           route,
-          netSpreadPct,
-          quantity: size,
-          availableDepth: d("0.4"),
-          exchanges: [longExchange, shortExchange],
-          confidenceBoost: Math.min(1, Math.abs(zScore) / 4 * 0.72 + reversion.quality * 0.28)
-        }),
-        confidence: Math.min(99, Math.round(44 + Math.abs(zScore) * 13 + reversion.quality * 22)),
-        highImpact: false,
-        impactRatio: 0.08,
-        reason: `Stat arb 2.0: Z-score ${zScore.toFixed(2)}, OU half-life ${reversion.halfLifeSamples.toFixed(1)} samples, reversion quality ${(reversion.quality * 100).toFixed(0)}%, expected convergence after hedge cost is ${usd(expectedProfit)} USD.`
+          createdAt: now,
+          expiresAt: now + 500,
+          detectionLatencyMs: performanceNow() - startedAt,
+          buyExchange: longExchange,
+          sellExchange: shortExchange,
+          grossSpreadPct: pct(d(Math.abs(spread)).div(referenceMid)),
+          netSpreadPct: pct(netSpreadPct),
+          tradeSizeBtc: size.toFixed(8),
+          expectedProfitUsd: usd(expectedProfit),
+          grossProfitUsd: usd(expectedMoveUsd.mul(size)),
+          totalFeesUsd: usd(referenceMid.mul(size).mul(hedgeCostRate)),
+          slippageUsd: usd(referenceMid.mul(size).mul("0.0002")),
+          networkCostUsd: "0.00",
+          score: this.scoreOpportunity({
+            route,
+            netSpreadPct,
+            quantity: size,
+            availableDepth: d("0.4"),
+            exchanges: [longExchange, shortExchange],
+            confidenceBoost: Math.min(1, Math.abs(zScore) / 4 * 0.66 + reversion.quality * 0.34)
+          }),
+          confidence: Math.min(99, Math.round(42 + Math.abs(zScore) * 12 + reversion.quality * 26)),
+          highImpact: false,
+          impactRatio: 0.08,
+          reason: `Stat arb 2.1 multi-venue: ${label(leftBook.exchange)}/${label(rightBook.exchange)} spread Z ${zScore.toFixed(2)}, OU half-life ${reversion.halfLifeSamples.toFixed(1)} samples, reversion quality ${(reversion.quality * 100).toFixed(0)}%.`
+        });
       }
-    ];
+    }
+
+    return opportunities.sort((a, b) => b.score - a.score).slice(0, 3);
   }
 
   private estimateMakerFillProbability(buyBook: NormalizedOrderBook, sellBook: NormalizedOrderBook, quantity: Decimal): Decimal {

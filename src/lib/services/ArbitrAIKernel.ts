@@ -1,5 +1,6 @@
 import type { GatewayMessage, GatewaySnapshot, NormalizedOrderBook, Opportunity, ScenarioKind, WalletSeed } from "../types";
 import { ArbitrageEngine } from "./ArbitrageEngine";
+import { CounterfactualLearner } from "./CounterfactualLearner";
 import { EventBus } from "./EventBus";
 import { EventRecorder } from "./EventRecorder";
 import { ExecutionSimulator } from "./ExecutionSimulator";
@@ -15,6 +16,7 @@ export class ArbitrAIKernel {
   readonly simulator: ExecutionSimulator;
   readonly pnlTracker = new PnLTracker();
   readonly recorder = new EventRecorder();
+  readonly learner = new CounterfactualLearner();
 
   private readonly opportunities: Opportunity[] = [];
   private readonly executionQueue: Opportunity[] = [];
@@ -67,12 +69,18 @@ export class ArbitrAIKernel {
       wallets: this.simulator.balances(),
       risk: this.riskManager.getState(this.simulator.exposureBtc()),
       metrics: this.pnlTracker.metrics(),
-      priceSeries: this.marketData.priceHistory()
+      priceSeries: this.marketData.priceHistory(),
+      learning: this.learner.summary()
     };
   }
 
   private handleMarketUpdate(book: NormalizedOrderBook): void {
     this.publish({ type: "BOOK", book });
+    const outcomes = this.learner.observeBook(book);
+    outcomes.forEach((outcome) => {
+      this.engine.recordShadowOutcome(outcome.route, Number(outcome.predictedSurvival), Number(outcome.realizedProfitUsd));
+      this.publish({ type: "LEARNING", summary: this.learner.summary(), outcome });
+    });
     const detected = this.engine.onOrderBook(book);
     detected.forEach((opportunity) => this.handleOpportunity(opportunity));
   }
@@ -84,6 +92,7 @@ export class ArbitrAIKernel {
     if (Date.now() - lastSignalAt < 650) return;
     this.lastSignalAt.set(signalKey, Date.now());
     this.pnlTracker.recordOpportunity(opportunity);
+    this.learner.track(opportunity);
     this.opportunities.unshift(opportunity);
     this.opportunities.splice(50);
     this.publish({ type: "OPPORTUNITY", opportunity, queue: [...this.executionQueue] });

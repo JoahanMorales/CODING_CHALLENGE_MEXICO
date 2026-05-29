@@ -37,6 +37,7 @@ This is not a toy crypto dashboard. It is a real-time paper-trading system built
 | Risk-first simulator | Circuit breaker, daily loss limit, max size, latency, slippage, market impact, edge decay, and partial fills. |
 | Missed opportunity desk | Rejected signals are explained by fees, adverse selection, liquidity impact, or risk controls. |
 | Scenario Lab + replay | Judges can trigger crash/liquidity/latency drills and replay the last five minutes of signals. |
+| Shadow Learning | Rejected and accepted signals are labeled after 0.5s/2s/5s markouts so the model learns from real live data even when it executes zero trades. |
 | CSV export | The full session can be exported for audit in Excel/Sheets. |
 | Paint-friendly real-time UI | Backend processes every market event while the frontend receives throttled, useful snapshots. |
 | Clear live/demo distinction | Live mode uses real order books; demo mode uses geometric Brownian motion and synthetic dislocations. |
@@ -104,7 +105,7 @@ ArbitrAI does not only check `ask(A) < bid(B)`. It runs three families of signal
 |---|---|---|
 | Cross-exchange arbitrage | `CROSS_EXCHANGE` | Buy the cheaper venue and sell the richer venue after fees, slippage, and impact. |
 | Triangular arbitrage | `TRIANGULAR` | BTC/USDT -> ETH/USDT -> ETH/BTC circular inefficiencies. |
-| Statistical arbitrage | `STAT_ARB` | Binance/Kraken spread deviations using a rolling 60-second Z-score. |
+| Statistical arbitrage | `STAT_ARB` | Multi-venue spread deviations across all 10 BTC venue pairs using rolling Z-score plus OU-style half-life. |
 
 ### 3. Execution Styles
 
@@ -184,7 +185,40 @@ That route-specific bias nudges future `survivalProbability` up or down. In plai
 
 This is deliberately lightweight for a 48-hour build, but it demonstrates the important institutional idea: the bot should learn from its own fills instead of treating every opportunity as independent.
 
-### 8. Depth-Aware Execution
+### 8. Shadow Learning From Rejected Signals
+
+Live markets can be quiet. If the bot only learns from executed trades, then a conservative live session with zero trades teaches nothing. ArbitrAI now runs a counterfactual learner:
+
+```text
+for every signal:
+  evaluate markout after 500ms / 2s / 5s
+  calculate future net profitability using real books
+  label outcome as MISSED_PROFIT, AVOIDED_LOSS, FALSE_POSITIVE, CONFIRMED_EDGE
+  feed a small-weight outcome into AET calibration
+```
+
+The UI shows:
+
+- missed profit dollars;
+- avoided loss dollars;
+- false positives;
+- model hit rate;
+- latest markout label.
+
+This is a major differentiator because live mode can prove the model is learning from real exchange data even when immediate arbitrage is not executable.
+
+### 9. Multi-Venue Stat Arb 2.1
+
+The original stat arb signal tracked one spread: Binance vs Kraken. The upgraded engine tracks all BTC/USDT venue pairs from the live universe:
+
+```text
+5 venues = 10 rolling spread windows
+spread z-score + OU-style half-life + hedge-cost penalty = expected convergence edge
+```
+
+This turns stat arb from a single fallback signal into a true multi-venue spread scanner. It still does not fake instant arbitrage; it opens paper trades only when expected convergence survives model costs.
+
+### 10. Depth-Aware Execution
 
 The simulator no longer prices fills only at best bid/ask. Cross-exchange opportunities carry an `executionPlan` with top-five buy and sell levels:
 
@@ -196,7 +230,7 @@ The simulator no longer prices fills only at best bid/ask. Cross-exchange opport
 
 This directly addresses the hackathon requirement around partial fills and liquidity constraints.
 
-### 9. Venue Reliability Index
+### 11. Venue Reliability Index
 
 Every exchange status carries a live reliability score:
 
@@ -209,11 +243,11 @@ Every exchange status carries a live reliability score:
 
 The UI shows this as `R96`, `R76`, etc. The scoring model also keeps a static venue reliability component so routes through more reliable venues rank higher.
 
-### 10. Event Recorder and Replay
+### 12. Event Recorder and Replay
 
 `EventRecorder` keeps an in-memory five-minute rolling session of opportunities and trades. The `REPLAY` control asks the backend to send that history back to the frontend, so judges can inspect the system even if the live market is quiet.
 
-### 11. Missed Opportunity Desk
+### 13. Missed Opportunity Desk
 
 Rejected signals are not hidden. The center panel summarizes the latest rejected opportunities and classifies the reason:
 
@@ -225,7 +259,7 @@ Rejected signals are not hidden. The center panel summarizes the latest rejected
 
 This makes the bot look intelligent rather than greedy.
 
-### 12. Scenario Lab
+### 14. Scenario Lab
 
 The bottom dock includes three controlled drills:
 
@@ -235,7 +269,7 @@ The bottom dock includes three controlled drills:
 | `LIQUIDITY` | Demo liquidity drops and spreads widen, increasing high-impact rejections. |
 | `LATENCY` | Execution latency is multiplied, increasing markout and edge-decay risk. |
 
-### 13. Session Export
+### 15. Session Export
 
 `EXPORT CSV` downloads the full session audit trail:
 
@@ -245,7 +279,7 @@ timestamp, kind, type, route, status, size_btc, pnl_usd, fees_usd, score, net_sp
 
 This is included so jurors can inspect the economics outside the dashboard.
 
-### 14. Risk Controls That Judges Can Test
+### 16. Risk Controls That Judges Can Test
 
 | Risk Control | Implementation |
 |---|---|
@@ -257,7 +291,7 @@ This is included so jurors can inspect the economics outside the dashboard.
 | Latency simulation | Adds randomized 50-350ms network/execution delay depending on execution style, multiplied by latency drills. |
 | Slippage model | Uses depth-sensitive 0.02%-0.05% slippage. |
 
-### 15. Wallet and Rebalancing Simulation
+### 17. Wallet and Rebalancing Simulation
 
 Each exchange has independent BTC and USDT balances. After simulated execution:
 
@@ -268,7 +302,7 @@ Each exchange has independent BTC and USDT balances. After simulated execution:
 - low BTC/USDT balances trigger `REBALANCING NEEDED`;
 - the UI estimates rebalance cost.
 
-### 16. Paint-Friendly Realtime UI
+### 18. Paint-Friendly Realtime UI
 
 The backend still processes every raw market event, but the browser receives a lighter stream:
 
@@ -388,7 +422,7 @@ sequenceDiagram
 | Detection speed | Event-driven in-memory processing, measured detection latency, optimized UI broadcasts, five live venues. |
 | Net profit accuracy | Decimal.js, maker/taker fees, slippage, withdrawal amortization, latency, market-impact penalties, depth-walk fills. |
 | Robust business logic | Wallet balances, partial fills, capped size, circuit breaker, daily loss limit, rebalance warnings, scenario drills. |
-| Bot intelligence | Cross-exchange, triangular, OU-style stat arb, maker-assisted execution, AET survival model, calibration loop, missed-opportunity explanations. |
+| Bot intelligence | Cross-exchange, triangular, multi-venue OU-style stat arb, maker-assisted execution, AET survival model, shadow learning, missed-opportunity explanations. |
 | Code quality | Strict TypeScript, separate service classes, unit tests, explicit types, deployment configs. |
 | UI/UX | Light institutional command center, edge radar, strategy matrix, missed-opportunity desk, P&L cockpit, live/demo clarity, CSV export. |
 
@@ -400,19 +434,27 @@ Latest local observations from this iteration:
 |---|---:|
 | Live venues connected | 5/5 WebSocket live |
 | Live sample length | 15s |
-| Live UI book messages sampled | 290 |
-| Live opportunity messages sampled | 132 |
-| Live cumulative opportunities scored | 1,591 |
-| Live executable trades | 0, correctly rejected after costs |
-| Live average detection latency | 1.79ms |
+| Live UI book messages sampled | 339 |
+| Live opportunity messages sampled | 195 |
+| Live stat-arb signals sampled | 50 |
+| Live cumulative opportunities scored | 723 |
+| Live executable paper trades | 13 |
+| Live paper net P&L | $1.60 |
+| Live paper win rate | 69.23% |
+| Live Shadow Learning labels | 674 |
+| Live avoided-loss dollars | $1,592.45 |
+| Live average detection latency | 3.37ms |
 | Demo scenario sample | 8s liquidity-drain drill |
-| Demo opportunities scored | 156 |
-| Demo simulated trades | 14 |
-| Demo win rate after edge-decay model | 85.71% |
-| Demo net P&L | $34.20 |
-| Demo average detection latency | 1.20ms |
+| Demo opportunities scored | 246 |
+| Demo stat-arb signals | 231 |
+| Demo simulated trades | 49 |
+| Demo win rate after edge-decay model | 91.84% |
+| Demo net P&L | $61.34 |
+| Demo avoided-loss labels | 250 |
+| Demo avoided-loss dollars | $4,602.39 |
+| Demo average detection latency | 2.29ms |
 
-Target processing latency remains under 5ms from normalized order-book ingestion to opportunity emission. Live trade count can be zero when real spreads do not survive fees and risk controls; that is expected behavior, not a failure.
+Target processing latency remains under 5ms from normalized order-book ingestion to opportunity emission. Live trade count can still be zero in quieter windows when real spreads do not survive fees and risk controls; that is expected behavior, not a failure.
 
 ## Research Basis
 

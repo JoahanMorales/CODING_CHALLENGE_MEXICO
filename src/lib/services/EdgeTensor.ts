@@ -28,6 +28,7 @@ export interface EdgeOutcome {
   route: string;
   predictedSurvival: number;
   realizedPnlUsd: number;
+  weight?: number;
 }
 
 export interface EdgeTensorSignal {
@@ -142,10 +143,11 @@ export class EdgeTensor {
     const current = this.routeCalibration.get(outcome.route) ?? { bias: 0, observations: 0 };
     const realizedWin = outcome.realizedPnlUsd > 0 ? 1 : 0;
     const forecastError = realizedWin - clamp01(outcome.predictedSurvival);
-    const nextBias = Math.max(-0.16, Math.min(0.16, current.bias * 0.92 + forecastError * 0.035));
+    const weight = Math.max(0.05, Math.min(1, outcome.weight ?? 1));
+    const nextBias = Math.max(-0.16, Math.min(0.16, current.bias * 0.92 + forecastError * 0.035 * weight));
     this.routeCalibration.set(outcome.route, {
       bias: nextBias,
-      observations: current.observations + 1
+      observations: current.observations + weight
     });
   }
 }

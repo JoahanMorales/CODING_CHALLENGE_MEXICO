@@ -16,6 +16,7 @@ import { EXCHANGE_LABELS } from "@/lib/config/exchanges";
 import type {
   ExchangeConnectionStatus,
   ExchangeId,
+  LearningSummary,
   NormalizedOrderBook,
   Opportunity,
   OpportunityType,
@@ -63,6 +64,7 @@ export function Dashboard() {
     applyWalletSeed,
     risk,
     metrics,
+    learning,
     priceSeries
   } = useArbitrageStore();
 
@@ -120,8 +122,9 @@ export function Dashboard() {
             <SignalFeed opportunities={visibleOpportunities} replaying={replayOpportunities.length > 0} />
           </section>
 
-          <aside className="grid min-h-0 gap-3 overflow-y-auto pr-1 xl:grid-rows-[auto_auto_minmax(250px,0.8fr)_auto]">
+          <aside className="grid min-h-0 gap-3 overflow-y-auto pr-1 xl:grid-rows-[auto_auto_auto_minmax(250px,0.8fr)]">
             <PerformancePanel metrics={metrics} pnlSeries={pnlSeries} risk={risk} />
+            <LearningPanel learning={learning} />
             <ExecutionPanel executionQueue={executionQueue} trades={trades} />
             <WalletPanel
               applyWalletSeed={applyWalletSeed}
@@ -572,6 +575,45 @@ function PerformancePanel({ metrics, pnlSeries, risk }: { metrics: PerformanceMe
         <TinyMetric label="Fees" value={`$${metrics.totalFeesPaidUsd}`} tone="amber" />
         <TinyMetric label="Hit Rate" value={`${metrics.opportunityExecutionRatioPct}%`} tone="violet" />
         <TinyMetric label="Sharpe" value={metrics.sharpeLikeRatio} tone="zinc" />
+      </div>
+    </Panel>
+  );
+}
+
+function LearningPanel({ learning }: { learning: LearningSummary }) {
+  const costPositive = Number(learning.opportunityCostUsd) >= 0;
+  const last = learning.lastOutcome;
+  return (
+    <Panel className="bg-gradient-to-br from-white via-white to-sky-50/60">
+      <div className="flex items-start justify-between gap-3">
+        <PanelTitle eyebrow="Adaptive Model" title="Shadow Learning" />
+        <StatusPill label={`${learning.evaluatedSignals} eval`} tone={learning.evaluatedSignals ? "sky" : "zinc"} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <TinyMetric label="Opp Cost" value={`$${learning.opportunityCostUsd}`} tone={costPositive ? "amber" : "emerald"} />
+        <TinyMetric label="Model Hit" value={`${learning.hitRatePct}%`} tone={Number(learning.hitRatePct) >= 55 ? "emerald" : "amber"} />
+        <TinyMetric label="Avoided $" value={`$${learning.avoidedLossUsd}`} tone="emerald" />
+        <TinyMetric label="Missed $" value={`$${learning.missedProfitUsd}`} tone={Number(learning.missedProfitUsd) > 0 ? "amber" : "zinc"} />
+        <TinyMetric label="Avoided" value={String(learning.avoidedLosses)} tone="emerald" />
+        <TinyMetric label="False +" value={String(learning.falsePositives)} tone={learning.falsePositives ? "rose" : "zinc"} />
+      </div>
+
+      <div className="mt-3 rounded-xl border border-sky-100 bg-white/80 px-3 py-2">
+        {last ? (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate text-xs font-black text-zinc-800">{last.route}</span>
+              <StatusPill label={last.label.replace(/_/g, " ")} tone={learningLabelTone(last.label)} />
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-3 font-mono text-[10px] font-black text-zinc-500">
+              <span>{last.horizonMs}ms markout</span>
+              <span className={Number(last.realizedProfitUsd) >= 0 ? "text-emerald-700" : "text-rose-700"}>${last.realizedProfitUsd}</span>
+            </div>
+          </>
+        ) : (
+          <div className="font-mono text-[10px] font-bold text-zinc-500">Waiting for live signals to mature into counterfactual labels.</div>
+        )}
       </div>
     </Panel>
   );
@@ -1103,6 +1145,13 @@ function statusTone(status: Opportunity["status"]): Tone {
   if (status === "EVALUATING") return "amber";
   if (status === "REJECTED" || status === "EXPIRED") return "rose";
   return "sky";
+}
+
+function learningLabelTone(label: NonNullable<LearningSummary["lastOutcome"]>["label"]): Tone {
+  if (label === "MISSED_PROFIT") return "amber";
+  if (label === "AVOIDED_LOSS" || label === "CONFIRMED_EDGE") return "emerald";
+  if (label === "FALSE_POSITIVE") return "rose";
+  return "zinc";
 }
 
 function rejectCause(opportunity: Opportunity): string {

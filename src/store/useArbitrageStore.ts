@@ -9,6 +9,7 @@ import type {
   ExchangeConnectionStatus,
   NormalizedOrderBook,
   Opportunity,
+  LearningSummary,
   PerformanceMetrics,
   PricePoint,
   RiskState,
@@ -43,6 +44,7 @@ interface ArbitrageState {
   walletSeed: WalletSeed;
   risk: RiskState;
   metrics: PerformanceMetrics;
+  learning: LearningSummary;
   priceSeries: PricePoint[];
   init: () => void;
   setMode: (mode: Mode) => void;
@@ -85,6 +87,21 @@ const defaultMetrics: PerformanceMetrics = {
   sharpeLikeRatio: "0.000"
 };
 
+const defaultLearning: LearningSummary = {
+  evaluatedSignals: 0,
+  missedProfits: 0,
+  avoidedLosses: 0,
+  falsePositives: 0,
+  confirmedEdges: 0,
+  shadowPnlUsd: "0.00",
+  missedProfitUsd: "0.00",
+  avoidedLossUsd: "0.00",
+  opportunityCostUsd: "0.00",
+  averageOutcomeUsd: "0.00",
+  bestMissedUsd: "0.00",
+  hitRatePct: "0.00"
+};
+
 let localKernel: ArbitrAIKernel | null = null;
 let gateway: WebSocket | null = null;
 
@@ -105,6 +122,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   walletSeed: INITIAL_WALLETS,
   risk: defaultRisk,
   metrics: defaultMetrics,
+  learning: defaultLearning,
   priceSeries: [],
 
   init: () => {
@@ -117,7 +135,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
     if (mode === get().mode) return;
     stopGateway();
     stopLocalKernel();
-    set({ mode, connected: false, connectionError: "", books: {}, opportunities: [], executionQueue: [], priceSeries: [] });
+    set({ mode, connected: false, connectionError: "", books: {}, opportunities: [], executionQueue: [], priceSeries: [], learning: defaultLearning });
     if (mode === "LIVE") startGateway(set, get().walletSeed);
     else startDemo(set, get().walletSeed);
   },
@@ -137,7 +155,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   applyWalletSeed: () => {
     if (get().mode === "LIVE") return;
     stopLocalKernel();
-    set({ connected: false, books: {}, opportunities: [], executionQueue: [], trades: [], priceSeries: [], metrics: defaultMetrics });
+    set({ connected: false, books: {}, opportunities: [], executionQueue: [], trades: [], priceSeries: [], metrics: defaultMetrics, learning: defaultLearning });
     startDemo(set, get().walletSeed);
   },
 
@@ -266,7 +284,8 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
       wallets: message.wallets,
       risk: message.risk,
       metrics: message.metrics,
-      priceSeries: message.priceSeries
+      priceSeries: message.priceSeries,
+      learning: message.learning
     });
     return;
   }
@@ -313,6 +332,11 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
       metrics: message.metrics,
       risk: message.risk
     }));
+    return;
+  }
+
+  if (message.type === "LEARNING") {
+    set({ learning: message.summary });
     return;
   }
 

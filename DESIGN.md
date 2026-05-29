@@ -167,6 +167,21 @@ Must show:
 - score and survival estimate;
 - compact layout so it does not push the opportunity tape down.
 
+### Shadow Learning
+
+Purpose: make learning visible even when live execution is conservative.
+
+Must show:
+
+- evaluated signal count;
+- missed profit dollars;
+- avoided loss dollars;
+- false-positive count;
+- model hit rate;
+- latest markout label and horizon.
+
+Design rule: avoided losses should read as model skill, not as negative P&L.
+
 ### Scenario Lab
 
 Purpose: let judges stress the system without fake live prices.

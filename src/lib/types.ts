@@ -97,6 +97,37 @@ export interface Opportunity {
   executionPlan?: ExecutionPlan;
 }
 
+export interface CounterfactualOutcome {
+  id: string;
+  opportunityId: string;
+  route: string;
+  type: OpportunityType;
+  evaluatedAt: number;
+  horizonMs: number;
+  originalStatus: OpportunityStatus;
+  entryExpectedProfitUsd: string;
+  realizedProfitUsd: string;
+  deltaUsd: string;
+  predictedSurvival: string;
+  label: "MISSED_PROFIT" | "AVOIDED_LOSS" | "FALSE_POSITIVE" | "CONFIRMED_REJECT" | "CONFIRMED_EDGE";
+}
+
+export interface LearningSummary {
+  evaluatedSignals: number;
+  missedProfits: number;
+  avoidedLosses: number;
+  falsePositives: number;
+  confirmedEdges: number;
+  shadowPnlUsd: string;
+  missedProfitUsd: string;
+  avoidedLossUsd: string;
+  opportunityCostUsd: string;
+  averageOutcomeUsd: string;
+  bestMissedUsd: string;
+  hitRatePct: string;
+  lastOutcome?: CounterfactualOutcome;
+}
+
 export interface RecordedEvent {
   id: string;
   time: number;
@@ -168,6 +199,7 @@ export interface GatewaySnapshot {
   risk: RiskState;
   metrics: PerformanceMetrics;
   priceSeries: PricePoint[];
+  learning: LearningSummary;
   exchangeStatuses?: ExchangeConnectionStatus[];
 }
 
@@ -177,6 +209,7 @@ export type GatewayMessage =
   | { type: "EXCHANGE_STATUS"; statuses: ExchangeConnectionStatus[] }
   | { type: "OPPORTUNITY"; opportunity: Opportunity; queue: Opportunity[] }
   | { type: "TRADE"; trade: Trade; wallets: WalletBalance[]; metrics: PerformanceMetrics; risk: RiskState }
+  | { type: "LEARNING"; summary: LearningSummary; outcome: CounterfactualOutcome }
   | { type: "REPLAY"; opportunities: Opportunity[]; trades: Trade[]; events: RecordedEvent[] }
   | { type: "RISK"; risk: RiskState }
   | { type: "METRICS"; metrics: PerformanceMetrics };
