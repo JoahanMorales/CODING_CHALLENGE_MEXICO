@@ -30,11 +30,14 @@ This is not a toy crypto dashboard. It is a real-time paper-trading system built
 
 | Capability | Why It Matters |
 |---|---|
-| Live exchange feeds | Binance, Kraken, and Coinbase stream real BTC market data through the local WebSocket gateway. |
+| Live exchange feeds | Binance, Kraken, Coinbase, OKX, and Bybit stream real BTC market data through the local WebSocket gateway. |
 | Three strategy engine | Cross-exchange arbitrage, triangular arbitrage, and statistical mean-reversion signals. |
 | Microstructure-aware scoring | The engine uses book depth, imbalance, microprice skew, fragmentation, and route pressure. |
-| ArbitrAI Edge Tensor | Proprietary explainable alpha layer estimating edge survival, adverse selection, and risk-adjusted P&L. |
-| Risk-first simulator | Circuit breaker, daily loss limit, max size, latency, slippage, market impact, and partial fills. |
+| ArbitrAI Edge Tensor | Proprietary explainable alpha layer estimating edge survival, adverse selection, risk-adjusted P&L, and route calibration. |
+| Risk-first simulator | Circuit breaker, daily loss limit, max size, latency, slippage, market impact, edge decay, and partial fills. |
+| Missed opportunity desk | Rejected signals are explained by fees, adverse selection, liquidity impact, or risk controls. |
+| Scenario Lab + replay | Judges can trigger crash/liquidity/latency drills and replay the last five minutes of signals. |
+| CSV export | The full session can be exported for audit in Excel/Sheets. |
 | Paint-friendly real-time UI | Backend processes every market event while the frontend receives throttled, useful snapshots. |
 | Clear live/demo distinction | Live mode uses real order books; demo mode uses geometric Brownian motion and synthetic dislocations. |
 
@@ -73,6 +76,8 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8080
 | `DEMO` | Built-in geometric Brownian motion simulator | Simulated paper fills | Guarantee a reliable presentation when public APIs are quiet or unstable |
 
 ArbitrAI never sends real exchange orders. All trades, P&L, fees, and wallet changes are simulated.
+
+Live mode is intentionally conservative: if a visible spread does not survive fees, slippage, queue risk, adverse selection, and liquidity impact, it is rejected and explained instead of forced into a fake trade. Demo mode can generate controlled dislocations so the full execution/P&L loop is visible during judging.
 
 ## Innovation Ledger
 
@@ -166,7 +171,81 @@ Outputs:
 
 This is the core mathematical differentiator: instead of asking only "is bid above ask?", ArbitrAI asks "will the edge still exist by the time both legs are simulated?"
 
-### 7. Risk Controls That Judges Can Test
+### 7. AET Calibration Loop
+
+The engine records every executed paper trade back into the route model:
+
+```text
+forecast error = realized win/loss - predicted survival probability
+route bias     = EWMA(route bias, forecast error)
+```
+
+That route-specific bias nudges future `survivalProbability` up or down. In plain terms: if `Kraken -> Binance` keeps underperforming, AET becomes more skeptical of that route; if it keeps clearing profitably, AET allows more conviction.
+
+This is deliberately lightweight for a 48-hour build, but it demonstrates the important institutional idea: the bot should learn from its own fills instead of treating every opportunity as independent.
+
+### 8. Depth-Aware Execution
+
+The simulator no longer prices fills only at best bid/ask. Cross-exchange opportunities carry an `executionPlan` with top-five buy and sell levels:
+
+- taker-style fills walk visible book depth level by level;
+- maker-assisted fills use the maker reference prices and fill probability;
+- high-impact trades cap size when they would consume more than 20% of top liquidity;
+- partial fills update only the executed BTC/USDT amount;
+- edge survival decay can turn a good expected signal into a small realized loss.
+
+This directly addresses the hackathon requirement around partial fills and liquidity constraints.
+
+### 9. Venue Reliability Index
+
+Every exchange status carries a live reliability score:
+
+| State | Score Meaning |
+|---|---|
+| WebSocket live | Highest confidence, active stream. |
+| REST polling | Usable fallback, lower confidence. |
+| Reconnecting | Degraded venue, penalized. |
+| Error | Avoid until recovered. |
+
+The UI shows this as `R96`, `R76`, etc. The scoring model also keeps a static venue reliability component so routes through more reliable venues rank higher.
+
+### 10. Event Recorder and Replay
+
+`EventRecorder` keeps an in-memory five-minute rolling session of opportunities and trades. The `REPLAY` control asks the backend to send that history back to the frontend, so judges can inspect the system even if the live market is quiet.
+
+### 11. Missed Opportunity Desk
+
+Rejected signals are not hidden. The center panel summarizes the latest rejected opportunities and classifies the reason:
+
+- `fees`: gross edge was erased by taker/maker fees and amortized withdrawal cost;
+- `liquidity`: high-impact or insufficient visible depth;
+- `adverse`: AET survival/adverse-selection model rejected the route;
+- `breaker`: risk controls blocked execution;
+- `threshold`: net edge was below the execution threshold.
+
+This makes the bot look intelligent rather than greedy.
+
+### 12. Scenario Lab
+
+The bottom dock includes three controlled drills:
+
+| Drill | Effect |
+|---|---|
+| `CRASH x3` | In demo, volatility rises 3x and spreads widen; in live, risk state records a crash drill without falsifying market data. |
+| `LIQUIDITY` | Demo liquidity drops and spreads widen, increasing high-impact rejections. |
+| `LATENCY` | Execution latency is multiplied, increasing markout and edge-decay risk. |
+
+### 13. Session Export
+
+`EXPORT CSV` downloads the full session audit trail:
+
+```text
+timestamp, kind, type, route, status, size_btc, pnl_usd, fees_usd, score, net_spread_pct, edge_survival, edge_quality
+```
+
+This is included so jurors can inspect the economics outside the dashboard.
+
+### 14. Risk Controls That Judges Can Test
 
 | Risk Control | Implementation |
 |---|---|
@@ -175,10 +254,10 @@ This is the core mathematical differentiator: instead of asking only "is bid abo
 | Daily loss limit | Halts when simulated daily P&L breaches the configured limit. |
 | Max size | Caps each simulated trade at 0.1 BTC. |
 | High-impact warning | Flags and reduces trades consuming more than 20% of top liquidity. |
-| Latency simulation | Adds randomized 50-350ms network/execution delay depending on execution style. |
+| Latency simulation | Adds randomized 50-350ms network/execution delay depending on execution style, multiplied by latency drills. |
 | Slippage model | Uses depth-sensitive 0.02%-0.05% slippage. |
 
-### 8. Wallet and Rebalancing Simulation
+### 15. Wallet and Rebalancing Simulation
 
 Each exchange has independent BTC and USDT balances. After simulated execution:
 
@@ -189,7 +268,7 @@ Each exchange has independent BTC and USDT balances. After simulated execution:
 - low BTC/USDT balances trigger `REBALANCING NEEDED`;
 - the UI estimates rebalance cost.
 
-### 9. Paint-Friendly Realtime UI
+### 16. Paint-Friendly Realtime UI
 
 The backend still processes every raw market event, but the browser receives a lighter stream:
 
@@ -208,16 +287,20 @@ flowchart LR
     B["Binance WS"]
     K["Kraken WS"]
     C["Coinbase WS"]
+    O["OKX WS"]
+    Y["Bybit WS"]
     R["REST fallback"]
   end
 
   subgraph "ArbitrAI Backend"
     M["MarketDataService"]
     E["ArbitrageEngine"]
+    A["AET Calibration"]
     Q["Score Queue"]
     RM["RiskManager"]
     X["ExecutionSimulator"]
     P["PnLTracker"]
+    ER["EventRecorder"]
     G["WebSocketGateway"]
   end
 
@@ -229,12 +312,18 @@ flowchart LR
   B --> M
   K --> M
   C --> M
+  O --> M
+  Y --> M
   R --> M
   M --> E
+  E --> A
   E --> Q
   Q --> RM
   RM --> X
   X --> P
+  X --> A
+  G --> ER
+  ER --> G
   P --> G
   M --> G
   RM --> G
@@ -251,6 +340,7 @@ sequenceDiagram
   participant Engine
   participant Risk
   participant Sim
+  participant Recorder
   participant UI
 
   Exchange->>Gateway: order book update
@@ -260,7 +350,11 @@ sequenceDiagram
   Risk-->>Engine: approve, cap, reject, or halt
   Engine->>Sim: queued execution
   Sim->>Sim: latency, slippage, partial fill
+  Sim->>Engine: realized outcome calibration
   Sim->>UI: trade, wallet, risk, P&L update
+  Gateway->>Recorder: opportunity/trade event
+  UI->>Gateway: replay/export/scenario command
+  Recorder->>UI: last five minutes replay
   Gateway->>UI: throttled book snapshots
 ```
 
@@ -291,30 +385,34 @@ sequenceDiagram
 
 | Evaluation Criterion | ArbitrAI Evidence |
 |---|---|
-| Detection speed | Event-driven in-memory processing, measured detection latency, optimized UI broadcasts. |
-| Net profit accuracy | Decimal.js, maker/taker fees, slippage, withdrawal amortization, latency and market-impact penalties. |
-| Robust business logic | Wallet balances, partial fills, capped size, circuit breaker, daily loss limit, rebalance warnings. |
-| Bot intelligence | Cross-exchange, triangular, stat arb, maker-assisted execution, Edge Tensor survival model, microstructure-aware scoring. |
+| Detection speed | Event-driven in-memory processing, measured detection latency, optimized UI broadcasts, five live venues. |
+| Net profit accuracy | Decimal.js, maker/taker fees, slippage, withdrawal amortization, latency, market-impact penalties, depth-walk fills. |
+| Robust business logic | Wallet balances, partial fills, capped size, circuit breaker, daily loss limit, rebalance warnings, scenario drills. |
+| Bot intelligence | Cross-exchange, triangular, OU-style stat arb, maker-assisted execution, AET survival model, calibration loop, missed-opportunity explanations. |
 | Code quality | Strict TypeScript, separate service classes, unit tests, explicit types, deployment configs. |
-| UI/UX | Light institutional command center, edge radar, strategy matrix, P&L cockpit, live/demo clarity. |
+| UI/UX | Light institutional command center, edge radar, strategy matrix, missed-opportunity desk, P&L cockpit, live/demo clarity, CSV export. |
 
 ## Performance Benchmarks
 
-Latest local live observations from this build:
+Latest local observations from this iteration:
 
 | Observation | Result |
 |---|---:|
-| 30s pre-throttling scored opportunities | 187 |
-| 30s executable paper trades | 8 |
-| 30s simulated win rate | 87.50% |
-| 30s simulated net P&L | $1.95 |
-| 30s average detection latency | 0.29ms |
-| 10s optimized UI BTC book messages | 142 |
-| 10s optimized UI opportunity messages | 50 |
-| Raw exchange messages still processed in same 10s | 1,314 |
-| Optimized average detection latency | 0.43ms |
+| Live venues connected | 5/5 WebSocket live |
+| Live sample length | 15s |
+| Live UI book messages sampled | 290 |
+| Live opportunity messages sampled | 132 |
+| Live cumulative opportunities scored | 1,591 |
+| Live executable trades | 0, correctly rejected after costs |
+| Live average detection latency | 1.79ms |
+| Demo scenario sample | 8s liquidity-drain drill |
+| Demo opportunities scored | 156 |
+| Demo simulated trades | 14 |
+| Demo win rate after edge-decay model | 85.71% |
+| Demo net P&L | $34.20 |
+| Demo average detection latency | 1.20ms |
 
-Target processing latency remains under 5ms from normalized order-book ingestion to opportunity emission.
+Target processing latency remains under 5ms from normalized order-book ingestion to opportunity emission. Live trade count can be zero when real spreads do not survive fees and risk controls; that is expected behavior, not a failure.
 
 ## Research Basis
 
@@ -333,6 +431,11 @@ References:
 - [Market impact and efficiency in cryptoassets markets](https://link.springer.com/article/10.1007/s42521-023-00095-9)
 - [Exploring sources of statistical arbitrage opportunities among Bitcoin exchanges](https://www.sciencedirect.com/science/article/pii/S1544612322005116)
 - [Deep learning-based pairs trading in cryptocurrency markets](https://www.frontiersin.org/journals/applied-mathematics-and-statistics/articles/10.3389/fams.2026.1749337/full)
+
+Exchange API references:
+
+- [OKX WebSocket public API](https://www.okx.com/docs-v5/en/#websocket-api-public-channel)
+- [Bybit V5 public orderbook WebSocket](https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook)
 
 ## Documentation and Design Inspiration
 
@@ -387,19 +490,20 @@ Current test focus:
 ## Known Limitations
 
 - ArbitrAI is a paper-trading simulator; it does not place real orders.
-- Kraken and Coinbase live connectors provide BTC top-of-book for live mode; demo mode provides full synthetic triangular coverage.
+- Live mode currently streams BTC/USDT or BTC/USD books from Binance, Kraken, Coinbase, OKX, and Bybit. Binance also streams ETH legs for live triangular checks; demo mode provides full synthetic triangular coverage across all venues.
 - Production trading would require authenticated exchange adapters, nonce handling, reconciliation, persistence, alerting, custody controls, and exchange-specific rate-limit management.
 - Reported P&L is simulated and should not be interpreted as real trading profit.
+- The replay store is in-memory for hackathon speed. A production version would persist event logs to a database or object store.
 
 ## Roadmap
 
 | Next Upgrade | Why |
 |---|---|
-| Persistent event store | Replay sessions and prove behavior to judges. |
-| Historical replay timeline | Show the last 5 minutes as a controllable playback. |
-| Exchange reliability model | Score venues by uptime, message delay, and stale-book risk. |
-| OU half-life stat arb | Improve mean-reversion timing beyond basic Z-score. |
-| Depth-aware execution curve | Simulate walking multiple book levels, not only top-level constraints. |
+| Persistent event database | Keep replay/export history after backend restarts. |
+| Visual replay timeline | Scrub through the last five minutes instead of replaying as one burst. |
+| More live ETH legs | Enable live triangular checks on OKX/Bybit when their ETH books are connected. |
+| Dynamic position sizing | Use AET `suggestedSizeScale` to size execution continuously. |
+| Venue reliability memory | Learn reliability from stale-book duration and reconnect history over a full session. |
 | Deployment screenshots/video | Give judges instant visual proof in the README. |
 
 ## Competition Identity

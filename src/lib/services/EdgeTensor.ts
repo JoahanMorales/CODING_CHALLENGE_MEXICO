@@ -9,13 +9,25 @@ interface VenueState {
   lastMid?: Decimal;
 }
 
+interface RouteCalibration {
+  bias: number;
+  observations: number;
+}
+
 export interface EdgeTensorInput {
+  route: string;
   buyBook: NormalizedOrderBook;
   sellBook: NormalizedOrderBook;
   executionStyle: ExecutionStyle;
   expectedProfitUsd: Decimal;
   netSpreadPct: Decimal;
   quantityBtc: Decimal;
+}
+
+export interface EdgeOutcome {
+  route: string;
+  predictedSurvival: number;
+  realizedPnlUsd: number;
 }
 
 export interface EdgeTensorSignal {
@@ -33,6 +45,7 @@ export interface EdgeTensorSignal {
 
 export class EdgeTensor {
   private readonly venueStates = new Map<string, VenueState>();
+  private readonly routeCalibration = new Map<string, RouteCalibration>();
 
   ingest(book: NormalizedOrderBook): void {
     if (book.symbol !== "BTC/USDT") return;
@@ -81,13 +94,16 @@ export class EdgeTensor {
     const styleBoost = input.executionStyle === "MAKER_ASSISTED" ? 0.08 : input.executionStyle === "STAT_MEAN_REVERSION" ? 0.05 : 0;
     const edgeStrength = sigmoid(netEdgeBps * 0.72);
     const volatilityPenalty = sigmoid((volatilityBps - 1.8) * 0.9);
+    const calibration = this.routeCalibration.get(input.route);
+    const calibrationBias = calibration?.bias ?? 0;
     const survivalProbability = clamp01(
       0.12 +
         edgeStrength * 0.34 +
         alignment * 0.32 +
         liquidityScore * 0.16 +
         styleBoost -
-        volatilityPenalty * 0.18
+        volatilityPenalty * 0.18 +
+        calibrationBias
     );
     const adverseSelectionBps = Math.max(0, volatilityBps * 0.34 + (1 - alignment) * 2.4 - Math.max(0, netEdgeBps) * 0.16);
     const notional = notionalUsd(input.buyBook, input.quantityBtc);
@@ -120,6 +136,17 @@ export class EdgeTensor {
       survivalProbability,
       volatilityBps
     };
+  }
+
+  recordOutcome(outcome: EdgeOutcome): void {
+    const current = this.routeCalibration.get(outcome.route) ?? { bias: 0, observations: 0 };
+    const realizedWin = outcome.realizedPnlUsd > 0 ? 1 : 0;
+    const forecastError = realizedWin - clamp01(outcome.predictedSurvival);
+    const nextBias = Math.max(-0.16, Math.min(0.16, current.bias * 0.92 + forecastError * 0.035));
+    this.routeCalibration.set(outcome.route, {
+      bias: nextBias,
+      observations: current.observations + 1
+    });
   }
 }
 

@@ -24,6 +24,7 @@ describe("EdgeTensor", () => {
     tensor.ingest(sell);
 
     const signal = tensor.routeSignal({
+      route: "Kraken -> Binance",
       buyBook: buy,
       sellBook: sell,
       executionStyle: "INSTANT_TAKER",

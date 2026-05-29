@@ -87,6 +87,7 @@ Purpose: remove ambiguity about backend health.
 Must show:
 
 - exchange status;
+- venue reliability score;
 - heartbeat;
 - circuit breaker state;
 - WebSocket source.
@@ -155,10 +156,33 @@ Must show:
 - hit rate;
 - Sharpe-like ratio.
 
+### Missed Opportunity Desk
+
+Purpose: prove the bot rejects intelligently.
+
+Must show:
+
+- latest rejected routes;
+- rejection cause: fees, liquidity, adverse selection, breaker, threshold;
+- score and survival estimate;
+- compact layout so it does not push the opportunity tape down.
+
+### Scenario Lab
+
+Purpose: let judges stress the system without fake live prices.
+
+Controls:
+
+- `CRASH x3`: volatility/spread stress in demo, risk drill in live;
+- `LIQUIDITY`: lower demo depth and increase impact rejections;
+- `LATENCY`: multiply simulated execution latency;
+- `REPLAY`: fetch the last five minutes from the backend recorder;
+- `EXPORT CSV`: download the audit trail.
+
 ## 6. Interaction Rules
 
 - `RESET RISK` should always be visible when risk state matters.
-- `RISK DRILL` should be visually warning-colored but not alarming.
+- Scenario controls should be visible but compact; they are secondary to live status and P&L.
 - Demo seed controls should appear only in demo mode.
 - Live mode should never imply real order placement.
 - Tooltips or labels should clarify ambiguous controls.

@@ -1,11 +1,11 @@
 import { Decimal, d, usd, ZERO } from "../math/decimal";
-import type { Opportunity, RiskState, Trade } from "../types";
+import type { Opportunity, RiskState, ScenarioKind, Trade } from "../types";
 
 export class RiskManager {
   private consecutiveLosses = 0;
   private dailyPnlUsd = ZERO;
-  private marketCrashMode = false;
-  private marketCrashUntil = 0;
+  private activeScenario: ScenarioKind | null = null;
+  private scenarioUntil = 0;
   private readonly materialLossThresholdUsd = d("-0.25");
 
   readonly maxPositionBtc = d("0.1");
@@ -39,29 +39,52 @@ export class RiskManager {
   }
 
   simulateMarketCrash(durationMs = 30000): void {
-    this.marketCrashMode = true;
-    this.marketCrashUntil = Date.now() + durationMs;
+    this.runScenario("MARKET_CRASH", durationMs);
+  }
+
+  runScenario(kind: ScenarioKind, durationMs = 30000): void {
+    this.activeScenario = kind;
+    this.scenarioUntil = Date.now() + durationMs;
   }
 
   getVolatilityMultiplier(): number {
-    if (this.marketCrashMode && Date.now() > this.marketCrashUntil) {
-      this.marketCrashMode = false;
-    }
-    return this.marketCrashMode ? 3 : 1;
+    this.refreshScenario();
+    if (this.activeScenario === "MARKET_CRASH") return 3;
+    if (this.activeScenario === "LIQUIDITY_DRAIN") return 1.4;
+    if (this.activeScenario === "LATENCY_SPIKE") return 1.15;
+    return 1;
+  }
+
+  getLiquidityMultiplier(): number {
+    this.refreshScenario();
+    return this.activeScenario === "LIQUIDITY_DRAIN" ? 0.32 : 1;
+  }
+
+  getSpreadMultiplier(): number {
+    this.refreshScenario();
+    if (this.activeScenario === "MARKET_CRASH") return 1.85;
+    if (this.activeScenario === "LIQUIDITY_DRAIN") return 2.6;
+    return 1;
+  }
+
+  getLatencyMultiplier(): number {
+    this.refreshScenario();
+    return this.activeScenario === "LATENCY_SPIKE" ? 3.2 : 1;
   }
 
   getState(exposureBtc = ZERO): RiskState {
+    this.refreshScenario();
     const halted = this.shouldHalt();
     const lossLimited = this.dailyPnlUsd.lessThanOrEqualTo(this.dailyLossLimitUsd);
     const status = halted ? "CIRCUIT_BREAKER" : this.dailyPnlUsd.lessThan("-150") ? "HALTED" : "SCANNING";
-    const riskColor = halted || lossLimited ? "RED" : this.consecutiveLosses > 0 || this.marketCrashMode ? "AMBER" : "GREEN";
+    const riskColor = halted || lossLimited ? "RED" : this.consecutiveLosses > 0 || this.activeScenario ? "AMBER" : "GREEN";
     const haltedReason =
       this.consecutiveLosses >= 3
         ? "3 consecutive losing trades"
           : lossLimited
             ? "daily loss limit breached"
-          : this.marketCrashMode
-            ? "stress test active: demo volatility x3 for 30s"
+          : this.activeScenario
+            ? `${scenarioLabel(this.activeScenario)} scenario active`
             : "none";
 
     return {
@@ -74,7 +97,22 @@ export class RiskManager {
       exposureBtc: exposureBtc.toFixed(6),
       maxPositionBtc: this.maxPositionBtc.toFixed(3),
       haltedReason,
-      marketCrashMode: this.marketCrashMode
+      marketCrashMode: this.activeScenario === "MARKET_CRASH",
+      activeScenario: this.activeScenario ?? "NONE",
+      scenarioRemainingMs: this.activeScenario ? Math.max(0, this.scenarioUntil - Date.now()) : 0
     };
   }
+
+  private refreshScenario(): void {
+    if (this.activeScenario && Date.now() > this.scenarioUntil) {
+      this.activeScenario = null;
+      this.scenarioUntil = 0;
+    }
+  }
+}
+
+function scenarioLabel(kind: ScenarioKind): string {
+  if (kind === "MARKET_CRASH") return "market crash";
+  if (kind === "LIQUIDITY_DRAIN") return "liquidity drain";
+  return "latency spike";
 }

@@ -22,13 +22,14 @@ import type {
   PerformanceMetrics,
   PricePoint,
   RiskState,
+  ScenarioKind,
   Trade,
   WalletBalance,
   WalletSeed
 } from "@/lib/types";
 import { btcBookKey, useArbitrageStore } from "@/store/useArbitrageStore";
 
-const exchanges: ExchangeId[] = ["binance", "kraken", "coinbase"];
+const exchanges: ExchangeId[] = ["binance", "kraken", "coinbase", "okx", "bybit"];
 const opportunityTypes: OpportunityType[] = ["CROSS_EXCHANGE", "STAT_ARB", "TRIANGULAR"];
 
 const strategyLabel: Record<OpportunityType, string> = {
@@ -41,9 +42,10 @@ export function Dashboard() {
   const {
     init,
     setMode,
-    simulateMarketCrash,
+    runScenario,
     resetRisk,
     replayHistory,
+    exportSessionCsv,
     mode,
     connected,
     connectionError,
@@ -80,6 +82,7 @@ export function Dashboard() {
   const marketIntel = useMemo(() => buildMarketIntel(books, opportunities), [books, opportunities]);
   const marketMids = useMemo(() => exchanges.map((exchange) => midFromBook(books[btcBookKey(exchange)])).filter((value) => value > 0), [books]);
   const marketDrift = marketMids.length > 1 ? Math.max(...marketMids) - Math.min(...marketMids) : 0;
+  const missedOpportunities = useMemo(() => opportunities.filter((opportunity) => opportunity.status === "REJECTED").slice(0, 6), [opportunities]);
 
   return (
     <main className="grid h-screen grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#f7fbff] text-zinc-900">
@@ -110,9 +113,10 @@ export function Dashboard() {
             <PriceChartPanel marketDrift={marketDrift} priceSeries={priceSeries} />
           </aside>
 
-          <section className="grid min-h-0 gap-3 overflow-hidden xl:grid-rows-[auto_auto_minmax(0,1fr)]">
+          <section className="grid min-h-0 gap-3 overflow-hidden xl:grid-rows-[auto_auto_auto_minmax(0,1fr)]">
             <ActiveEdgePanel latestExecutable={latestExecutable} latestSignal={latestSignal} metrics={metrics} risk={risk} />
             <StrategyMatrix stats={strategyStats} />
+            <MissedOpportunityPanel opportunities={missedOpportunities} />
             <SignalFeed opportunities={visibleOpportunities} replaying={replayOpportunities.length > 0} />
           </section>
 
@@ -131,7 +135,7 @@ export function Dashboard() {
         </div>
       </section>
 
-      <RiskDock mode={mode} replayHistory={replayHistory} resetRisk={resetRisk} risk={risk} simulateMarketCrash={simulateMarketCrash} />
+      <RiskDock exportSessionCsv={exportSessionCsv} mode={mode} replayHistory={replayHistory} resetRisk={resetRisk} risk={risk} runScenario={runScenario} />
     </main>
   );
 }
@@ -217,7 +221,7 @@ function SystemHealth({
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2">
-        <HealthStat label="Exchanges" value={`${liveCount}/3`} tone={liveCount === 3 ? "emerald" : "amber"} />
+        <HealthStat label="Exchanges" value={`${liveCount}/${exchanges.length}`} tone={liveCount === exchanges.length ? "emerald" : "amber"} />
         <HealthStat label="Heartbeat" value={connected ? `${heartbeatMs}ms` : "--"} tone={connected ? "sky" : "rose"} />
         <HealthStat label="Losses" value={`${risk.consecutiveLosses}/3`} tone={risk.consecutiveLosses ? "amber" : "emerald"} />
       </div>
@@ -229,11 +233,11 @@ function SystemHealth({
           return (
             <div key={exchange} className="flex items-center justify-between rounded-lg border border-white/80 bg-white/75 px-3 py-2">
               <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${statusDot(status?.status)}`} />
-                <span className="text-xs font-black uppercase text-zinc-700">{EXCHANGE_LABELS[exchange]}</span>
-              </div>
+              <span className={`h-2 w-2 rounded-full ${statusDot(status?.status)}`} />
+              <span className="text-xs font-black uppercase text-zinc-700">{EXCHANGE_LABELS[exchange]}</span>
+            </div>
               <span className="font-mono text-[10px] font-semibold text-zinc-500">
-                {status?.transport ?? "local"} / {status?.lastMessageAt ? `${age}ms` : "--"}
+                R{status?.reliabilityScore ?? 55} / {status?.transport ?? "local"} / {status?.lastMessageAt ? `${age}ms` : "--"}
               </span>
             </div>
           );
@@ -360,6 +364,8 @@ function PriceChartPanel({ marketDrift, priceSeries }: { marketDrift: number; pr
             <Line type="monotone" dataKey="binance" stroke="#0ea5e9" dot={false} strokeWidth={2} />
             <Line type="monotone" dataKey="kraken" stroke="#10b981" dot={false} strokeWidth={2} />
             <Line type="monotone" dataKey="coinbase" stroke="#f59e0b" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="okx" stroke="#8b5cf6" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="bybit" stroke="#ec4899" dot={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -441,6 +447,36 @@ function StrategyMatrix({ stats }: { stats: StrategyStat[] }) {
         );
       })}
     </div>
+  );
+}
+
+function MissedOpportunityPanel({ opportunities }: { opportunities: Opportunity[] }) {
+  return (
+    <Panel className="p-3">
+      <div className="flex items-center justify-between gap-3">
+        <PanelTitle eyebrow="Reject Logic" title="Missed Opportunity Desk" />
+        <StatusPill label={`${opportunities.length} explained`} tone={opportunities.length ? "amber" : "emerald"} />
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {opportunities.length ? (
+          opportunities.slice(0, 3).map((opportunity) => (
+            <div key={opportunity.id} className="rounded-xl border border-amber-100 bg-amber-50/45 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-black text-zinc-800">{opportunity.route}</span>
+                <span className="font-mono text-xs font-black text-amber-700">{opportunity.score}</span>
+              </div>
+              <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-[10px] font-black">
+                <span className={Number(opportunity.netSpreadPct) >= 0 ? "text-emerald-700" : "text-rose-700"}>{opportunity.netSpreadPct}%</span>
+                <span className="text-zinc-500">{rejectCause(opportunity)}</span>
+                <span className="text-right text-zinc-500">{opportunity.edgeModel ? `${(Number(opportunity.edgeModel.survivalProbability) * 100).toFixed(0)}% surv` : "rule"}</span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <EmptyState compact text="No rejected edge in the latest tape." />
+        )}
+      </div>
+    </Panel>
   );
 }
 
@@ -630,18 +666,21 @@ function WalletPanel({
 }
 
 function RiskDock({
+  exportSessionCsv,
   mode,
   replayHistory,
   resetRisk,
   risk,
-  simulateMarketCrash
+  runScenario
 }: {
+  exportSessionCsv: () => void;
   mode: "LIVE" | "DEMO";
   replayHistory: () => void;
   resetRisk: () => void;
   risk: RiskState;
-  simulateMarketCrash: () => void;
+  runScenario: (scenario: ScenarioKind) => void;
 }) {
+  const scenarioSeconds = Math.ceil(risk.scenarioRemainingMs / 1000);
   return (
     <footer className="border-t border-sky-100 bg-white/92 px-4 py-3 shadow-[0_-8px_24px_rgba(186,230,253,0.25)] backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -654,7 +693,9 @@ function RiskDock({
           <span>Loss {risk.consecutiveLosses}/3</span>
           <span>Exposure {risk.exposureBtc} BTC</span>
           <span>Daily ${risk.dailyPnlUsd}</span>
-          <span className="text-zinc-500">{risk.haltedReason}</span>
+          <span className="text-zinc-500">
+            {risk.activeScenario !== "NONE" ? `${risk.activeScenario.replace(/_/g, " ")} ${scenarioSeconds}s` : risk.haltedReason}
+          </span>
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 font-mono text-xs font-black text-emerald-700 transition hover:bg-emerald-100" onClick={resetRisk} type="button">
@@ -663,8 +704,17 @@ function RiskDock({
           <button className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 font-mono text-xs font-black text-sky-700 transition hover:bg-sky-100" onClick={replayHistory} type="button">
             REPLAY
           </button>
-          <button className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-100" onClick={simulateMarketCrash} type="button">
-            {mode === "LIVE" ? "RISK DRILL" : "VOL x3"}
+          <button className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 font-mono text-xs font-black text-violet-700 transition hover:bg-violet-100" onClick={exportSessionCsv} type="button">
+            EXPORT CSV
+          </button>
+          <button className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-100" onClick={() => runScenario("MARKET_CRASH")} type="button">
+            {mode === "LIVE" ? "CRASH DRILL" : "CRASH x3"}
+          </button>
+          <button className="rounded-xl border border-amber-200 bg-white px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-50" onClick={() => runScenario("LIQUIDITY_DRAIN")} type="button">
+            LIQUIDITY
+          </button>
+          <button className="rounded-xl border border-sky-200 bg-white px-4 py-2 font-mono text-xs font-black text-sky-700 transition hover:bg-sky-50" onClick={() => runScenario("LATENCY_SPIKE")} type="button">
+            LATENCY
           </button>
         </div>
       </div>
@@ -1053,6 +1103,15 @@ function statusTone(status: Opportunity["status"]): Tone {
   if (status === "EVALUATING") return "amber";
   if (status === "REJECTED" || status === "EXPIRED") return "rose";
   return "sky";
+}
+
+function rejectCause(opportunity: Opportunity): string {
+  const reason = opportunity.reason.toLowerCase();
+  if (reason.includes("circuit")) return "breaker";
+  if (reason.includes("impact") || opportunity.highImpact) return "liquidity";
+  if (reason.includes("survival") || reason.includes("adverse")) return "adverse";
+  if (Number(opportunity.netSpreadPct) < 0) return "fees";
+  return "threshold";
 }
 
 function statusDot(status?: ExchangeConnectionStatus["status"]): string {

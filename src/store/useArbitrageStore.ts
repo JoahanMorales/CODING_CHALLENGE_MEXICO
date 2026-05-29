@@ -12,6 +12,7 @@ import type {
   PerformanceMetrics,
   PricePoint,
   RiskState,
+  ScenarioKind,
   Trade,
   WalletBalance,
   WalletSeed
@@ -48,8 +49,10 @@ interface ArbitrageState {
   updateWalletSeed: (exchange: ExchangeId, asset: "btc" | "usdt", value: string) => void;
   applyWalletSeed: () => void;
   simulateMarketCrash: () => void;
+  runScenario: (scenario: ScenarioKind) => void;
   resetRisk: () => void;
   replayHistory: () => void;
+  exportSessionCsv: () => void;
 }
 
 const defaultRisk: RiskState = {
@@ -59,10 +62,12 @@ const defaultRisk: RiskState = {
   consecutiveLosses: 0,
   dailyPnlUsd: "0.00",
   dailyLossLimitUsd: "-500.00",
-  exposureBtc: "2.500000",
+  exposureBtc: "4.100000",
   maxPositionBtc: "0.100",
   haltedReason: "none",
-  marketCrashMode: false
+  marketCrashMode: false,
+  activeScenario: "NONE",
+  scenarioRemainingMs: 0
 };
 
 const defaultMetrics: PerformanceMetrics = {
@@ -137,11 +142,15 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   },
 
   simulateMarketCrash: () => {
+    get().runScenario("MARKET_CRASH");
+  },
+
+  runScenario: (scenario) => {
     if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
-      gateway.send("SIMULATE_MARKET_CRASH");
+      gateway.send(`RUN_SCENARIO:${scenario}`);
       return;
     }
-    localKernel?.simulateMarketCrash();
+    localKernel?.runScenario(scenario);
   },
 
   resetRisk: () => {
@@ -153,9 +162,55 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   },
 
   replayHistory: () => {
+    if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
+      gateway.send("REPLAY_HISTORY");
+      return;
+    }
     const history = get().opportunities.filter((opportunity) => Date.now() - opportunity.createdAt <= 5 * 60 * 1000);
     set({ replayOpportunities: history.slice(0, 50) });
     window.setTimeout(() => set({ replayOpportunities: [] }), 6000);
+  },
+
+  exportSessionCsv: () => {
+    const rows = [
+      ["timestamp", "kind", "type", "route", "status", "size_btc", "pnl_usd", "fees_usd", "score", "net_spread_pct", "edge_survival", "edge_quality"],
+      ...get().trades.map((trade) => [
+        new Date(trade.executedAt).toISOString(),
+        "trade",
+        trade.type,
+        trade.route,
+        trade.status,
+        trade.sizeBtc,
+        trade.pnlUsd,
+        trade.feesUsd,
+        "",
+        "",
+        "",
+        ""
+      ]),
+      ...get().opportunities.map((opportunity) => [
+        new Date(opportunity.createdAt).toISOString(),
+        "opportunity",
+        opportunity.type,
+        opportunity.route,
+        opportunity.status,
+        opportunity.tradeSizeBtc,
+        opportunity.expectedProfitUsd,
+        opportunity.totalFeesUsd,
+        String(opportunity.score),
+        opportunity.netSpreadPct,
+        opportunity.edgeModel?.survivalProbability ?? "",
+        opportunity.edgeModel?.edgeQuality ?? ""
+      ])
+    ];
+    const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `arbitrai-session-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 }));
 
@@ -261,6 +316,12 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
     return;
   }
 
+  if (message.type === "REPLAY") {
+    set({ replayOpportunities: message.opportunities, trades: message.trades.length ? message.trades : useArbitrageStore.getState().trades });
+    window.setTimeout(() => set({ replayOpportunities: [] }), 8000);
+    return;
+  }
+
   if (message.type === "RISK") set({ risk: message.risk });
   if (message.type === "METRICS") set({ metrics: message.metrics });
 }
@@ -296,7 +357,7 @@ function updateLivePriceSeries(series: PricePoint[], book: NormalizedOrderBook):
 }
 
 function stateExchangeStatuses(books: NormalizedOrderBook[]): ExchangeConnectionStatus[] {
-  const exchanges: ExchangeId[] = ["binance", "kraken", "coinbase"];
+  const exchanges: ExchangeId[] = ["binance", "kraken", "coinbase", "okx", "bybit"];
   return exchanges.map((exchange) => {
     const exchangeBooks = books.filter((book) => book.exchange === exchange);
     const lastMessageAt = exchangeBooks.reduce((latest, book) => Math.max(latest, book.receivedAt), 0);
@@ -306,7 +367,8 @@ function stateExchangeStatuses(books: NormalizedOrderBook[]): ExchangeConnection
       status: lastMessageAt ? "live" : "connecting",
       lastMessageAt,
       messageCount: exchangeBooks.length,
-      lastError: ""
+      lastError: "",
+      reliabilityScore: lastMessageAt ? 92 : 55
     };
   });
 }
@@ -323,8 +385,13 @@ function updateStatusFromBook(
     status: transport === "rest-polling" ? "polling" : "live",
     lastMessageAt: book.receivedAt,
     messageCount: (existing?.messageCount ?? 0) + 1,
-    lastError: ""
+    lastError: "",
+    reliabilityScore: transport === "rest-polling" ? 76 : 96
   };
   const merged = statuses.filter((status) => status.exchange !== book.exchange);
   return [...merged, next].sort((a, b) => a.exchange.localeCompare(b.exchange));
+}
+
+function csvCell(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
 }

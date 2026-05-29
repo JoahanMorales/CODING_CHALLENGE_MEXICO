@@ -1,6 +1,6 @@
 import { EXCHANGE_FEES, INITIAL_WALLETS } from "../config/exchanges";
 import { Decimal, d, usd, ZERO } from "../math/decimal";
-import type { ExchangeId, Opportunity, Trade, WalletBalance, WalletSeed } from "../types";
+import type { ExchangeId, ExecutionPlan, Opportunity, OrderBookLevel, Trade, WalletBalance, WalletSeed } from "../types";
 
 interface WalletInternal {
   exchange: ExchangeId;
@@ -12,7 +12,10 @@ export class ExecutionSimulator {
   private readonly wallets = new Map<ExchangeId, WalletInternal>();
   private seed: WalletSeed;
 
-  constructor(seed: WalletSeed = INITIAL_WALLETS) {
+  constructor(
+    seed: WalletSeed = INITIAL_WALLETS,
+    private readonly latencyMultiplier: () => number = () => 1
+  ) {
     this.seed = seed;
     this.reset();
   }
@@ -31,9 +34,10 @@ export class ExecutionSimulator {
   }
 
   async execute(opportunity: Opportunity): Promise<Trade> {
-    const latencyMs = opportunity.executionStyle === "MAKER_ASSISTED"
+    const baseLatencyMs = opportunity.executionStyle === "MAKER_ASSISTED"
       ? 120 + Math.floor(Math.random() * 231)
       : 50 + Math.floor(Math.random() * 151);
+    const latencyMs = Math.round(baseLatencyMs * this.latencyMultiplier());
     await new Promise((resolve) => windowOrNodeSetTimeout(resolve, latencyMs));
 
     if (opportunity.type === "CROSS_EXCHANGE" && opportunity.buyExchange && opportunity.sellExchange) {
@@ -75,28 +79,32 @@ export class ExecutionSimulator {
     }
 
     const size = d(opportunity.tradeSizeBtc);
-    const expectedPnl = d(opportunity.expectedProfitUsd);
-    const fees = d(opportunity.totalFeesUsd);
-    const estimatedPrice = size.greaterThan(0) ? d(opportunity.grossProfitUsd).div(size).abs().plus("70000") : d("70000");
-    const buyCost = estimatedPrice.mul(size).mul(d(1).plus(EXCHANGE_FEES[buyExchange].taker));
-    const sellCredit = estimatedPrice.mul(size).mul(d(1).minus(EXCHANGE_FEES[sellExchange].taker)).plus(expectedPnl);
-
-    if (buyWallet.usdt.lessThan(buyCost) || sellWallet.btc.lessThan(size)) {
-      return this.rejectedTrade(opportunity, latencyMs, "0");
-    }
-
     const styleFillRatio = opportunity.executionStyle === "MAKER_ASSISTED"
       ? Decimal.min(1, d("0.55").plus(d(opportunity.confidence).div(220)))
       : d(1);
     const fillRatio = opportunity.highImpact ? Decimal.min(styleFillRatio, d("0.8")) : styleFillRatio;
     const filledSize = size.mul(fillRatio);
-    const notional = estimatedPrice.mul(filledSize);
+    const execution = depthAwareQuote(opportunity.executionPlan, filledSize);
+    const buyFeeRate = EXCHANGE_FEES[buyExchange][opportunity.executionPlan?.buyLiquidityRole ?? "taker"];
+    const sellFeeRate = EXCHANGE_FEES[sellExchange][opportunity.executionPlan?.sellLiquidityRole ?? "taker"];
+    const buyFee = execution.buyNotional.mul(buyFeeRate);
+    const sellFee = execution.sellNotional.mul(sellFeeRate);
+    const buyCost = execution.buyNotional.plus(buyFee);
+    const sellCredit = execution.sellNotional.minus(sellFee);
+
+    if (buyWallet.usdt.lessThan(buyCost) || sellWallet.btc.lessThan(filledSize)) {
+      return this.rejectedTrade(opportunity, latencyMs, "0");
+    }
+
+    const notional = execution.buyNotional.plus(execution.sellNotional).div(2);
     const adverseLatencyCost = notional.mul(realizedLatencyShockRate(latencyMs, opportunity.highImpact, opportunity.executionStyle));
-    const realizedPnl = expectedPnl.mul(fillRatio).minus(adverseLatencyCost);
-    buyWallet.usdt = buyWallet.usdt.minus(buyCost.mul(fillRatio));
+    const survivalDecayCost = realizedSurvivalDecayCost(notional, opportunity);
+    const modeledCosts = d(opportunity.slippageUsd).plus(opportunity.networkCostUsd).mul(fillRatio);
+    const realizedPnl = sellCredit.minus(buyCost).minus(modeledCosts).minus(adverseLatencyCost).minus(survivalDecayCost);
+    buyWallet.usdt = buyWallet.usdt.minus(buyCost);
     buyWallet.btc = buyWallet.btc.plus(filledSize);
     sellWallet.btc = sellWallet.btc.minus(filledSize);
-    sellWallet.usdt = sellWallet.usdt.plus(sellCredit.mul(fillRatio)).minus(adverseLatencyCost);
+    sellWallet.usdt = sellWallet.usdt.plus(sellCredit).minus(modeledCosts).minus(adverseLatencyCost).minus(survivalDecayCost);
 
     return {
       id: cryptoId("trade"),
@@ -107,7 +115,7 @@ export class ExecutionSimulator {
       latencyMs,
       sizeBtc: filledSize.toFixed(8),
       pnlUsd: usd(realizedPnl),
-      feesUsd: usd(fees.mul(fillRatio)),
+      feesUsd: usd(buyFee.plus(sellFee)),
       fillRatio: fillRatio.toNumber(),
       status: fillRatio.lessThan(1) ? "PARTIAL" : "FILLED",
       highImpact: opportunity.highImpact
@@ -117,9 +125,11 @@ export class ExecutionSimulator {
   private executeSynthetic(opportunity: Opportunity, latencyMs: number): Trade {
     const fillRatio = opportunity.highImpact ? d("0.75") : d(1);
     const notional = d(opportunity.tradeSizeBtc).mul(fillRatio).mul("70000");
+    const survivalDecayCost = realizedSurvivalDecayCost(notional, opportunity);
     const realizedPnl = d(opportunity.expectedProfitUsd)
       .mul(fillRatio)
-      .minus(notional.mul(realizedLatencyShockRate(latencyMs, opportunity.highImpact, opportunity.executionStyle)));
+      .minus(notional.mul(realizedLatencyShockRate(latencyMs, opportunity.highImpact, opportunity.executionStyle)))
+      .minus(survivalDecayCost);
     return {
       id: cryptoId("trade"),
       opportunityId: opportunity.id,
@@ -154,6 +164,44 @@ export class ExecutionSimulator {
   }
 }
 
+function depthAwareQuote(plan: ExecutionPlan | undefined, quantity: Decimal): { buyNotional: Decimal; sellNotional: Decimal } {
+  if (!plan || quantity.lessThanOrEqualTo(0)) {
+    const fallback = d("70000").mul(quantity);
+    return { buyNotional: fallback, sellNotional: fallback };
+  }
+
+  if (plan.buyLiquidityRole === "maker" || plan.sellLiquidityRole === "maker") {
+    return {
+      buyNotional: d(plan.referenceBuyPrice).mul(quantity),
+      sellNotional: d(plan.referenceSellPrice).mul(quantity)
+    };
+  }
+
+  return {
+    buyNotional: walkBook(plan.buyLevels, quantity),
+    sellNotional: walkBook(plan.sellLevels, quantity)
+  };
+}
+
+function walkBook(levels: OrderBookLevel[], quantity: Decimal): Decimal {
+  let remaining = quantity;
+  let notional = ZERO;
+  for (const level of levels) {
+    if (remaining.lessThanOrEqualTo(0)) break;
+    const levelSize = d(level.size);
+    const fill = Decimal.min(remaining, levelSize);
+    notional = notional.plus(fill.mul(level.price));
+    remaining = remaining.minus(fill);
+  }
+
+  if (remaining.greaterThan(0)) {
+    const lastPrice = levels.at(-1)?.price ?? "70000";
+    notional = notional.plus(remaining.mul(lastPrice));
+  }
+
+  return notional;
+}
+
 function windowOrNodeSetTimeout(resolve: (value: unknown) => void, latencyMs: number): void {
   setTimeout(resolve, latencyMs);
 }
@@ -180,6 +228,28 @@ function realizedLatencyShockRate(latencyMs: number, highImpact: boolean, style:
   const latencyComponent = Math.min(0.00016, latencyMs / 1000 * 0.00035);
   const randomComponent = gaussianRandom() * 0.00016;
   return d(Math.max(-0.00008, base + latencyComponent + randomComponent).toFixed(8));
+}
+
+function realizedSurvivalDecayCost(notional: Decimal, opportunity: Opportunity): Decimal {
+  const survivalProbability = Math.max(
+    0.05,
+    Math.min(0.98, Number(opportunity.edgeModel?.survivalProbability ?? opportunity.confidence / 100))
+  );
+  const failedToSurvive = Math.random() > survivalProbability;
+  if (failedToSurvive) {
+    const stylePenalty =
+      opportunity.executionStyle === "MAKER_ASSISTED"
+        ? 0.00024
+        : opportunity.executionStyle === "STAT_MEAN_REVERSION"
+          ? 0.00018
+          : 0.00016;
+    const impactPenalty = opportunity.highImpact ? 0.00016 : 0;
+    return notional.mul(d((stylePenalty + impactPenalty + Math.random() * 0.00026).toFixed(8)));
+  }
+
+  // Even successful paper fills carry small symmetric markout noise. Negative
+  // values model favorable short-horizon movement after both legs complete.
+  return notional.mul(d((gaussianRandom() * 0.00007).toFixed(8)));
 }
 
 function gaussianRandom(): number {

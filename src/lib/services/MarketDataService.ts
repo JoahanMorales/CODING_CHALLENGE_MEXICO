@@ -10,7 +10,7 @@ interface DemoState {
   timer: ReturnType<typeof setInterval> | null;
 }
 
-const EXCHANGES: ExchangeId[] = ["binance", "kraken", "coinbase"];
+const EXCHANGES: ExchangeId[] = ["binance", "kraken", "coinbase", "okx", "bybit"];
 
 export class MarketDataService {
   private readonly priceSeries: PricePoint[] = [];
@@ -55,6 +55,8 @@ export class MarketDataService {
 
     const arbPulse = this.demoState.tick % 19 === 0 ? 1 : 0;
     const triPulse = this.demoState.tick % 43 === 0 ? 1 : 0;
+    const spreadMultiplier = this.riskManager.getSpreadMultiplier();
+    const liquidityMultiplier = this.riskManager.getLiquidityMultiplier();
 
     EXCHANGES.forEach((exchange, index) => {
       const exchangeBias = Math.sin((Date.now() / 900) + index) * 18;
@@ -63,9 +65,9 @@ export class MarketDataService {
       const ethMid = this.demoState.eth * (1 + (index - 1) * 0.00035);
       const ethBtcMid = this.demoState.ethBtc * (1 + (triPulse && index === 0 ? 0.0042 : 0));
 
-      this.ingest(makeBook(exchange, "BTC/USDT", btcMid, 11 + index * 2, 0.18 + index * 0.07));
-      this.ingest(makeBook(exchange, "ETH/USDT", ethMid, 1.4 + index * 0.2, 8 + index * 2));
-      this.ingest(makeBook(exchange, "ETH/BTC", ethBtcMid, 0.00005, 12 + index * 2));
+      this.ingest(makeBook(exchange, "BTC/USDT", btcMid, (11 + index * 2) * spreadMultiplier, (0.18 + index * 0.07) * liquidityMultiplier));
+      this.ingest(makeBook(exchange, "ETH/USDT", ethMid, (1.4 + index * 0.2) * spreadMultiplier, (8 + index * 2) * liquidityMultiplier));
+      this.ingest(makeBook(exchange, "ETH/BTC", ethBtcMid, 0.00005 * spreadMultiplier, (12 + index * 2) * liquidityMultiplier));
     });
   }
 

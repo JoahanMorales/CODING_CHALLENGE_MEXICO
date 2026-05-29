@@ -1,6 +1,7 @@
-import type { GatewayMessage, GatewaySnapshot, NormalizedOrderBook, Opportunity, WalletSeed } from "../types";
+import type { GatewayMessage, GatewaySnapshot, NormalizedOrderBook, Opportunity, ScenarioKind, WalletSeed } from "../types";
 import { ArbitrageEngine } from "./ArbitrageEngine";
 import { EventBus } from "./EventBus";
+import { EventRecorder } from "./EventRecorder";
 import { ExecutionSimulator } from "./ExecutionSimulator";
 import { MarketDataService } from "./MarketDataService";
 import { PnLTracker } from "./PnLTracker";
@@ -13,6 +14,7 @@ export class ArbitrAIKernel {
   readonly engine = new ArbitrageEngine();
   readonly simulator: ExecutionSimulator;
   readonly pnlTracker = new PnLTracker();
+  readonly recorder = new EventRecorder();
 
   private readonly opportunities: Opportunity[] = [];
   private readonly executionQueue: Opportunity[] = [];
@@ -20,7 +22,7 @@ export class ArbitrAIKernel {
   private executing = false;
 
   constructor(walletSeed?: WalletSeed) {
-    this.simulator = new ExecutionSimulator(walletSeed);
+    this.simulator = new ExecutionSimulator(walletSeed, () => this.riskManager.getLatencyMultiplier());
     this.bus.on("market:update", (book) => this.handleMarketUpdate(book));
   }
 
@@ -37,13 +39,22 @@ export class ArbitrAIKernel {
   }
 
   simulateMarketCrash(): void {
-    this.riskManager.simulateMarketCrash();
+    this.runScenario("MARKET_CRASH");
+  }
+
+  runScenario(kind: ScenarioKind): void {
+    this.riskManager.runScenario(kind);
     this.publish({ type: "RISK", risk: this.riskManager.getState(this.simulator.exposureBtc()) });
   }
 
   resetRisk(): void {
     this.riskManager.resetCircuitBreaker();
     this.publish({ type: "RISK", risk: this.riskManager.getState(this.simulator.exposureBtc()) });
+  }
+
+  replayHistory(): void {
+    const replay = this.recorder.replay();
+    this.publish({ type: "REPLAY", opportunities: replay.opportunities, trades: replay.trades, events: replay.events });
   }
 
   snapshot(): GatewaySnapshot {
@@ -98,7 +109,7 @@ export class ArbitrAIKernel {
       const trade = await this.simulator.execute(opportunity);
       const risk = this.riskManager.recordTrade(trade);
       const metrics = this.pnlTracker.recordTrade(trade);
-      this.engine.updateHistoricalSuccess(opportunity.route, Number(trade.pnlUsd) > 0);
+      this.engine.recordExecutionOutcome(opportunity, Number(trade.pnlUsd));
       this.publish({ type: "TRADE", trade, wallets: this.simulator.balances(), metrics, risk });
     }
 
@@ -106,6 +117,7 @@ export class ArbitrAIKernel {
   }
 
   private publish(message: GatewayMessage): void {
+    this.recorder.record(message);
     this.bus.emit("gateway:message", message);
   }
 }

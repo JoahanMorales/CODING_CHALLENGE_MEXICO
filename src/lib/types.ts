@@ -1,4 +1,4 @@
-export type ExchangeId = "binance" | "kraken" | "coinbase";
+export type ExchangeId = "binance" | "kraken" | "coinbase" | "okx" | "bybit";
 
 export type SymbolId = "BTC/USDT" | "ETH/USDT" | "ETH/BTC";
 
@@ -9,6 +9,8 @@ export type OpportunityStatus = "DETECTED" | "EVALUATING" | "EXECUTED" | "REJECT
 export type SystemStatus = "SCANNING" | "CIRCUIT_BREAKER" | "HALTED";
 
 export type ExecutionStyle = "INSTANT_TAKER" | "MAKER_ASSISTED" | "TRIANGULAR_CYCLE" | "STAT_MEAN_REVERSION";
+
+export type ScenarioKind = "MARKET_CRASH" | "LIQUIDITY_DRAIN" | "LATENCY_SPIKE";
 
 export interface EdgeModelSignal {
   adverseSelectionBps: string;
@@ -43,6 +45,8 @@ export interface PricePoint {
   binance?: number;
   kraken?: number;
   coinbase?: number;
+  okx?: number;
+  bybit?: number;
 }
 
 export interface ExchangeConnectionStatus {
@@ -52,6 +56,16 @@ export interface ExchangeConnectionStatus {
   lastMessageAt: number;
   messageCount: number;
   lastError: string;
+  reliabilityScore?: number;
+}
+
+export interface ExecutionPlan {
+  buyLevels: OrderBookLevel[];
+  sellLevels: OrderBookLevel[];
+  buyLiquidityRole: "maker" | "taker";
+  sellLiquidityRole: "maker" | "taker";
+  referenceBuyPrice: string;
+  referenceSellPrice: string;
 }
 
 export interface Opportunity {
@@ -80,6 +94,13 @@ export interface Opportunity {
   impactRatio: number;
   reason: string;
   edgeModel?: EdgeModelSignal;
+  executionPlan?: ExecutionPlan;
+}
+
+export interface RecordedEvent {
+  id: string;
+  time: number;
+  message: GatewayMessage;
 }
 
 export interface Trade {
@@ -118,6 +139,8 @@ export interface RiskState {
   maxPositionBtc: string;
   haltedReason: string;
   marketCrashMode: boolean;
+  activeScenario: ScenarioKind | "NONE";
+  scenarioRemainingMs: number;
 }
 
 export interface PerformanceMetrics {
@@ -154,5 +177,6 @@ export type GatewayMessage =
   | { type: "EXCHANGE_STATUS"; statuses: ExchangeConnectionStatus[] }
   | { type: "OPPORTUNITY"; opportunity: Opportunity; queue: Opportunity[] }
   | { type: "TRADE"; trade: Trade; wallets: WalletBalance[]; metrics: PerformanceMetrics; risk: RiskState }
+  | { type: "REPLAY"; opportunities: Opportunity[]; trades: Trade[]; events: RecordedEvent[] }
   | { type: "RISK"; risk: RiskState }
   | { type: "METRICS"; metrics: PerformanceMetrics };

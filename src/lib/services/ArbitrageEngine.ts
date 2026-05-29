@@ -35,6 +35,17 @@ export class ArbitrageEngine {
     this.historicalSuccess.set(route, next);
   }
 
+  recordExecutionOutcome(opportunity: Opportunity, pnlUsd: number): void {
+    this.updateHistoricalSuccess(opportunity.route, pnlUsd > 0);
+    if (opportunity.edgeModel) {
+      this.edgeTensor.recordOutcome({
+        route: opportunity.route,
+        predictedSurvival: Number(opportunity.edgeModel.survivalProbability),
+        realizedPnlUsd: pnlUsd
+      });
+    }
+  }
+
   private detectCrossExchange(startedAt: number): Opportunity[] {
     const btcBooks = this.booksForSymbol("BTC/USDT");
     const opportunities: Opportunity[] = [];
@@ -95,9 +106,11 @@ export class ArbitrageEngine {
         const makerNetSpreadPct = makerBuyPrice.mul(desiredQty).greaterThan(0)
           ? makerExpectedProfit.div(makerBuyPrice.mul(desiredQty))
           : d(0);
+        const route = `${label(buyBook.exchange)} -> ${label(sellBook.exchange)}`;
         const tradeValue = ask.price.mul(desiredQty);
         const threshold = tradeValue.mul(CROSS_EXCHANGE_THRESHOLD_PCT);
         const takerEdge = this.edgeTensor.routeSignal({
+          route,
           buyBook,
           sellBook,
           executionStyle: "INSTANT_TAKER",
@@ -106,6 +119,7 @@ export class ArbitrageEngine {
           quantityBtc: desiredQty
         });
         const makerEdge = this.edgeTensor.routeSignal({
+          route,
           buyBook,
           sellBook,
           executionStyle: "MAKER_ASSISTED",
@@ -121,7 +135,6 @@ export class ArbitrageEngine {
         const selectedEdge = makerExecutable ? makerEdge : takerEdge;
         const selectedProfit = selectedEdge.riskAdjustedProfitUsd;
         const selectedNetSpreadPct = makerExecutable ? makerNetSpreadPct : takerNet.netSpreadPct;
-        const route = `${label(buyBook.exchange)} -> ${label(sellBook.exchange)}`;
 
         opportunities.push({
           id: cryptoId("cross"),
@@ -165,7 +178,15 @@ export class ArbitrageEngine {
                 ? `Executable instant taker edge. Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, adverse-selection ${selectedEdge.adverseSelectionBps.toFixed(2)}bps.`
                 : `Executable maker-assisted paper trade. Fill ${makerFillProbability.mul(100).toFixed(0)}%, Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, microstructure alignment ${(microstructureAlignment * 100).toFixed(0)}%.`
               : `Rejected: Edge Tensor quality ${selectedEdge.edgeQuality}, survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, risk-adjusted P&L ${usd(selectedEdge.riskAdjustedProfitUsd)} USD.`,
-          edgeModel: serializeEdgeTensor(selectedEdge)
+          edgeModel: serializeEdgeTensor(selectedEdge),
+          executionPlan: {
+            buyLevels: buyBook.asks.slice(0, 5),
+            sellLevels: sellBook.bids.slice(0, 5),
+            buyLiquidityRole: makerExecutable ? "maker" : "taker",
+            sellLiquidityRole: makerExecutable ? "maker" : "taker",
+            referenceBuyPrice: (makerExecutable ? makerBuyPrice : ask.price).toFixed(8),
+            referenceSellPrice: (makerExecutable ? makerSellPrice : bid.price).toFixed(8)
+          }
         });
       });
     });
@@ -175,7 +196,7 @@ export class ArbitrageEngine {
 
   private detectTriangular(startedAt: number): Opportunity[] {
     const opportunities: Opportunity[] = [];
-    (["binance", "kraken", "coinbase"] as ExchangeId[]).forEach((exchange) => {
+    (["binance", "kraken", "coinbase", "okx", "bybit"] as ExchangeId[]).forEach((exchange) => {
       const btcUsdt = this.books.get(bookKey(exchange, "BTC/USDT"));
       const ethUsdt = this.books.get(bookKey(exchange, "ETH/USDT"));
       const ethBtc = this.books.get(bookKey(exchange, "ETH/BTC"));
@@ -249,9 +270,12 @@ export class ArbitrageEngine {
     const zScore = (spread - mean) / stdDev;
     if (this.spreadWindow.count(now) < 12 || Math.abs(zScore) <= 1.15) return [];
 
+    const reversion = estimateOuReversion(this.spreadWindow.values(now));
     const expectedMoveUsd = d(Math.abs(spread - mean)).mul("0.56");
     const size = d("0.08");
-    const hedgeCostRate = d("0.00008").plus(d(Math.max(0, 2 - Math.abs(zScore))).mul("0.000035"));
+    const hedgeCostRate = d("0.00008")
+      .plus(d(Math.max(0, 2 - Math.abs(zScore))).mul("0.000035"))
+      .plus(d(Math.max(0, reversion.halfLifeSamples - 60)).mul("0.000001"));
     const expectedProfit = expectedMoveUsd.mul(size).minus(binanceMid.mul(size).mul(hedgeCostRate));
     const longExchange: ExchangeId = zScore > 0 ? "kraken" : "binance";
     const shortExchange: ExchangeId = zScore > 0 ? "binance" : "kraken";
@@ -284,12 +308,12 @@ export class ArbitrageEngine {
           quantity: size,
           availableDepth: d("0.4"),
           exchanges: [longExchange, shortExchange],
-          confidenceBoost: Math.min(1, Math.abs(zScore) / 4)
+          confidenceBoost: Math.min(1, Math.abs(zScore) / 4 * 0.72 + reversion.quality * 0.28)
         }),
-        confidence: Math.min(99, Math.round(50 + Math.abs(zScore) * 15)),
+        confidence: Math.min(99, Math.round(44 + Math.abs(zScore) * 13 + reversion.quality * 22)),
         highImpact: false,
         impactRatio: 0.08,
-        reason: `Stat arb paper trade: 60-second spread Z-score ${zScore.toFixed(2)} crossed +/-1.15; expected convergence after hedge cost is ${usd(expectedProfit)} USD.`
+        reason: `Stat arb 2.0: Z-score ${zScore.toFixed(2)}, OU half-life ${reversion.halfLifeSamples.toFixed(1)} samples, reversion quality ${(reversion.quality * 100).toFixed(0)}%, expected convergence after hedge cost is ${usd(expectedProfit)} USD.`
       }
     ];
   }
@@ -378,4 +402,24 @@ function cryptoId(prefix: string): string {
 
 function sigmoid(value: number): number {
   return 1 / (1 + Math.exp(-value));
+}
+
+function estimateOuReversion(values: number[]): { halfLifeSamples: number; quality: number } {
+  if (values.length < 8) return { halfLifeSamples: 999, quality: 0 };
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  let numerator = 0;
+  let denominator = 0;
+  for (let index = 1; index < values.length; index += 1) {
+    const lag = values[index - 1] - mean;
+    const change = values[index] - values[index - 1];
+    numerator += lag * change;
+    denominator += lag * lag;
+  }
+  if (denominator === 0) return { halfLifeSamples: 999, quality: 0 };
+  const beta = numerator / denominator;
+  const kappa = Math.max(0, -beta);
+  if (kappa <= 0) return { halfLifeSamples: 999, quality: 0 };
+  const halfLifeSamples = Math.log(2) / kappa;
+  const quality = Math.max(0, Math.min(1, (80 - halfLifeSamples) / 80));
+  return { halfLifeSamples, quality };
 }

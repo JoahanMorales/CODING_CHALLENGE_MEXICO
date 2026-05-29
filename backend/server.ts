@@ -43,8 +43,16 @@ wss.on("connection", (socket) => {
   clients.add(socket);
   socket.send(JSON.stringify(snapshotWithStatuses()));
   socket.on("message", (message) => {
-    if (message.toString() === "SIMULATE_MARKET_CRASH") kernel.simulateMarketCrash();
-    if (message.toString() === "RESET_RISK") kernel.resetRisk();
+    const command = message.toString();
+    if (command === "SIMULATE_MARKET_CRASH") kernel.simulateMarketCrash();
+    if (command === "RESET_RISK") kernel.resetRisk();
+    if (command === "REPLAY_HISTORY") kernel.replayHistory();
+    if (command.startsWith("RUN_SCENARIO:")) {
+      const scenario = command.replace("RUN_SCENARIO:", "");
+      if (scenario === "MARKET_CRASH" || scenario === "LIQUIDITY_DRAIN" || scenario === "LATENCY_SPIKE") {
+        kernel.runScenario(scenario);
+      }
+    }
   });
   socket.on("close", () => clients.delete(socket));
 });
@@ -102,24 +110,29 @@ function broadcast(message: GatewayMessage): void {
 class ExchangeConnector {
   private reconnects = new Map<string, number>();
   private readonly connectionStatuses = new Map<ExchangeId, ExchangeConnectionStatus>();
+  private readonly bybitBids = new Map<string, string>();
+  private readonly bybitAsks = new Map<string, string>();
   private poller: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly appKernel: ArbitrAIKernel) {}
 
   start(): void {
-    (["binance", "kraken", "coinbase"] as ExchangeId[]).forEach((exchange) => {
+    (["binance", "kraken", "coinbase", "okx", "bybit"] as ExchangeId[]).forEach((exchange) => {
       this.connectionStatuses.set(exchange, {
         exchange,
         transport: "websocket",
         status: "connecting",
         lastMessageAt: 0,
         messageCount: 0,
-        lastError: ""
+        lastError: "",
+        reliabilityScore: 55
       });
     });
     this.connectBinance();
     this.connectKraken();
     this.connectCoinbase();
+    this.connectOkx();
+    this.connectBybit();
     this.poller = setInterval(() => void this.pollRealRestFallback(), 2500);
     setInterval(() => broadcast({ type: "EXCHANGE_STATUS", statuses: this.statuses() }), 1000);
   }
@@ -207,6 +220,61 @@ class ExchangeConnector {
     this.attachReconnect("coinbase", socket, () => this.connectCoinbase());
   }
 
+  private connectOkx(): void {
+    this.mark("okx", "websocket", "connecting");
+    const socket = new WebSocket("wss://ws.okx.com:8443/ws/v5/public");
+    socket.on("open", () => {
+      socket.send(JSON.stringify({ op: "subscribe", args: [{ channel: "books5", instId: "BTC-USDT" }] }));
+    });
+    socket.on("message", (payload) => {
+      const parsed = safeParse(payload.toString());
+      const data = readArray(parsed, "data");
+      const book = data?.find(isRecord);
+      if (!book) return;
+      const bids = levelsFromUnknown(book.bids);
+      const asks = levelsFromUnknown(book.asks);
+      const ts = Number(readStringOrNumber(book, "ts") ?? Date.now());
+      if (bids.length && asks.length) {
+        this.appKernel.ingest(makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+        this.mark("okx", "websocket", "live");
+      }
+    });
+    this.attachReconnect("okx", socket, () => this.connectOkx());
+  }
+
+  private connectBybit(): void {
+    this.mark("bybit", "websocket", "connecting");
+    const socket = new WebSocket("wss://stream.bybit.com/v5/public/spot");
+    socket.on("open", () => {
+      socket.send(JSON.stringify({ op: "subscribe", args: ["orderbook.50.BTCUSDT"] }));
+    });
+    socket.on("message", (payload) => {
+      const parsed = safeParse(payload.toString());
+      if (readString(parsed, "topic") !== "orderbook.50.BTCUSDT") return;
+      const data = readRecord(parsed, "data");
+      if (!data) return;
+      const eventType = readString(parsed, "type");
+      this.applyBybitLevels(this.bybitBids, levelsFromUnknown(data.b), eventType === "snapshot");
+      this.applyBybitLevels(this.bybitAsks, levelsFromUnknown(data.a), eventType === "snapshot");
+      const bids = sortedLevelsFromMap(this.bybitBids, "bid");
+      const asks = sortedLevelsFromMap(this.bybitAsks, "ask");
+      const ts = Number(readStringOrNumber(parsed, "ts") ?? Date.now());
+      if (bids.length && asks.length) {
+        this.appKernel.ingest(makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+        this.mark("bybit", "websocket", "live");
+      }
+    });
+    this.attachReconnect("bybit", socket, () => this.connectBybit());
+  }
+
+  private applyBybitLevels(target: Map<string, string>, levels: Array<[string, string]>, reset: boolean): void {
+    if (reset) target.clear();
+    levels.forEach(([price, size]) => {
+      if (Number(size) === 0) target.delete(price);
+      else target.set(price, size);
+    });
+  }
+
   private attachReconnect(name: string, socket: WebSocket, reconnect: () => void): void {
     socket.on("close", () => {
       this.mark(name as ExchangeId, "websocket", "reconnecting", "socket closed");
@@ -222,7 +290,7 @@ class ExchangeConnector {
   }
 
   private async pollRealRestFallback(): Promise<void> {
-    await Promise.allSettled([this.pollBinanceDepth(), this.pollKrakenDepth(), this.pollCoinbaseBook()]);
+    await Promise.allSettled([this.pollBinanceDepth(), this.pollKrakenDepth(), this.pollCoinbaseBook(), this.pollOkxBook(), this.pollBybitBook()]);
   }
 
   private async pollBinanceDepth(): Promise<void> {
@@ -275,6 +343,35 @@ class ExchangeConnector {
     }
   }
 
+  private async pollOkxBook(): Promise<void> {
+    const response = await fetch("https://www.okx.com/api/v5/market/books?instId=BTC-USDT&sz=5");
+    const payload = (await response.json()) as unknown;
+    const data = readArray(payload, "data");
+    const book = data?.find(isRecord);
+    if (!book) return;
+    const bids = levelsFromUnknown(book.bids);
+    const asks = levelsFromUnknown(book.asks);
+    const ts = Number(readStringOrNumber(book, "ts") ?? Date.now());
+    if (bids.length && asks.length) {
+      this.appKernel.ingest(makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+      this.mark("okx", "rest-polling", "polling");
+    }
+  }
+
+  private async pollBybitBook(): Promise<void> {
+    const response = await fetch("https://api.bybit.com/v5/market/orderbook?category=spot&symbol=BTCUSDT&limit=5");
+    const payload = (await response.json()) as unknown;
+    const result = readRecord(payload, "result");
+    if (!result) return;
+    const bids = levelsFromUnknown(result.b);
+    const asks = levelsFromUnknown(result.a);
+    const ts = Number(readStringOrNumber(result, "ts") ?? Date.now());
+    if (bids.length && asks.length) {
+      this.appKernel.ingest(makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+      this.mark("bybit", "rest-polling", "polling");
+    }
+  }
+
   private mark(exchange: ExchangeId, transport: "websocket" | "rest-polling", status: ExchangeConnectionStatus["status"], error = ""): void {
     const current = this.connectionStatuses.get(exchange);
     this.connectionStatuses.set(exchange, {
@@ -283,7 +380,8 @@ class ExchangeConnector {
       status,
       lastMessageAt: status === "live" || status === "polling" ? Date.now() : current?.lastMessageAt ?? 0,
       messageCount: (current?.messageCount ?? 0) + (status === "live" || status === "polling" ? 1 : 0),
-      lastError: error
+      lastError: error,
+      reliabilityScore: reliabilityScore(status, transport, error)
     });
   }
 }
@@ -329,6 +427,21 @@ function levelsFromUnknown(value: unknown): Array<[string, string]> {
   return value
     .filter((level): level is [string, string] => Array.isArray(level) && level.length >= 2)
     .map((level) => [String(level[0]), String(level[1])]);
+}
+
+function sortedLevelsFromMap(levels: Map<string, string>, side: "bid" | "ask"): Array<[string, string]> {
+  return [...levels.entries()]
+    .sort((a, b) => side === "bid" ? Number(b[0]) - Number(a[0]) : Number(a[0]) - Number(b[0]))
+    .slice(0, 5);
+}
+
+function reliabilityScore(status: ExchangeConnectionStatus["status"], transport: "websocket" | "rest-polling", error: string): number {
+  if (error) return 20;
+  if (status === "live") return 96;
+  if (status === "polling" || transport === "rest-polling") return 76;
+  if (status === "reconnecting") return 45;
+  if (status === "error") return 15;
+  return 55;
 }
 
 function streamToSymbol(stream: string): SymbolId | null {
