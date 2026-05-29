@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  background: #f7fbff;
+  color: #27272a;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+@keyframes price-up {
+  0% {
+    background: rgba(167, 243, 208, 0.85);
+    color: #047857;
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@keyframes price-down {
+  0% {
+    background: rgba(254, 205, 211, 0.85);
+    color: #be123c;
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@keyframes card-in {
+  0% {
+    transform: translateY(-2px);
+    border-color: rgba(125, 211, 252, 0.9);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #bae6fd transparent;
+}
+
+*::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #bae6fd;
+  border-radius: 999px;
+}
+
+.flash-up {
+  animation: price-up 420ms ease-out;
+}
+
+.flash-down {
+  animation: price-down 420ms ease-out;
+}
+
+.opportunity-live {
+  animation: card-in 520ms ease-out;
+  contain: content;
+}
