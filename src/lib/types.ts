@@ -10,6 +10,19 @@ export type SystemStatus = "SCANNING" | "CIRCUIT_BREAKER" | "HALTED";
 
 export type ExecutionStyle = "INSTANT_TAKER" | "MAKER_ASSISTED" | "TRIANGULAR_CYCLE" | "STAT_MEAN_REVERSION";
 
+export interface EdgeModelSignal {
+  adverseSelectionBps: string;
+  edgeQuality: "EXPLOIT" | "WATCH" | "AVOID";
+  liquidityScore: string;
+  micropriceSkewBps: string;
+  modelScore: number;
+  orderFlowImbalance: string;
+  riskAdjustedProfitUsd: string;
+  suggestedSizeScale: string;
+  survivalProbability: string;
+  volatilityBps: string;
+}
+
 export interface OrderBookLevel {
   price: string;
   size: string;
@@ -66,6 +79,7 @@ export interface Opportunity {
   highImpact: boolean;
   impactRatio: number;
   reason: string;
+  edgeModel?: EdgeModelSignal;
 }
 
 export interface Trade {

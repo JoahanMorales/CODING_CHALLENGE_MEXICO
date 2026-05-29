@@ -1,6 +1,7 @@
 import { CROSS_EXCHANGE_THRESHOLD_PCT, EXCHANGE_FEES } from "../config/exchanges";
 import { Decimal, d, pct, usd, ZERO } from "../math/decimal";
 import type { ExchangeId, NormalizedOrderBook, Opportunity, SymbolId } from "../types";
+import { EdgeTensor, serializeEdgeTensor } from "./EdgeTensor";
 import { calculateNetProfit, midPrice, topAsk, topBid } from "./feeMath";
 import { RollingWindow } from "./RollingWindow";
 
@@ -8,9 +9,11 @@ export class ArbitrageEngine {
   private readonly books = new Map<string, NormalizedOrderBook>();
   private readonly spreadWindow = new RollingWindow(60000);
   private readonly historicalSuccess = new Map<string, number>();
+  private readonly edgeTensor = new EdgeTensor();
 
   onOrderBook(book: NormalizedOrderBook): Opportunity[] {
     const startedAt = performanceNow();
+    this.edgeTensor.ingest(book);
     this.books.set(bookKey(book.exchange, book.symbol), book);
     const opportunities = [
       ...this.detectCrossExchange(startedAt),
@@ -94,12 +97,29 @@ export class ArbitrageEngine {
           : d(0);
         const tradeValue = ask.price.mul(desiredQty);
         const threshold = tradeValue.mul(CROSS_EXCHANGE_THRESHOLD_PCT);
-        const takerExecutable = takerNet.netProfitUsd.greaterThan(threshold);
-        const makerExecutable = !takerExecutable && makerExpectedProfit.greaterThan("0.35") && makerNetSpreadPct.greaterThan("0.00004");
+        const takerEdge = this.edgeTensor.routeSignal({
+          buyBook,
+          sellBook,
+          executionStyle: "INSTANT_TAKER",
+          expectedProfitUsd: takerNet.netProfitUsd,
+          netSpreadPct: takerNet.netSpreadPct,
+          quantityBtc: desiredQty
+        });
+        const makerEdge = this.edgeTensor.routeSignal({
+          buyBook,
+          sellBook,
+          executionStyle: "MAKER_ASSISTED",
+          expectedProfitUsd: makerExpectedProfit,
+          netSpreadPct: makerNetSpreadPct,
+          quantityBtc: desiredQty
+        });
+        const takerExecutable = takerEdge.riskAdjustedProfitUsd.greaterThan(threshold) && takerEdge.survivalProbability > 0.46;
+        const makerExecutable = !takerExecutable && makerEdge.riskAdjustedProfitUsd.greaterThan("0.25") && makerNetSpreadPct.greaterThan("0.000025") && makerEdge.survivalProbability > 0.5;
         const status = takerExecutable || makerExecutable ? "DETECTED" : "REJECTED";
         const executionStyle = takerExecutable ? "INSTANT_TAKER" : makerExecutable ? "MAKER_ASSISTED" : "INSTANT_TAKER";
         const selectedNet = makerExecutable ? makerNetRaw : takerNet;
-        const selectedProfit = makerExecutable ? makerExpectedProfit : takerNet.netProfitUsd;
+        const selectedEdge = makerExecutable ? makerEdge : takerEdge;
+        const selectedProfit = selectedEdge.riskAdjustedProfitUsd;
         const selectedNetSpreadPct = makerExecutable ? makerNetSpreadPct : takerNet.netSpreadPct;
         const route = `${label(buyBook.exchange)} -> ${label(sellBook.exchange)}`;
 
@@ -129,18 +149,23 @@ export class ArbitrageEngine {
             availableDepth: Decimal.min(ask.size, bid.size),
             exchanges: [buyBook.exchange, sellBook.exchange],
             confidenceBoost: makerExecutable
-              ? makerFillProbability.toNumber() * 0.7 + microstructureAlignment * 0.3
-              : microstructureAlignment * 0.55
+              ? makerFillProbability.toNumber() * 0.42 + microstructureAlignment * 0.18 + selectedEdge.modelScore / 100 * 0.4
+              : microstructureAlignment * 0.24 + selectedEdge.modelScore / 100 * 0.48
           }),
-          confidence: takerExecutable ? Math.round(70 + microstructureAlignment * 18) : makerExecutable ? Math.round(54 + makerFillProbability.toNumber() * 24 + microstructureAlignment * 12) : 32,
+          confidence: takerExecutable
+            ? Math.round(52 + selectedEdge.survivalProbability * 40)
+            : makerExecutable
+              ? Math.round(42 + makerFillProbability.toNumber() * 18 + selectedEdge.survivalProbability * 32)
+              : Math.round(18 + selectedEdge.survivalProbability * 28),
           highImpact: rawImpactRatio.greaterThan("0.2"),
           impactRatio: rawImpactRatio.toNumber(),
           reason:
             status === "DETECTED"
               ? takerExecutable
-                ? "Executable instant taker edge after fees, slippage and amortized rebalance cost."
-                : `Executable maker-assisted paper trade: expected fill probability ${makerFillProbability.mul(100).toFixed(0)}%, microstructure alignment ${(microstructureAlignment * 100).toFixed(0)}%, lower maker fees, queue-risk adjusted.`
-              : "Rejected: live spread does not survive taker/maker fee, slippage and queue-risk models."
+                ? `Executable instant taker edge. Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, adverse-selection ${selectedEdge.adverseSelectionBps.toFixed(2)}bps.`
+                : `Executable maker-assisted paper trade. Fill ${makerFillProbability.mul(100).toFixed(0)}%, Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, microstructure alignment ${(microstructureAlignment * 100).toFixed(0)}%.`
+              : `Rejected: Edge Tensor quality ${selectedEdge.edgeQuality}, survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, risk-adjusted P&L ${usd(selectedEdge.riskAdjustedProfitUsd)} USD.`,
+          edgeModel: serializeEdgeTensor(selectedEdge)
         });
       });
     });

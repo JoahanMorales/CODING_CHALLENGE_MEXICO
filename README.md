@@ -5,10 +5,10 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#innovation-ledger">Innovation Ledger</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#judge-rubric-map">Rubric Map</a> ·
+  <a href="#quick-start">Quick Start</a> |
+  <a href="#innovation-ledger">Innovation Ledger</a> |
+  <a href="#architecture">Architecture</a> |
+  <a href="#judge-rubric-map">Rubric Map</a> |
   <a href="#research-basis">Research Basis</a>
 </p>
 
@@ -33,6 +33,7 @@ This is not a toy crypto dashboard. It is a real-time paper-trading system built
 | Live exchange feeds | Binance, Kraken, and Coinbase stream real BTC market data through the local WebSocket gateway. |
 | Three strategy engine | Cross-exchange arbitrage, triangular arbitrage, and statistical mean-reversion signals. |
 | Microstructure-aware scoring | The engine uses book depth, imbalance, microprice skew, fragmentation, and route pressure. |
+| ArbitrAI Edge Tensor | Proprietary explainable alpha layer estimating edge survival, adverse selection, and risk-adjusted P&L. |
 | Risk-first simulator | Circuit breaker, daily loss limit, max size, latency, slippage, market impact, and partial fills. |
 | Paint-friendly real-time UI | Backend processes every market event while the frontend receives throttled, useful snapshots. |
 | Clear live/demo distinction | Live mode uses real order books; demo mode uses geometric Brownian motion and synthetic dislocations. |
@@ -136,7 +137,36 @@ Inspired by limit-order-book research, the dashboard now surfaces:
 
 The engine also uses microstructure alignment to penalize signals that are more likely to suffer adverse selection.
 
-### 6. Risk Controls That Judges Can Test
+### 6. ArbitrAI Edge Tensor
+
+The newest quant layer is the `ArbitrAI Edge Tensor` (`AET` in the opportunity tape). It is an explainable model, not a black-box neural network.
+
+For each cross-exchange route it combines:
+
+```text
+net edge bps
++ order-flow imbalance delta
++ microprice skew delta
++ top-five liquidity balance
++ EWMA short-horizon volatility
++ execution style adjustment
+= survival probability + adverse-selection cost + risk-adjusted P&L
+```
+
+Outputs:
+
+| Output | Meaning |
+|---|---|
+| `survivalProbability` | Probability-like estimate that the edge survives execution latency. |
+| `adverseSelectionBps` | Expected short-horizon penalty if the book moves against us. |
+| `riskAdjustedProfitUsd` | Conservative P&L used by the engine before approving execution. |
+| `modelScore` | 0-100 AET score shown in the UI. |
+| `edgeQuality` | `EXPLOIT`, `WATCH`, or `AVOID`. |
+| `suggestedSizeScale` | Future hook for dynamic position sizing. |
+
+This is the core mathematical differentiator: instead of asking only "is bid above ask?", ArbitrAI asks "will the edge still exist by the time both legs are simulated?"
+
+### 7. Risk Controls That Judges Can Test
 
 | Risk Control | Implementation |
 |---|---|
@@ -148,7 +178,7 @@ The engine also uses microstructure alignment to penalize signals that are more 
 | Latency simulation | Adds randomized 50-350ms network/execution delay depending on execution style. |
 | Slippage model | Uses depth-sensitive 0.02%-0.05% slippage. |
 
-### 7. Wallet and Rebalancing Simulation
+### 8. Wallet and Rebalancing Simulation
 
 Each exchange has independent BTC and USDT balances. After simulated execution:
 
@@ -159,7 +189,7 @@ Each exchange has independent BTC and USDT balances. After simulated execution:
 - low BTC/USDT balances trigger `REBALANCING NEEDED`;
 - the UI estimates rebalance cost.
 
-### 8. Paint-Friendly Realtime UI
+### 9. Paint-Friendly Realtime UI
 
 The backend still processes every raw market event, but the browser receives a lighter stream:
 
@@ -238,23 +268,23 @@ sequenceDiagram
 
 ```text
 .
-├─ backend/
-│  └─ server.ts                 # WebSocket gateway + exchange connectors
-├─ src/
-│  ├─ app/                      # Next.js App Router
-│  ├─ components/
-│  │  └─ Dashboard.tsx          # Single-page trading command center
-│  ├─ lib/
-│  │  ├─ config/exchanges.ts    # Fees, reliability, wallet seeds
-│  │  ├─ math/decimal.ts        # Decimal.js financial helpers
-│  │  ├─ services/              # Core trading services
-│  │  └─ types.ts               # Shared gateway/domain types
-│  └─ store/useArbitrageStore.ts
-├─ tests/                       # Unit tests for math, engine, risk
-├─ Dockerfile
-├─ railway.json
-├─ vercel.json
-└─ DESIGN.md                    # Visual system for future iterations
+|- backend/
+|  `- server.ts                 # WebSocket gateway + exchange connectors
+|- src/
+|  |- app/                      # Next.js App Router
+|  |- components/
+|  |  `- Dashboard.tsx          # Single-page trading command center
+|  |- lib/
+|  |  |- config/exchanges.ts    # Fees, reliability, wallet seeds
+|  |  |- math/decimal.ts        # Decimal.js financial helpers
+|  |  |- services/              # Core trading services
+|  |  `- types.ts               # Shared gateway/domain types
+|  `- store/useArbitrageStore.ts
+|- tests/                       # Unit tests for math, engine, risk
+|- Dockerfile
+|- railway.json
+|- vercel.json
+`- DESIGN.md                    # Visual system for future iterations
 ```
 
 ## Judge Rubric Map
@@ -264,7 +294,7 @@ sequenceDiagram
 | Detection speed | Event-driven in-memory processing, measured detection latency, optimized UI broadcasts. |
 | Net profit accuracy | Decimal.js, maker/taker fees, slippage, withdrawal amortization, latency and market-impact penalties. |
 | Robust business logic | Wallet balances, partial fills, capped size, circuit breaker, daily loss limit, rebalance warnings. |
-| Bot intelligence | Cross-exchange, triangular, stat arb, maker-assisted execution, microstructure-aware scoring. |
+| Bot intelligence | Cross-exchange, triangular, stat arb, maker-assisted execution, Edge Tensor survival model, microstructure-aware scoring. |
 | Code quality | Strict TypeScript, separate service classes, unit tests, explicit types, deployment configs. |
 | UI/UX | Light institutional command center, edge radar, strategy matrix, P&L cockpit, live/demo clarity. |
 
@@ -351,6 +381,7 @@ Current test focus:
 
 - `ArbitrageEngine.calculateNetProfit()`
 - fee and slippage math
+- `EdgeTensor` survival scoring
 - `RiskManager.shouldHalt()`
 
 ## Known Limitations

@@ -103,6 +103,19 @@ Must show:
 - edge survival;
 - best route.
 
+### AET Signal Badges
+
+Purpose: expose the proprietary quant layer without overwhelming the feed.
+
+Must show:
+
+- `AET` model score on opportunity rows;
+- survival percentage on featured signal and compact rows;
+- adverse-selection bps in the technical subtitle;
+- quality state using `EXPLOIT`, `WATCH`, or `AVOID` where space allows.
+
+Design rule: AET should look like a professional risk model, not like AI hype.
+
 ### Signal Desk
 
 Purpose: explain the current best signal or why execution paused.

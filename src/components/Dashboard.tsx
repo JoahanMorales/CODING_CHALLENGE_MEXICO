@@ -406,10 +406,11 @@ function ActiveEdgePanel({
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-2 font-mono sm:min-w-[440px]">
+        <div className="grid grid-cols-5 gap-2 font-mono sm:min-w-[540px]">
           <SignalNumber label="Score" value={featured ? String(featured.score) : "--"} tone="sky" />
           <SignalNumber label="Net" value={featured ? `${featured.netSpreadPct}%` : "--"} tone={positive ? "emerald" : "rose"} />
           <SignalNumber label="P&L" value={featured ? `$${featured.expectedProfitUsd}` : "$0.00"} tone={positive ? "emerald" : "rose"} />
+          <SignalNumber label="Surv" value={featured?.edgeModel ? `${(Number(featured.edgeModel.survivalProbability) * 100).toFixed(0)}%` : "--"} tone={featured?.edgeModel && Number(featured.edgeModel.survivalProbability) >= 0.55 ? "emerald" : "amber"} />
           <SignalNumber label="Exec" value={String(metrics.tradesExecuted)} tone="zinc" />
         </div>
       </div>
@@ -475,17 +476,23 @@ function SignalRow({ opportunity }: { opportunity: Opportunity }) {
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill label={strategyLabel[opportunity.type]} tone={opportunityTone(opportunity.type)} />
             <StatusPill label={opportunity.status} tone={statusTone(opportunity.status)} />
+            {opportunity.edgeModel && <StatusPill label={`AET ${opportunity.edgeModel.modelScore}`} tone={opportunity.edgeModel.edgeQuality === "EXPLOIT" ? "emerald" : opportunity.edgeModel.edgeQuality === "WATCH" ? "amber" : "rose"} />}
             {opportunity.highImpact && <StatusPill label="Impact" tone="amber" />}
           </div>
           <h3 className="mt-2 truncate text-sm font-black text-zinc-900">{opportunity.route}</h3>
-          <div className="mt-1 truncate font-mono text-[10px] font-semibold text-zinc-500">{opportunity.executionStyle}</div>
+          <div className="mt-1 truncate font-mono text-[10px] font-semibold text-zinc-500">
+            {opportunity.executionStyle}
+            {opportunity.edgeModel
+              ? ` / survival ${(Number(opportunity.edgeModel.survivalProbability) * 100).toFixed(0)}% / adverse ${opportunity.edgeModel.adverseSelectionBps}bps`
+              : ""}
+          </div>
         </div>
 
         <div className="grid grid-cols-4 gap-2 font-mono md:w-[360px]">
           <SignalNumber compact label="Score" value={String(opportunity.score)} tone="sky" />
           <SignalNumber compact label="Net" value={`${opportunity.netSpreadPct}%`} tone={positive ? "emerald" : "rose"} />
           <SignalNumber compact label="P&L" value={`$${opportunity.expectedProfitUsd}`} tone={positive ? "emerald" : "rose"} />
-          <SignalNumber compact label="Size" value={Number(opportunity.tradeSizeBtc).toFixed(4)} tone="zinc" />
+          <SignalNumber compact label={opportunity.edgeModel ? "Surv" : "Size"} value={opportunity.edgeModel ? `${(Number(opportunity.edgeModel.survivalProbability) * 100).toFixed(0)}%` : Number(opportunity.tradeSizeBtc).toFixed(4)} tone={opportunity.edgeModel && Number(opportunity.edgeModel.survivalProbability) >= 0.55 ? "emerald" : "zinc"} />
         </div>
       </div>
     </article>
