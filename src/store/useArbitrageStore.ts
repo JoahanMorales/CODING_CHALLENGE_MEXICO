@@ -131,6 +131,9 @@ const defaultExecutionRuntime: ExecutionRuntimeState = {
 
 let localKernel: ArbitrAIKernel | null = null;
 let gateway: WebSocket | null = null;
+let gatewayGeneration = 0;
+let gatewayReconnectTimer: number | null = null;
+let lastGatewayHeartbeatPaintAt = 0;
 
 export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   mode: "LIVE",
@@ -166,7 +169,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
     if (mode === get().mode) return;
     stopGateway();
     stopLocalKernel();
-    set({ mode, connected: false, connectionError: "", books: {}, opportunities: [], executionQueue: [], priceSeries: [], learning: defaultLearning });
+    set({ mode, connected: false, connectionError: mode === "LIVE" ? "Conectando con el gateway de mercado..." : "", books: {}, opportunities: [], executionQueue: [], priceSeries: [], learning: defaultLearning });
     if (mode === "LIVE") startGateway(set, get().walletSeed);
     else startDemo(set, get().walletSeed);
   },
@@ -314,31 +317,54 @@ function startDemo(set: StoreSet, walletSeed: WalletSeed): void {
 
 function startGateway(set: StoreSet, walletSeed: WalletSeed): void {
   const url = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
-  gateway = new WebSocket(url);
-  gateway.addEventListener("open", () => {
+  const generation = ++gatewayGeneration;
+  const socket = new WebSocket(url);
+  gateway = socket;
+  socket.addEventListener("open", () => {
+    if (gateway !== socket || generation !== gatewayGeneration) return;
     set({ connected: true, connectionError: "" });
     const token = window.sessionStorage.getItem("arbitrai-admin-token");
     if (token) sendGatewayCommand({ type: "ADMIN_AUTH", token });
   });
-  gateway.addEventListener("message", (event) => {
-    set({ connected: true, connectionError: "", lastGatewayMessageAt: Date.now() });
-    applyGatewayMessage(set, JSON.parse(event.data as string) as GatewayMessage);
+  socket.addEventListener("message", (event) => {
+    if (gateway !== socket || generation !== gatewayGeneration) return;
+    const now = Date.now();
+    if (now - lastGatewayHeartbeatPaintAt > 450) {
+      lastGatewayHeartbeatPaintAt = now;
+      set({ connected: true, connectionError: "", lastGatewayMessageAt: now });
+    }
+    try {
+      applyGatewayMessage(set, JSON.parse(event.data as string) as GatewayMessage);
+    } catch {
+      set({ connectionError: "El gateway envió un mensaje inválido. Reintentando sincronización." });
+    }
   });
-  gateway.addEventListener("close", () => {
-    set({ connected: false, connectionError: "Backend WebSocket closed. Start npm run dev:ws or check Railway service." });
-    window.setTimeout(() => {
-      if (useArbitrageStore.getState().mode === "LIVE") startGateway(set, useArbitrageStore.getState().walletSeed);
+  socket.addEventListener("close", () => {
+    if (gateway !== socket || generation !== gatewayGeneration) return;
+    gateway = null;
+    set({ connected: false, connectionError: "El gateway WebSocket se cerró. Verifica npm run dev:ws o el servicio de Railway." });
+    gatewayReconnectTimer = window.setTimeout(() => {
+      if (generation === gatewayGeneration && useArbitrageStore.getState().mode === "LIVE") {
+        startGateway(set, useArbitrageStore.getState().walletSeed);
+      }
     }, 1200);
   });
-  gateway.addEventListener("error", () => {
-    set({ connected: false, connectionError: "Cannot reach ws://localhost:8080. Backend is offline or blocked." });
-    gateway?.close();
+  socket.addEventListener("error", () => {
+    if (gateway !== socket || generation !== gatewayGeneration) return;
+    set({ connected: false, connectionError: `No se pudo alcanzar ${url}. El backend está apagado o bloqueado.` });
+    socket.close();
   });
 }
 
 function stopGateway(): void {
-  gateway?.close();
+  gatewayGeneration += 1;
+  if (gatewayReconnectTimer) {
+    clearTimeout(gatewayReconnectTimer);
+    gatewayReconnectTimer = null;
+  }
+  const socket = gateway;
   gateway = null;
+  socket?.close();
 }
 
 function stopLocalKernel(): void {
@@ -375,24 +401,12 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
   }
 
   if (message.type === "BOOK") {
-    if (message.book.symbol !== "BTC/USDT") return;
-    set((state) => {
-      const key = bookKey(message.book);
-      const previous = state.books[key];
-      return {
-        books: { ...state.books, [key]: message.book },
-        exchangeStatuses: updateStatusFromBook(state.exchangeStatuses, message.book, localKernel ? "demo" : "websocket"),
-        flashes: {
-          ...state.flashes,
-          [key]: {
-            bid: direction(previous?.bids[0]?.price, message.book.bids[0]?.price),
-            ask: direction(previous?.asks[0]?.price, message.book.asks[0]?.price),
-            until: Date.now() + 420
-          }
-        },
-        priceSeries: localKernel?.marketData.priceHistory() ?? updateLivePriceSeries(state.priceSeries, message.book)
-      };
-    });
+    applyBookBatch(set, [message.book]);
+    return;
+  }
+
+  if (message.type === "BOOK_BATCH") {
+    applyBookBatch(set, message.books);
     return;
   }
 
@@ -453,6 +467,30 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
 
   if (message.type === "RISK") set({ risk: message.risk });
   if (message.type === "METRICS") set({ metrics: message.metrics });
+}
+
+function applyBookBatch(set: StoreSet, incomingBooks: NormalizedOrderBook[]): void {
+  const btcBooks = incomingBooks.filter((book) => book.symbol === "BTC/USDT");
+  if (!btcBooks.length) return;
+  set((state) => {
+    const books = { ...state.books };
+    const flashes = { ...state.flashes };
+    let exchangeStatuses = state.exchangeStatuses;
+    let priceSeries = state.priceSeries;
+    btcBooks.forEach((book) => {
+      const key = bookKey(book);
+      const previous = books[key];
+      books[key] = book;
+      flashes[key] = {
+        bid: direction(previous?.bids[0]?.price, book.bids[0]?.price),
+        ask: direction(previous?.asks[0]?.price, book.asks[0]?.price),
+        until: Date.now() + 420
+      };
+      if (localKernel) exchangeStatuses = updateStatusFromBook(exchangeStatuses, book, "demo");
+      priceSeries = localKernel?.marketData.priceHistory() ?? updateLivePriceSeries(priceSeries, book);
+    });
+    return { books, exchangeStatuses, flashes, priceSeries };
+  });
 }
 
 function bookKey(book: NormalizedOrderBook): string {

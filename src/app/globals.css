@@ -64,11 +64,7 @@ input {
 
 @keyframes card-in {
   0% {
-    transform: translateY(-2px);
     border-color: rgba(125, 211, 252, 0.9);
-  }
-  100% {
-    transform: translateY(0);
   }
 }
 
@@ -100,6 +96,10 @@ input {
 }
 
 .opportunity-live {
-  animation: card-in 520ms ease-out;
+  animation: card-in 360ms ease-out;
   contain: content;
+}
+
+.signal-tape {
+  overflow-anchor: none;
 }

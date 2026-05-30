@@ -41,7 +41,7 @@ interface SocketContext {
 const clients = new Map<WebSocket, SocketContext>();
 const scannerUniverse = new Set<ExchangeId>(EXCHANGE_IDS);
 let connector: ExchangeConnector | null = null;
-const pendingBookBroadcasts = new Map<string, Extract<GatewayMessage, { type: "BOOK" }>>();
+const pendingBookBroadcasts = new Map<string, NormalizedOrderBook>();
 const pendingRejectedSignals = new Map<string, Extract<GatewayMessage, { type: "OPPORTUNITY" }>>();
 let bookFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let rejectedSignalFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -143,12 +143,12 @@ function queueLearningBroadcast(message: Extract<GatewayMessage, { type: "LEARNI
 
 function queueBookBroadcast(message: Extract<GatewayMessage, { type: "BOOK" }>): void {
   // The engine still processes every book. The UI receives only BTC snapshots
-  // throttled to a paint-friendly cadence so React is never the bottleneck.
+  // batched at a paint-friendly cadence so React is never the bottleneck.
   if (message.book.symbol !== "BTC/USDT") return;
-  pendingBookBroadcasts.set(`${message.book.exchange}:${message.book.symbol}`, message);
+  pendingBookBroadcasts.set(`${message.book.exchange}:${message.book.symbol}`, message.book);
   if (bookFlushTimer) return;
   bookFlushTimer = setTimeout(() => {
-    pendingBookBroadcasts.forEach((queued) => broadcast(queued));
+    broadcast({ type: "BOOK_BATCH", books: [...pendingBookBroadcasts.values()] });
     pendingBookBroadcasts.clear();
     bookFlushTimer = null;
   }, 120);

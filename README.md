@@ -1,69 +1,95 @@
 # ArbitrAI
 
 <p align="center">
-  <strong>Institutional-grade BTC arbitrage intelligence, accessible to any developer.</strong>
+  <strong>Inteligencia de arbitraje BTC con calidad institucional, accesible para cualquier developer.</strong>
 </p>
 
 <p align="center">
-  Built by <a href="https://github.com/JoahanMorales">JoahanMorales</a> ·
+  <a href="https://github.com/JoahanMorales">GitHub</a> ·
   <a href="https://www.linkedin.com/in/joahan-morales/">LinkedIn</a>
-</p>
-
-<p align="center">
-  <a href="#quick-start">Quick Start</a> |
-  <a href="#innovation-ledger">Innovation Ledger</a> |
-  <a href="#architecture">Architecture</a> |
-  <a href="#judge-rubric-map">Rubric Map</a> |
-  <a href="#research-basis">Research Basis</a>
 </p>
 
 <p align="center">
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-14-black?style=flat-square" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square" />
   <img alt="Realtime" src="https://img.shields.io/badge/WebSocket-live-0ea5e9?style=flat-square" />
-  <img alt="Precision" src="https://img.shields.io/badge/Decimal.js-financial_math-10b981?style=flat-square" />
-  <img alt="Mode" src="https://img.shields.io/badge/Execution-paper_trading-f59e0b?style=flat-square" />
+  <img alt="Math" src="https://img.shields.io/badge/Decimal.js-financial_math-10b981?style=flat-square" />
+  <img alt="Safety" src="https://img.shields.io/badge/Execution-paper_%2B_TEST__ORDER-f59e0b?style=flat-square" />
 </p>
 
-ArbitrAI is a production-style Bitcoin arbitrage command center for `CODING_CHALLENGE_MEXICO`. It connects to live public exchange data, normalizes order books, detects arbitrage opportunities, ranks them with a composite score, simulates execution with realistic frictions, applies risk controls, and visualizes the full trading session in a polished browser dashboard.
+ArbitrAI es un sistema de arbitraje BTC event-driven para `CODING_CHALLENGE_MEXICO`. Conecta feeds públicos reales, normaliza `order books`, detecta oportunidades, calcula rentabilidad neta con fricciones realistas y explica por qué una señal se ejecuta o se descarta.
 
-This is not a toy crypto dashboard. It is a real-time paper-trading system built around the judging criteria: speed, net-profit accuracy, risk robustness, strategy sophistication, code quality, and presentation.
+La entrega pública separa con claridad:
 
-> Status: active hackathon build. We are still iterating, but this README preserves the key differentiators so they do not get lost.
+- `Live market data`: precios reales recibidos por `WebSocket` o `REST fallback`.
+- `Paper P&L`: fills simulados sobre datos reales o sobre el simulador.
+- `Signed TEST_ORDER`: validación autenticada sin mover fondos.
+- `Demo`: escenario controlado para mostrar el ciclo completo cuando el mercado está quieto.
 
-## Public Showcase
+## Demo web
 
-The browser experience is intentionally split into four focused routes:
-
-| Route | Purpose |
+| Ruta | Propósito |
 |---|---|
-| `/` | Lightweight white/pastel landing page with a deterministic AET flow visualization and sanitized gateway health. |
-| `/terminal` | Live trading terminal. This is the only route that opens the real-time WebSocket stream. |
-| `/inteligencia` | Editorial, animated explanation of AET, MLOFI, microprice, costs, survival probability, and Shadow Learning. |
-| `/resultados` | Immutable paper benchmark, live sanitized health, and separate signed `TEST_ORDER` proof. |
+| `/` | Landing simple con visualización del flujo AET. |
+| `/terminal` | Trading terminal con datos en tiempo real. |
+| `/inteligencia` | Explicación técnica animada del modelo. |
+| `/resultados` | Benchmark reproducible y prueba separada de `TEST_ORDER`. |
 
-The split is deliberate: judges can understand the thesis before entering the dense operator surface, and public pages do not pay the rendering cost of a market-data socket.
+## Diferenciadores
 
-## What Judges See First
+### 1. ArbitrAI Edge Tensor
 
-| Capability | Why It Matters |
+AET estima si un edge visible sobrevivirá el tiempo suficiente para ejecutarse. Combina:
+
+- `OFI` y `MLOFI` top-5;
+- `microprice skew`;
+- liquidez disponible e impacto;
+- volatilidad reciente;
+- `quote age` y `quote skew` entre venues;
+- calibración por ruta usando `markouts`.
+
+El resultado incluye `survival probability`, `adverse selection`, `risk-adjusted P&L`, `suggested size` y un score explicable de `0-100`.
+
+### 2. Tres estrategias
+
+| Estrategia | Criterio |
 |---|---|
-| Live exchange feeds | Binance, Kraken, Coinbase, OKX, Bybit, Bitfinex, and Gate stream real BTC market data through the local WebSocket gateway. |
-| Three strategy engine | Cross-exchange arbitrage, triangular arbitrage, and statistical mean-reversion signals. |
-| Microstructure-aware scoring | The engine uses book depth, imbalance, microprice skew, fragmentation, and route pressure. |
-| ArbitrAI Edge Tensor | Proprietary explainable alpha layer estimating edge survival, adverse selection, risk-adjusted P&L, and route calibration. |
-| Risk-first simulator | Circuit breaker, daily loss limit, max size, latency, slippage, market impact, edge decay, and partial fills. |
-| Missed opportunity desk | Rejected signals are explained by fees, adverse selection, liquidity impact, or risk controls. |
-| Scenario Lab + replay | Judges can trigger crash/liquidity/latency drills in Demo and replay the last five minutes of signals. Live market data is never falsified. |
-| Shadow Learning | Rejected and accepted signals are labeled after 0.5s/2s/5s markouts so the model learns from real live data even when it executes zero trades. |
-| Sandbox Execution Bridge | Optional Binance Spot Testnet + OKX Demo order bridge, protected by env keys and safe defaults. |
-| Realized sandbox ledger | Authenticated demo fills, venue fees, residual exposure, and realized sandbox P&L stay separate from paper estimates. |
-| Persistent learning journal | Fills, markouts, and AET calibration survive backend restarts through a compact JSONL journal. |
-| CSV export | The full session can be exported for audit in Excel/Sheets. |
-| Paint-friendly real-time UI | Backend processes every market event while the frontend receives throttled, useful snapshots. |
-| Clear live/demo distinction | Live mode uses real order books; demo mode uses geometric Brownian motion and synthetic dislocations. |
+| `CROSS_EXCHANGE` | Compra el mejor `ask` y vende el mejor `bid` en otro venue. |
+| `TRIANGULAR` | Evalúa el ciclo `BTC/USDT -> ETH/USDT -> ETH/BTC -> BTC`. |
+| `STAT_ARB` | Busca mean reversion multi-venue con `Z-score`, estimación OU y costos de round trip. |
 
-## Quick Start
+### 3. Motor realista y auditable
+
+- `Decimal.js` para evitar errores de floating point.
+- Trading fees, withdrawal amortization, slippage, latency y market impact.
+- Fills parciales, wallets prefunded y alerta de rebalancing.
+- `Circuit breaker` tras tres pérdidas materiales.
+- Límite diario de pérdida y máximo `0.1 BTC` por trade.
+- `Shadow Learning`: aprende también de señales descartadas.
+- CSV de sesión, journal persistente y calibración recuperable.
+
+## Arquitectura
+
+```mermaid
+flowchart LR
+    V["7 venues live"] --> M["MarketDataService"]
+    M --> N["Normalized order books"]
+    N --> A["ArbitrageEngine"]
+    A --> E["ArbitrAI Edge Tensor"]
+    E --> R["RiskManager"]
+    R --> Q["Execution queue"]
+    Q --> P["Paper simulator"]
+    Q --> T["Signed TEST_ORDER bridge"]
+    P --> L["PnLTracker"]
+    P --> S["Shadow Learning"]
+    S --> E
+    L --> G["WebSocket gateway"]
+    G --> U["Next.js terminal"]
+```
+
+El backend procesa todos los eventos de mercado. La UI recibe `BOOK_BATCH` throttled para mantener React fluido sin reducir la frecuencia del motor.
+
+## Quick start
 
 ```bash
 npm install
@@ -71,7 +97,7 @@ npm run dev:ws
 npm run dev
 ```
 
-Open the app:
+Abrir:
 
 ```text
 http://localhost:3000
@@ -80,688 +106,91 @@ http://localhost:3000
 Health checks:
 
 ```text
-Frontend:          http://localhost:3000/api/health
-WebSocket backend: http://localhost:8080/health
+Frontend: http://localhost:3000/api/health
+Gateway:  http://localhost:8080/health
+Summary:  http://localhost:8080/public/summary
 ```
 
-The frontend defaults to:
-
-```bash
-NEXT_PUBLIC_WS_URL=ws://localhost:8080
-```
-
-The local WebSocket gateway loads `.env` on startup without overriding environment variables already injected by the hosting platform.
-
-## Live vs Demo
-
-| Mode | Data Source | Execution | Purpose |
-|---|---|---|---|
-| `LIVE` | Real public order books from exchange WebSockets and REST fallback | Simulated paper fills only | Demonstrate real market scanning and risk-aware paper trading |
-| `DEMO` | Built-in geometric Brownian motion simulator | Simulated paper fills | Guarantee a reliable presentation when public APIs are quiet or unstable |
-
-ArbitrAI never sends real-money exchange orders. The default experience is paper trading. An explicitly armed sandbox bridge can validate Binance Spot Testnet payloads and, only when deliberately configured, send orders to testnet/demo venues.
-
-Live mode is intentionally conservative: if a visible spread does not survive fees, slippage, queue risk, adverse selection, and liquidity impact, it is rejected and explained instead of forced into a fake trade. Demo mode can generate controlled dislocations so the full execution/P&L loop is visible during judging.
-
-## Innovation Ledger
-
-These are the differentiators we have built so far. Keep this section updated as the system evolves.
-
-### 1. Event-Driven Microkernel
-
-The backend is organized around small services connected by events:
-
-- `MarketDataService` ingests and normalizes order books.
-- `ArbitrageEngine` detects and scores opportunities.
-- `RiskManager` approves, caps, pauses, or rejects trading.
-- `ExecutionSimulator` models fills, slippage, latency, and wallet movement.
-- `PnLTracker` records outcomes and performance metrics.
-- `WebSocketGateway` streams live state to the dashboard.
-
-This keeps business logic out of React and makes each subsystem testable.
-
-### 2. Multi-Strategy Detection
-
-ArbitrAI does not only check `ask(A) < bid(B)`. It runs three families of signals:
-
-| Strategy | Tag | What It Detects |
-|---|---|---|
-| Cross-exchange arbitrage | `CROSS_EXCHANGE` | Buy the cheaper venue and sell the richer venue after fees, slippage, and impact. |
-| Triangular arbitrage | `TRIANGULAR` | BTC/USDT -> ETH/USDT -> ETH/BTC circular inefficiencies. |
-| Statistical arbitrage | `STAT_ARB` | Multi-venue spread deviations across all 10 BTC venue pairs using rolling Z-score plus OU-style half-life. |
-
-### 3. Execution Styles
-
-Signals are tagged by execution style so the UI explains why something was executed or rejected:
-
-- `INSTANT_TAKER`: immediate liquidity-taking arbitrage.
-- `MAKER_ASSISTED`: lower-fee maker-style expected-value paper trade adjusted for queue risk.
-- `TRIANGULAR_CYCLE`: intra-exchange circular rate check.
-- `STAT_MEAN_REVERSION`: market-neutral spread convergence paper trade.
-
-### 4. Composite Opportunity Score
-
-Every opportunity receives a 0-100 score:
-
-```text
-score =
-  net profitability        40%
-+ visible liquidity depth  30%
-+ exchange reliability     20%
-+ route success memory     10%
-+ microstructure boost     adaptive
-```
-
-When multiple signals appear together, the execution queue prioritizes higher-scoring opportunities.
-
-### 5. Microstructure Edge Radar
-
-Inspired by limit-order-book research, the dashboard now surfaces:
-
-- **Exchange fragmentation**: distance between the richest and cheapest BTC mid prices.
-- **Order-book pressure**: top-five bid depth vs top-five ask depth.
-- **Microprice skew**: imbalance-adjusted near-term fair price.
-- **Route edge**: best visible buy venue -> best visible sell venue.
-- **Edge survival**: recent ratio of executable signals to all detected signals.
-
-The engine also uses microstructure alignment to penalize signals that are more likely to suffer adverse selection.
-
-### 6. ArbitrAI Edge Tensor
-
-The newest quant layer is the `ArbitrAI Edge Tensor` (`AET` in the opportunity tape). It is an explainable model, not a black-box neural network.
-
-For each cross-exchange route it combines:
-
-```text
-net edge bps
-+ order-flow imbalance delta
-+ microprice skew delta
-+ top-five liquidity balance
-+ EWMA short-horizon volatility
-+ execution style adjustment
-= survival probability + adverse-selection cost + risk-adjusted P&L
-```
-
-Outputs:
-
-| Output | Meaning |
-|---|---|
-| `survivalProbability` | Probability-like estimate that the edge survives execution latency. |
-| `adverseSelectionBps` | Expected short-horizon penalty if the book moves against us. |
-| `riskAdjustedProfitUsd` | Conservative P&L used by the engine before approving execution. |
-| `modelScore` | 0-100 AET score shown in the UI. |
-| `edgeQuality` | `EXPLOIT`, `WATCH`, or `AVOID`. |
-| `suggestedSizeScale` | Future hook for dynamic position sizing. |
-
-This is the core mathematical differentiator: instead of asking only "is bid above ask?", ArbitrAI asks "will the edge still exist by the time both legs are simulated?"
-
-### 7. AET Calibration Loop
-
-The engine records every executed paper trade back into the route model:
-
-```text
-forecast error = realized win/loss - predicted survival probability
-route bias     = EWMA(route bias, forecast error)
-```
-
-That route-specific bias nudges future `survivalProbability` up or down. In plain terms: if `Kraken -> Binance` keeps underperforming, AET becomes more skeptical of that route; if it keeps clearing profitably, AET allows more conviction.
-
-This is deliberately lightweight for a 48-hour build, but it demonstrates the important institutional idea: the bot should learn from its own fills instead of treating every opportunity as independent.
-
-### 8. Shadow Learning From Rejected Signals
-
-Live markets can be quiet. If the bot only learns from executed trades, then a conservative live session with zero trades teaches nothing. ArbitrAI now runs a counterfactual learner:
-
-```text
-for every signal:
-  evaluate markout after 500ms / 2s / 5s
-  calculate future net profitability using real books
-  label outcome as MISSED_PROFIT, AVOIDED_LOSS, FALSE_POSITIVE, CONFIRMED_EDGE
-  feed a small-weight outcome into AET calibration
-```
-
-The UI shows:
-
-- missed profit dollars;
-- avoided loss dollars;
-- false positives;
-- model hit rate;
-- latest markout label.
-
-This is a major differentiator because live mode can prove the model is learning from real exchange data even when immediate arbitrage is not executable.
-
-### 9. Multi-Venue Stat Arb 2.1
-
-The original stat arb signal tracked one spread: Binance vs Kraken. The upgraded engine tracks all BTC/USDT venue pairs from the live universe:
-
-```text
-7 venues = 21 rolling spread windows
-spread z-score + OU-style half-life + hedge-cost penalty = expected convergence edge
-```
-
-This turns stat arb from a single fallback signal into a true multi-venue spread scanner. It still does not fake instant arbitrage; it opens paper trades only when expected convergence survives model costs.
-
-### 10. Depth-Aware Execution
-
-The simulator no longer prices fills only at best bid/ask. Cross-exchange opportunities carry an `executionPlan` with top-five buy and sell levels:
-
-- taker-style fills walk visible book depth level by level;
-- maker-assisted fills use the maker reference prices and fill probability;
-- high-impact trades cap size when they would consume more than 20% of top liquidity;
-- partial fills update only the executed BTC/USDT amount;
-- edge survival decay can turn a good expected signal into a small realized loss.
-
-This directly addresses the hackathon requirement around partial fills and liquidity constraints.
-
-### 11. Venue Reliability Index
-
-Every exchange status carries a live reliability score:
-
-| State | Score Meaning |
-|---|---|
-| WebSocket live | Highest confidence, active stream. |
-| REST polling | Usable fallback, lower confidence. |
-| Reconnecting | Degraded venue, penalized. |
-| Error | Avoid until recovered. |
-
-The UI shows this as `R96`, `R76`, etc. The scoring model also keeps a static venue reliability component so routes through more reliable venues rank higher.
-
-### 12. Event Recorder and Replay
-
-`EventRecorder` keeps an in-memory five-minute rolling session of opportunities and trades. The `REPLAY` control asks the backend to send that history back to the frontend, so judges can inspect the system even if the live market is quiet.
-
-### 13. Missed Opportunity Desk
-
-Rejected signals are not hidden. The center panel summarizes the latest rejected opportunities and classifies the reason:
-
-- `fees`: gross edge was erased by taker/maker fees and amortized withdrawal cost;
-- `liquidity`: high-impact or insufficient visible depth;
-- `adverse`: AET survival/adverse-selection model rejected the route;
-- `breaker`: risk controls blocked execution;
-- `threshold`: net edge was below the execution threshold.
-
-This makes the bot look intelligent rather than greedy.
-
-### 14. Scenario Lab
-
-The bottom dock includes three controlled drills:
-
-| Drill | Effect |
-|---|---|
-| `CRASH x3` | In demo, volatility rises 3x and spreads widen. The control is disabled in Live so real market state remains unambiguous. |
-| `LIQUIDITY` | Demo liquidity drops and spreads widen, increasing high-impact rejections. |
-| `LATENCY` | Execution latency is multiplied, increasing markout and edge-decay risk. |
-
-### 15. Session Export
-
-`EXPORT CSV` downloads the full session audit trail:
-
-```text
-timestamp, kind, type, route, status, size_btc, pnl_usd, fees_usd, score, net_spread_pct, edge_survival, edge_quality
-```
-
-This is included so jurors can inspect the economics outside the dashboard.
-
-### 16. Sandbox Execution Bridge
-
-The system now has a protected path from paper trading toward real exchange execution without risking real capital.
-
-Default behavior is still safe:
-
-```text
-Execution mode: PAPER
-Sandbox order mode: DRY_RUN
-Real-money orders: impossible from this code path
-```
-
-When test credentials are provided, the backend can arm `SANDBOX` mode:
-
-| Venue | Environment | Endpoint Purpose |
-|---|---|---|
-| Binance | Spot Testnet | Signed limit IOC orders or `/api/v3/order/test` validation. |
-| OKX | Demo Trading | Signed demo orders with `x-simulated-trading: 1`. |
-
-Safety controls:
-
-- sandbox is disabled unless API keys are present;
-- default `DRY_RUN` plans payloads but submits nothing;
-- `TEST_ORDER` validates Binance payloads without a live testnet fill; the OKX demo leg remains planned and is not submitted;
-- `LIVE_SANDBOX` submits only to testnet/demo venues;
-- max sandbox notional defaults to `$25`;
-- only Binance <-> OKX cross-exchange routes are eligible first;
-- authenticated sandbox balances can be refreshed from both venues without exposing keys to the browser;
-- live sandbox submissions run an authenticated two-wallet preflight before either leg is sent;
-- a separate sandbox kill switch blocks order submission independently from the paper-trading circuit breaker;
-- `RECONCILE` labels validation-only runs and, in `LIVE_SANDBOX`, compares both exchange fills;
-- fill divergence pauses sandbox execution and produces a hedge plan for manual review instead of firing an uncontrolled follow-up order;
-- realized sandbox P&L is calculated from reconciled venue fills and remains visually separate from simulated paper P&L;
-- real withdrawal permission is never required and should never be granted.
-
-Environment variables:
-
-```bash
-SANDBOX_ORDER_MODE=DRY_RUN
-SANDBOX_MAX_NOTIONAL_USD=25
-BINANCE_TESTNET_API_KEY=
-BINANCE_TESTNET_API_SECRET=
-OKX_DEMO_API_KEY=
-OKX_DEMO_API_SECRET=
-OKX_DEMO_API_PASSPHRASE=
-```
-
-Controlled operational probes:
-
-```bash
-# Sends one capped Binance Testnet -> OKX Demo IOC round trip and reconciles fills.
-npm run sandbox:probe
-
-# Manual OKX Demo recovery hedge. Requires a deliberate one-command confirmation.
-CONFIRM_SANDBOX_HEDGE=YES npm run sandbox:hedge -- 0.00033
-
-# PowerShell equivalent:
-$env:CONFIRM_SANDBOX_HEDGE="YES"; npm run sandbox:hedge -- 0.00033
-```
-
-The probe refuses to run unless `SANDBOX_ORDER_MODE=LIVE_SANDBOX`. It never targets real-money endpoints. The hedge script is capped at `0.001 BTC` and exists only for deliberate sandbox recovery.
-
-Latest controlled sandbox benchmark:
-
-| Check | Result |
-|---|---|
-| Route | Binance Spot Testnet -> OKX Demo Trading |
-| Cap | `$25` |
-| Binance fill | `0.00033000 BTC` |
-| OKX fill | `0.00033 BTC` |
-| Reconciliation | `BALANCED` |
-| Residual exposure | `0.00000000 BTC` |
-| Hedge action | `NONE` |
-
-### 17. Risk Controls That Judges Can Test
-
-| Risk Control | Implementation |
-|---|---|
-| Circuit breaker | Pauses trading after 3 material consecutive losses. |
-| Manual reset | `RESET RISK` resumes paper execution after review. |
-| Daily loss limit | Halts when simulated daily P&L breaches the configured limit. |
-| Max size | Caps each simulated trade at 0.1 BTC. |
-| High-impact warning | Flags and reduces trades consuming more than 20% of top liquidity. |
-| Latency simulation | Adds randomized 50-350ms network/execution delay depending on execution style, multiplied by latency drills. |
-| Slippage model | Uses depth-sensitive 0.02%-0.05% slippage. |
-
-### 18. Wallet and Rebalancing Simulation
-
-Each exchange has independent BTC and USDT balances. After simulated execution:
-
-- buy-side USDT decreases and BTC increases;
-- sell-side BTC decreases and USDT increases;
-- fees and latency cost are applied immediately;
-- partial fills update only the filled amount;
-- low BTC/USDT balances trigger `REBALANCING NEEDED`;
-- the UI estimates rebalance cost.
-
-### 19. Paint-Friendly Realtime UI
-
-The backend still processes every raw market event, but the browser receives a lighter stream:
-
-- BTC order books are throttled to a paint-friendly cadence.
-- Rejected opportunities are sampled; executable opportunities are immediate.
-- React renders compact snapshots instead of every raw exchange tick.
-- The UI uses a single-screen command-center layout with internal scroll regions.
-
-This keeps the agent fast without hiding the real-time engine.
-
-### 20. Persistent Calibration Journal
-
-The Railway-ready backend writes only sanitized operational events to `data/session-events.jsonl`:
-
-- paper trades;
-- shadow-learning markouts;
-- sandbox execution reports;
-- reconciled sandbox fills and realized ledger entries.
-
-The route-level AET calibration is stored separately in `data/aet-calibration.json` and loaded when the gateway restarts. Secrets, signatures, and API keys are never written to the journal.
-
-### 21. Multi-Level OFI Filter
-
-The Edge Tensor now blends touch-level OFI with weighted top-five depth changes. Nearer levels receive greater weight:
-
-```text
-MLOFI = weighted bid-size change + weighted ask-size change
-normalized by visible weighted depth
-```
-
-This follows the practical direction of order-book research: short-horizon impact is better explained by order-flow imbalance than raw volume, and additional depth levels can improve out-of-sample fit. ArbitrAI uses the signal as an adverse-selection filter, not as a promise of directional profit.
-
-### 22. Public Read Plane and Admin Control Plane
-
-Railway exposes two intentionally different surfaces:
-
-```text
-GET /public/summary       sanitized health, metrics, risk, recent signals
-WebSocket read stream     books, opportunities, trades, learning summaries
-WebSocket admin commands  token-gated operational controls
-```
-
-Sensitive commands use typed JSON rather than free-form strings:
-
-```ts
-{ type: "ADMIN_AUTH", token }
-{ type: "SET_SCANNER_UNIVERSE", exchanges }
-{ type: "SET_EXECUTION_MODE", mode: "SANDBOX" }
-{ type: "SET_SANDBOX_KILL_SWITCH", active: true }
-```
-
-The token is entered in the Terminal control-plane panel, retained only in `sessionStorage`, sent over WSS, compared in constant time, and rate-limited. Public visitors remain read-only. Scanner-universe changes require at least two active venues.
-
-### 23. Bounded Railway Journal
-
-The append-only JSONL journal now rotates at `ARBITRAI_JOURNAL_MAX_BYTES` so a small Railway Volume cannot fill indefinitely. Mount the persistent Railway Volume at `/data` and set:
-
-```bash
-ARBITRAI_DATA_DIR=/data
-ARBITRAI_JOURNAL_MAX_BYTES=8000000
-```
-
-Calibration remains compact and recoverable across gateway restarts.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  subgraph "Public Market Data"
-    B["Binance WS"]
-    K["Kraken WS"]
-    C["Coinbase WS"]
-    O["OKX WS"]
-    Y["Bybit WS"]
-    F["Bitfinex WS"]
-    T["Gate WS"]
-    R["REST fallback"]
-  end
-
-  subgraph "ArbitrAI Backend"
-    M["MarketDataService"]
-    E["ArbitrageEngine"]
-    A["AET Calibration"]
-    Q["Score Queue"]
-    RM["RiskManager"]
-    X["ExecutionSimulator"]
-    S["SandboxExecutionService"]
-    P["PnLTracker"]
-    ER["EventRecorder"]
-    G["WebSocketGateway"]
-    J["Persistent Journal"]
-  end
-
-  subgraph "Browser"
-    Z["Zustand Store"]
-    UI["Next.js Showcase + Trading Terminal"]
-  end
-
-  B --> M
-  K --> M
-  C --> M
-  O --> M
-  Y --> M
-  F --> M
-  T --> M
-  R --> M
-  M --> E
-  E --> A
-  E --> Q
-  Q --> RM
-  RM --> X
-  X --> P
-  RM --> S
-  S --> B
-  S --> O
-  X --> A
-  G --> ER
-  ER --> G
-  P --> G
-  M --> G
-  RM --> G
-  G --> J
-  G --> Z
-  Z --> UI
-```
-
-## Data Flow
-
-```mermaid
-sequenceDiagram
-  participant Exchange
-  participant Gateway
-  participant Engine
-  participant Risk
-  participant Sim
-  participant Recorder
-  participant UI
-
-  Exchange->>Gateway: order book update
-  Gateway->>Engine: normalized book
-  Engine->>Engine: detect cross/tri/stat opportunities
-  Engine->>Risk: scored opportunity
-  Risk-->>Engine: approve, cap, reject, or halt
-  Engine->>Sim: queued execution
-  Sim->>Sim: latency, slippage, partial fill
-  Sim->>Engine: realized outcome calibration
-  Sim->>UI: trade, wallet, risk, P&L update
-  Gateway->>Recorder: opportunity/trade event
-  UI->>Gateway: replay/export/scenario command
-  Recorder->>UI: last five minutes replay
-  Gateway->>UI: throttled book snapshots
-```
-
-## Project Structure
-
-```text
-.
-|- backend/
-|  `- server.ts                 # WebSocket gateway + exchange connectors
-|- src/
-|  |- app/                      # Next.js App Router: /, /terminal, /inteligencia, /resultados
-|  |- components/
-|  |  |- Dashboard.tsx          # Live trading terminal
-|  |  |- AetFlowCanvas.tsx      # Deterministic AET visualization
-|  |  `- ResultsDashboard.tsx   # Immutable benchmark + live sanitized health
-|  |- lib/
-|  |  |- config/exchanges.ts    # Fees, reliability, wallet seeds
-|  |  |- math/decimal.ts        # Decimal.js financial helpers
-|  |  |- services/              # Core trading services
-|  |  `- types.ts               # Shared gateway/domain types
-|  `- store/useArbitrageStore.ts
-|- tests/                       # Unit tests for math, engine, risk
-|- Dockerfile
-|- railway.json
-|- vercel.json
-`- DESIGN.md                    # Visual system for future iterations
-```
-
-## Judge Rubric Map
-
-| Evaluation Criterion | ArbitrAI Evidence |
-|---|---|
-| Detection speed | Event-driven in-memory processing, measured detection latency, optimized UI broadcasts, seven live venues. |
-| Net profit accuracy | Decimal.js, maker/taker fees, slippage, withdrawal amortization, latency, market-impact penalties, depth-walk fills. |
-| Robust business logic | Wallet balances, partial fills, capped size, circuit breaker, daily loss limit, rebalance warnings, scenario drills. |
-| Bot intelligence | Cross-exchange, triangular, multi-venue OU-style stat arb, maker-assisted execution, AET survival model, shadow learning, missed-opportunity explanations. |
-| Code quality | Strict TypeScript, separate service classes, unit tests, explicit types, sandbox execution guardrails, deployment configs. |
-| UI/UX | Light institutional command center, edge radar, strategy matrix, missed-opportunity desk, shadow learning, execution bridge, P&L cockpit, live/demo clarity, CSV export. |
-
-## Performance Benchmarks
-
-Latest local observations from this iteration:
-
-| Observation | Result |
-|---|---:|
-| Live venues connected | 7/7 WebSocket live |
-| Live stat-arb route universe | 21 venue pairs |
-| Persisted operational events recovered | 449 |
-| AET route calibrations recovered | 21 |
-| Optimized 5s WebSocket sample | 126 book updates / 90 opportunity updates |
-| Shadow Learning UI renders after throttling | 16 in 5s, down from 455 |
-| Average detection latency after expansion | 2.67ms |
-| Live sample length | 15s |
-| Live UI book messages sampled | 339 |
-| Live opportunity messages sampled | 195 |
-| Live stat-arb signals sampled | 50 |
-| Live cumulative opportunities scored | 723 |
-| Live executable paper trades | 13 |
-| Live paper net P&L | $1.60 |
-| Live paper win rate | 69.23% |
-| Live Shadow Learning labels | 674 |
-| Live avoided-loss dollars | $1,592.45 |
-| Live average detection latency | 3.37ms |
-| Sandbox execution default | PAPER + DRY_RUN, no credentials required |
-| Demo scenario sample | 8s liquidity-drain drill |
-| Demo opportunities scored | 246 |
-| Demo stat-arb signals | 231 |
-| Demo simulated trades | 49 |
-| Demo win rate after edge-decay model | 91.84% |
-| Demo net P&L | $61.34 |
-| Demo avoided-loss labels | 250 |
-| Demo avoided-loss dollars | $4,602.39 |
-| Demo average detection latency | 2.29ms |
-
-Target processing latency remains under 5ms from normalized order-book ingestion to opportunity emission. Live trade count can still be zero in quieter windows when real spreads do not survive fees and risk controls; that is expected behavior, not a failure.
-
-## Research Basis
-
-The implementation is intentionally practical for a 48-hour challenge, but the ideas come from real market microstructure and crypto arbitrage research:
-
-- **Crypto arbitrage is not free money.** Transaction costs, capital constraints, latency, withdrawal frictions, and settlement risk explain why visible price differences can persist.
-- **Quote imbalance matters.** Top-of-book and multi-level imbalance can forecast very short-horizon pressure.
-- **Microprice is more informative than midprice.** Size-weighted bid/ask pressure gives a better local estimate of near-term fair value.
-- **Stat arb should be adaptive.** Crypto spreads are non-stationary, so spread signals need rolling windows and confidence controls.
-
-References:
-
-- [Limits to Arbitrage for Blockchain-Based Assets](https://arxiv.org/abs/1812.00595)
-- [Trade Arrival Dynamics and Quote Imbalance in a Limit Order Book](https://arxiv.org/abs/1312.0514)
-- [The Price Impact of Order Book Events](https://arxiv.org/abs/1011.6402)
-- [Multi-Level Order-Flow Imbalance in a Limit Order Book](https://arxiv.org/abs/1907.06230)
-- [High resolution microprice estimates from limit orderbook data](https://arxiv.org/abs/2411.13594)
-- [Market impact and efficiency in cryptoassets markets](https://link.springer.com/article/10.1007/s42521-023-00095-9)
-- [Exploring sources of statistical arbitrage opportunities among Bitcoin exchanges](https://www.sciencedirect.com/science/article/pii/S1544612322005116)
-- [Deep learning-based pairs trading in cryptocurrency markets](https://www.frontiersin.org/journals/applied-mathematics-and-statistics/articles/10.3389/fams.2026.1749337/full)
-
-Exchange API references:
-
-- [Binance Spot API official docs and Spot Testnet](https://github.com/binance/binance-spot-api-docs)
-- [OKX WebSocket public API](https://www.okx.com/docs-v5/en/#websocket-api-public-channel)
-- [OKX Trade API place order](https://www.okx.com/docs-v5/en/#order-book-trading-trade-post-place-order)
-- [Bybit V5 public orderbook WebSocket](https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook)
-- [Bitfinex public WebSocket channels](https://docs.bitfinex.com/docs/ws-public)
-- [Gate Spot WebSocket limited-level order book](https://www.gate.com/docs/developers/apiv4/ws/en/)
-
-## Documentation and Design Inspiration
-
-This README and the project-level `DESIGN.md` borrow structure from documentation/design-system references:
-
-- [VoltAgent/awesome-design-md](https://github.com/VoltAgent/awesome-design-md): keep an explicit markdown design system so AI agents and humans preserve visual consistency.
-- [matiassingers/awesome-readme](https://github.com/matiassingers/awesome-readme): first-screen clarity, badges, architecture, quickstart, and strong project positioning.
-- GitHub-native Mermaid diagrams: architecture and data flow stay readable inside the repository.
-
-## Deployment
-
-Frontend on Vercel:
-
-```bash
-vercel
-```
-
-Backend on Railway:
-
-```bash
-railway up
-```
-
-Included:
-
-- `vercel.json`
-- `Dockerfile`
-- `railway.json`
-- `.env.example`
-
-Vercel receives only public endpoints:
-
-```bash
-NEXT_PUBLIC_WS_URL=wss://<railway-domain>
-NEXT_PUBLIC_API_URL=https://<railway-domain>
-```
-
-Railway receives every secret and persistent-path setting:
-
-```bash
-SANDBOX_ORDER_MODE=TEST_ORDER
-BINANCE_TESTNET_API_KEY=...
-BINANCE_TESTNET_API_SECRET=...
-ADMIN_CONTROL_TOKEN=<at-least-16-random-characters>
-ALLOWED_WEB_ORIGINS=https://<vercel-domain>,http://localhost:3000
-ARBITRAI_DATA_DIR=/data
-ARBITRAI_JOURNAL_MAX_BYTES=8000000
-```
-
-Attach a Railway Volume at `/data`. Never prefix API keys, secrets, or the admin token with `NEXT_PUBLIC_`.
-
-## Environment Variables
-
-```bash
-NEXT_PUBLIC_WS_URL=ws://localhost:8080
-NEXT_PUBLIC_API_URL=http://localhost:8080
-WS_PORT=8080
-```
-
-The public results page labels evidence honestly:
-
-| Label | Meaning |
-|---|---|
-| `Paper benchmark` | Real market data, simulated fills, conservative costs. |
-| `Signed TEST_ORDER validation` | Authenticated Binance Spot Testnet payload accepted without a fill. |
-| `No real-money execution` | No production order route is exposed by the public deployment. |
-
-## Testing
+Validación:
 
 ```bash
 npm run check
 npm run build
 ```
 
-Current test focus:
+## Live y Demo
 
-- `ArbitrageEngine.calculateNetProfit()`
-- fee and slippage math
-- `EdgeTensor` survival scoring
-- `RiskManager.shouldHalt()`
-- sandbox kill switch, balance parsing, and validation-only reconciliation
-- live-sandbox preflight and realized ledger accounting
+| Modo | Fuente | Uso |
+|---|---|---|
+| `LIVE` | Binance, Kraken, Coinbase, OKX, Bybit, Bitfinex y Gate | Escaneo real y `paper trading` conservador. |
+| `DEMO` | Geometric Brownian motion con dislocations controladas | Presentación reproducible y stress tests. |
 
-## Known Limitations
+En `LIVE`, cero trades puede ser un resultado correcto: significa que ningún spread sobrevivió fees, slippage, latency, liquidity impact y `adverse selection`. ArbitrAI no inventa ganancias para llenar una gráfica.
 
-- ArbitrAI defaults to paper trading. Its optional authenticated bridge is intentionally limited to Binance Spot Testnet and OKX Demo Trading.
-- Live mode currently streams BTC/USDT or BTC/USD books from Binance, Kraken, Coinbase, OKX, Bybit, Bitfinex, and Gate. Binance also streams ETH legs for live triangular checks; demo mode provides full synthetic triangular coverage across all venues.
-- Sandbox credentials are environment-specific: Binance Spot Testnet and OKX Demo Trading keys must be created in their matching simulated environments.
-- Real-money production trading would still require persistence, alerts, custody controls, rate-limit management, a reviewed hedge policy, and a staged capital rollout.
-- Paper P&L is simulated and should not be interpreted as real trading profit. Sandbox realized P&L is shown separately and still represents testnet/demo balances, not real money.
-- The persistent JSONL journal is intentionally lightweight for the hackathon. A production version would move operational events into PostgreSQL or an append-only event store.
+## Seguridad
 
-## Roadmap
+Vercel recibe únicamente URLs públicas:
 
-| Next Upgrade | Why |
-|---|---|
-| PostgreSQL event store | Replace the JSONL journal with queryable durable storage. |
-| Visual replay timeline | Scrub through the last five minutes instead of replaying as one burst. |
-| More live ETH legs | Enable live triangular checks on OKX/Bybit when their ETH books are connected. |
-| Dynamic position sizing | Use AET `suggestedSizeScale` to size execution continuously. |
-| Venue reliability memory | Learn reliability from stale-book duration and reconnect history over a full session. |
-| Deployment screenshots/video | Give judges instant visual proof in the README. |
-
-## Competition Identity
-
-```text
-Project: ArbitrAI
-Tagline: Institutional-grade BTC arbitrage intelligence, accessible to any developer
-Challenge: CODING_CHALLENGE_MEXICO
-Author: Joahan Samuel Morales Pina
+```bash
+NEXT_PUBLIC_WS_URL=wss://<railway-domain>
+NEXT_PUBLIC_API_URL=https://<railway-domain>
 ```
+
+Railway conserva secretos y journal:
+
+```bash
+SANDBOX_ORDER_MODE=TEST_ORDER
+BINANCE_TESTNET_API_KEY=...
+BINANCE_TESTNET_API_SECRET=...
+ADMIN_CONTROL_TOKEN=<random-secret>
+ALLOWED_WEB_ORIGINS=https://<vercel-domain>,http://localhost:3000
+ARBITRAI_DATA_DIR=/data
+```
+
+Nunca colocar API keys en variables `NEXT_PUBLIC_*`. El control administrativo del socket usa token, comparación constante y rate limit.
+
+## Deploy
+
+Frontend:
+
+```bash
+vercel
+```
+
+Gateway persistente:
+
+```bash
+railway up
+```
+
+Adjuntar un Railway Volume en `/data` para journal y calibración.
+
+## Rubric del challenge
+
+| Criterio | Evidencia |
+|---|---|
+| Velocidad | Feeds live, procesamiento event-driven, `BOOK_BATCH` visual y latency visible. |
+| Precisión | `Decimal.js`, fees por venue, slippage, latency, quote freshness e impacto. |
+| Robustez | Fills parciales, wallets, `preflight`, reconciliation y `circuit breaker`. |
+| Estrategia | Cross-exchange, triangular, stat arb, AET y Shadow Learning. |
+| Arquitectura | Servicios separados, protocolo WebSocket tipado, tests y health checks. |
+| UX | Cuatro rutas enfocadas, filtros locales, explicaciones de rechazo y replay. |
+
+## Investigación base
+
+- Cont, Kukanov y Stoikov: [The Price Impact of Order Book Events](https://arxiv.org/abs/1011.6402)
+- Xu, Gould y Howison: [Multi-Level Order-Flow Imbalance in a Limit Order Book](https://arxiv.org/abs/1907.06230)
+- Lipton, Pesavento y Sotiropoulos: [Trade arrival dynamics and quote imbalance](https://arxiv.org/abs/1312.0514)
+- Makarov y Schoar: [Trading and Arbitrage in Cryptocurrency Markets](https://doi.org/10.1016/j.jfineco.2019.07.001)
+
+## Límites honestos
+
+- El deploy público no envía órdenes con dinero real.
+- `Paper P&L` no equivale a profit realizado.
+- `TEST_ORDER` prueba firma y payload; no acredita fills.
+- Operar capital real requeriría rollout gradual, custody controls, alertas, hedge policy revisada y monitoreo operativo.
+
+---
+
+**Autor:** Joahan Samuel Morales Piña
+**Proyecto:** ArbitrAI · `CODING_CHALLENGE_MEXICO`

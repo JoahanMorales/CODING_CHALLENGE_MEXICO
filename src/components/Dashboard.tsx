@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -137,8 +137,8 @@ export function Dashboard() {
       />
 
       <section className="min-h-0 overflow-y-auto px-3 py-3 xl:overflow-hidden xl:px-4">
-        <div className="grid min-h-0 gap-3 xl:h-full xl:grid-cols-[0.92fr_1.26fr_1fr]">
-          <aside className="grid min-h-0 gap-3 pr-1 xl:grid-rows-[auto_auto_auto_minmax(260px,0.95fr)] xl:overflow-y-auto">
+        <div className="grid min-h-0 gap-3 xl:h-full xl:grid-cols-[0.9fr_1.28fr_0.96fr]">
+          <aside className="grid min-h-0 gap-3 pr-1 xl:grid-rows-[auto_auto_auto_minmax(220px,0.82fr)] xl:overflow-y-auto">
             <SystemHealth
               connectionError={connectionError}
               connected={connected}
@@ -153,16 +153,31 @@ export function Dashboard() {
             <PriceChartPanel marketDrift={marketDrift} priceSeries={priceSeries} />
           </aside>
 
-          <section className="grid min-h-0 gap-3 xl:grid-rows-[auto_auto_auto_minmax(0,1fr)] xl:overflow-hidden">
+          <section className="grid min-h-0 gap-3 xl:grid-rows-[auto_minmax(0,1fr)_auto] xl:overflow-hidden">
             <ActiveEdgePanel latestExecutable={latestExecutable} latestSignal={latestSignal} latestTrade={trades[0]} metrics={metrics} risk={risk} />
-            <StrategyMatrix stats={strategyStats} />
-            <MissedOpportunityPanel opportunities={missedOpportunities} />
             <SignalFeed opportunities={visibleOpportunities} replaying={replayOpportunities.length > 0} />
+            <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
+              <summary className="cursor-pointer list-none font-mono text-[10px] font-black uppercase text-sky-700">
+                Abrir análisis avanzado
+              </summary>
+              <div className="mt-3 grid gap-3">
+                <StrategyMatrix stats={strategyStats} />
+                <MissedOpportunityPanel opportunities={missedOpportunities} />
+              </div>
+            </details>
           </section>
 
-          <aside className="grid min-h-0 gap-3 pr-1 xl:grid-rows-[auto_auto_auto_minmax(250px,0.8fr)] xl:overflow-y-auto">
+          <aside className="grid min-h-0 gap-3 pr-1 xl:grid-rows-[auto_auto_auto_auto] xl:overflow-y-auto">
             <PerformancePanel metrics={metrics} pnlSeries={pnlSeries} risk={risk} />
-            <LearningPanel learning={learning} />
+            <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                <span className="font-mono text-[10px] font-black uppercase text-sky-700">Shadow Learning</span>
+                <StatusPill label={`${learning.evaluatedSignals} markouts`} tone={learning.evaluatedSignals ? "sky" : "zinc"} />
+              </summary>
+              <div className="mt-3">
+                <LearningPanel learning={learning} bare />
+              </div>
+            </details>
             <ExecutionPanel
               executionQueue={executionQueue}
               reconcileSandbox={reconcileSandbox}
@@ -214,6 +229,7 @@ function CommandBar({
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[10px] font-black uppercase text-sky-700">Terminal de arbitraje</span>
           <StatusPill label={dataActive ? "Mercado activo" : "Sincronizando"} tone={dataActive ? "green" : "amber"} pulse={dataActive} />
+          <StatusPill label={mode === "LIVE" ? "Feeds reales" : "Simulador GBM"} tone={mode === "LIVE" ? "sky" : "violet"} />
           <StatusPill label={`Riesgo ${risk.riskColor}`} tone={riskTone(risk.riskColor)} />
         </div>
 
@@ -395,23 +411,28 @@ function SystemHealth({
         <HealthStat label="Pérdidas" value={`${risk.consecutiveLosses}/3`} tone={risk.consecutiveLosses ? "amber" : "emerald"} />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {exchanges.map((exchange) => {
-          const status = statuses.find((item) => item.exchange === exchange);
-          const age = status?.lastMessageAt ? Math.max(0, Date.now() - status.lastMessageAt) : 0;
-          return (
-            <div key={exchange} className="flex items-center justify-between rounded-lg border border-white/80 bg-white/75 px-2 py-2">
-              <div className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${statusDot(status?.status)}`} />
-              <span className="text-xs font-black uppercase text-zinc-700">{EXCHANGE_LABELS[exchange]}</span>
-            </div>
-              <span className="font-mono text-[9px] font-semibold text-zinc-500">
-                R{status?.reliabilityScore ?? 55} / {status?.lastMessageAt ? formatAge(age) : "--"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <details className="mt-3 rounded-xl border border-white/80 bg-white/65 px-3 py-2">
+        <summary className="cursor-pointer list-none font-mono text-[10px] font-black uppercase text-sky-700">
+          Ver estado de los {exchanges.length} venues
+        </summary>
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {exchanges.map((exchange) => {
+            const status = statuses.find((item) => item.exchange === exchange);
+            const age = status?.lastMessageAt ? Math.max(0, Date.now() - status.lastMessageAt) : 0;
+            return (
+              <div key={exchange} className="flex items-center justify-between rounded-lg border border-white bg-white/80 px-2 py-2">
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${statusDot(status?.status)}`} />
+                  <span className="text-xs font-black uppercase text-zinc-700">{EXCHANGE_LABELS[exchange]}</span>
+                </div>
+                <span className="font-mono text-[9px] font-semibold text-zinc-500">
+                  R{status?.reliabilityScore ?? 55} / {status?.lastMessageAt ? formatAge(age) : "--"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </details>
 
       {!dataActive && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">{connectionError || "Esperando libros de órdenes."}</p>}
     </Panel>
@@ -460,18 +481,54 @@ function MarketStack({
 }) {
   return (
     <Panel>
-      <PanelTitle eyebrow="Libros de órdenes" title="Mercado BTC/USDT" />
-      <div className="mt-3 grid gap-2">
-        {exchangesShown.map((exchange) => (
-          <MarketCard
-            key={exchange}
-            book={books[btcBookKey(exchange)]}
-            exchange={exchange}
-            flash={flashes[btcBookKey(exchange)]}
-            status={statuses.find((item) => item.exchange === exchange)}
-          />
-        ))}
+      <div className="flex items-center justify-between gap-3">
+        <PanelTitle eyebrow="Top of book" title="Mercado BTC/USDT" />
+        <StatusPill label={`${exchangesShown.length} venues`} tone="sky" />
       </div>
+      <div className="mt-3 overflow-x-auto">
+        <div className="min-w-[410px]">
+          <div className="grid grid-cols-[1fr_1fr_1fr_72px] gap-2 border-b border-zinc-100 px-2 pb-2 font-mono text-[9px] font-black uppercase text-zinc-400">
+            <span>Venue</span>
+            <span>Bid</span>
+            <span>Ask</span>
+            <span className="text-right">Update</span>
+          </div>
+          {exchangesShown.map((exchange) => {
+            const book = books[btcBookKey(exchange)];
+            const status = statuses.find((item) => item.exchange === exchange);
+            const age = book ? Math.max(0, Date.now() - book.receivedAt) : 0;
+            return (
+              <div className="grid grid-cols-[1fr_1fr_1fr_72px] items-center gap-2 border-b border-zinc-100 px-2 py-2 last:border-b-0" key={exchange}>
+                <span className="flex items-center gap-2 text-xs font-black text-zinc-800">
+                  <span className={`h-2 w-2 rounded-full ${statusDot(status?.status)}`} />
+                  {EXCHANGE_LABELS[exchange]}
+                </span>
+                <strong className={`rounded px-1 font-mono text-[11px] text-emerald-700 ${flashes[btcBookKey(exchange)]?.bid === "up" ? "flash-up" : flashes[btcBookKey(exchange)]?.bid === "down" ? "flash-down" : ""}`}>
+                  {formatPrice(book?.bids[0]?.price ?? "-")}
+                </strong>
+                <strong className={`rounded px-1 font-mono text-[11px] text-rose-700 ${flashes[btcBookKey(exchange)]?.ask === "up" ? "flash-up" : flashes[btcBookKey(exchange)]?.ask === "down" ? "flash-down" : ""}`}>
+                  {formatPrice(book?.asks[0]?.price ?? "-")}
+                </strong>
+                <span className="text-right font-mono text-[10px] font-semibold text-zinc-500">{book ? formatAge(age) : "--"}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <details className="mt-3 border-t border-zinc-100 pt-3">
+        <summary className="cursor-pointer font-mono text-[10px] font-black uppercase text-sky-700">Abrir profundidad top-5</summary>
+        <div className="mt-3 grid gap-2">
+          {exchangesShown.map((exchange) => (
+            <MarketCard
+              key={exchange}
+              book={books[btcBookKey(exchange)]}
+              exchange={exchange}
+              flash={flashes[btcBookKey(exchange)]}
+              status={statuses.find((item) => item.exchange === exchange)}
+            />
+          ))}
+        </div>
+      </details>
     </Panel>
   );
 }
@@ -528,7 +585,7 @@ function PriceChartPanel({ marketDrift, priceSeries }: { marketDrift: number; pr
           <div className="text-sm font-black text-sky-700">${marketDrift.toFixed(2)}</div>
         </div>
       </div>
-      <div className="mt-3 h-[calc(100%-62px)] min-h-56">
+      <div className="mt-3 h-56">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={priceSeries}>
             <CartesianGrid stroke="#e4edf7" vertical={false} />
@@ -666,18 +723,42 @@ function MissedOpportunityPanel({ opportunities }: { opportunities: Opportunity[
 }
 
 function SignalFeed({ opportunities, replaying }: { opportunities: Opportunity[]; replaying: boolean }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [paused, setPaused] = useState(false);
+  const [visibleSignals, setVisibleSignals] = useState(opportunities);
+
+  useEffect(() => {
+    if (!paused) setVisibleSignals(opportunities);
+  }, [opportunities, paused]);
+
+  const resume = () => {
+    setVisibleSignals(opportunities);
+    setPaused(false);
+    viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <Panel className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
       <div className="flex items-center justify-between">
         <PanelTitle eyebrow={replaying ? "Replay" : "Flujo en vivo"} title="Señales recientes" />
-        <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[10px] font-black uppercase text-zinc-500">
-          {opportunities.length} visibles
-        </span>
+        {paused ? (
+          <button className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 font-mono text-[10px] font-black uppercase text-sky-700" onClick={resume} type="button">
+            Ver señales nuevas
+          </button>
+        ) : (
+          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[10px] font-black uppercase text-zinc-500">
+            {opportunities.length} visibles
+          </span>
+        )}
       </div>
-      <div className="mt-3 min-h-0 overflow-y-auto pr-1">
+      <div
+        className="signal-tape mt-3 min-h-0 overflow-y-auto pr-1"
+        onScroll={(event) => setPaused(event.currentTarget.scrollTop > 18)}
+        ref={viewportRef}
+      >
         <div className="grid gap-2">
-          {opportunities.length ? (
-            opportunities.map((opportunity) => <SignalRow key={opportunity.id} opportunity={opportunity} />)
+          {visibleSignals.length ? (
+            visibleSignals.slice(0, 18).map((opportunity) => <SignalRow key={opportunity.id} opportunity={opportunity} />)
           ) : (
             <EmptyState text="Esperando señales." />
           )}
@@ -704,7 +785,7 @@ function SignalRow({ opportunity }: { opportunity: Opportunity }) {
           <div className="mt-1 truncate font-mono text-[10px] font-semibold text-zinc-500">
             {opportunity.executionStyle}
             {opportunity.edgeModel
-              ? ` / survival ${(Number(opportunity.edgeModel.survivalProbability) * 100).toFixed(0)}% / adverse ${opportunity.edgeModel.adverseSelectionBps}bps`
+              ? ` / survival ${(Number(opportunity.edgeModel.survivalProbability) * 100).toFixed(0)}% / adverse ${opportunity.edgeModel.adverseSelectionBps}bps / quote ${opportunity.edgeModel.quoteAgeMs}ms`
               : ""}
           </div>
         </div>
@@ -762,11 +843,11 @@ function PerformancePanel({ metrics, pnlSeries, risk }: { metrics: PerformanceMe
   );
 }
 
-function LearningPanel({ learning }: { learning: LearningSummary }) {
+function LearningPanel({ bare = false, learning }: { bare?: boolean; learning: LearningSummary }) {
   const costPositive = Number(learning.opportunityCostUsd) >= 0;
   const last = learning.lastOutcome;
-  return (
-    <Panel className="bg-gradient-to-br from-white via-white to-sky-50/60">
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <PanelTitle eyebrow="Calibración adaptativa" title="Shadow Learning" />
         <StatusPill label={`${learning.evaluatedSignals} eval`} tone={learning.evaluatedSignals ? "sky" : "zinc"} />
@@ -797,8 +878,9 @@ function LearningPanel({ learning }: { learning: LearningSummary }) {
           <div className="font-mono text-[10px] font-bold text-zinc-500">Esperando que las señales maduren para calcular sus markouts.</div>
         )}
       </div>
-    </Panel>
+    </>
   );
+  return bare ? content : <Panel className="bg-gradient-to-br from-white via-white to-sky-50/60">{content}</Panel>;
 }
 
 function ExecutionPanel({
@@ -1237,7 +1319,7 @@ function HealthStat({ label, tone, value }: { label: string; tone: Tone; value: 
 
 function TopMetric({ label, tone, value }: { label: string; tone: Tone; value: string }) {
   return (
-    <div className={`rounded-xl border bg-white px-3 py-2 font-mono shadow-sm ${toneBorder(tone)}`}>
+    <div className={`w-[84px] rounded-xl border bg-white px-3 py-2 font-mono shadow-sm ${toneBorder(tone)}`}>
       <span className="block text-[9px] font-black uppercase text-zinc-500">{label}</span>
       <strong className={`block text-xs ${toneText(tone)}`}>{value}</strong>
     </div>
@@ -1513,6 +1595,7 @@ function learningLabelTone(label: NonNullable<LearningSummary["lastOutcome"]>["l
 function rejectCause(opportunity: Opportunity): string {
   const reason = opportunity.reason.toLowerCase();
   if (reason.includes("circuit")) return "breaker";
+  if (reason.includes("quote skew") || reason.includes("stale")) return "stale quote";
   if (reason.includes("impact") || opportunity.highImpact) return "liquidity";
   if (reason.includes("survival") || reason.includes("adverse")) return "adverse";
   if (Number(opportunity.netSpreadPct) < 0) return "fees";

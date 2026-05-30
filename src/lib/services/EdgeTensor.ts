@@ -39,6 +39,9 @@ export interface EdgeTensorSignal {
   micropriceSkewBps: number;
   modelScore: number;
   orderFlowImbalance: number;
+  quoteAgeMs: number;
+  quoteFreshnessScore: number;
+  quoteSkewMs: number;
   riskAdjustedProfitUsd: Decimal;
   suggestedSizeScale: number;
   survivalProbability: number;
@@ -90,6 +93,7 @@ export class EdgeTensor {
     const volatilityBps = ((buyState?.ewmaVolatilityBps ?? 0) + (sellState?.ewmaVolatilityBps ?? 0)) / 2;
     const netEdgeBps = input.netSpreadPct.mul(10000).toNumber();
     const liquidityScore = liquidityDepthScore(input.buyBook, input.sellBook, input.quantityBtc);
+    const timing = quoteTiming(input.buyBook, input.sellBook);
 
     // Cross-venue arbitrage survives better when the buy venue shows sell pressure
     // and the sell venue shows buy pressure. OFI reacts faster than mid-price.
@@ -105,16 +109,26 @@ export class EdgeTensor {
     const volatilityPenalty = sigmoid((volatilityBps - 1.8) * 0.9);
     const calibration = this.routeCalibration.get(input.route);
     const calibrationBias = calibration?.bias ?? 0;
+    // A cross-venue spread is only actionable while both quotes describe the
+    // same short-lived market state. Age and inter-venue skew reduce survival
+    // before the signal can reach execution.
     const survivalProbability = clamp01(
-      0.12 +
-        edgeStrength * 0.34 +
-        alignment * 0.32 +
-        liquidityScore * 0.16 +
+      0.08 +
+        edgeStrength * 0.3 +
+        alignment * 0.28 +
+        liquidityScore * 0.14 +
+        timing.freshnessScore * 0.2 +
         styleBoost -
         volatilityPenalty * 0.18 +
         calibrationBias
     );
-    const adverseSelectionBps = Math.max(0, volatilityBps * 0.34 + (1 - alignment) * 2.4 - Math.max(0, netEdgeBps) * 0.16);
+    const adverseSelectionBps = Math.max(
+      0,
+      volatilityBps * 0.34 +
+        (1 - alignment) * 2.4 +
+        (1 - timing.freshnessScore) * 3.4 -
+        Math.max(0, netEdgeBps) * 0.16
+    );
     const notional = notionalUsd(input.buyBook, input.quantityBtc);
     const riskAdjustedProfitUsd = input.expectedProfitUsd
       .mul(survivalProbability)
@@ -126,9 +140,10 @@ export class EdgeTensor {
         Math.min(
           100,
           survivalProbability * 42 +
-            alignment * 24 +
-            liquidityScore * 18 +
-            Math.max(0, Math.min(1, netEdgeBps / 8)) * 16
+            alignment * 20 +
+            liquidityScore * 16 +
+            timing.freshnessScore * 12 +
+            Math.max(0, Math.min(1, netEdgeBps / 8)) * 10
         )
       )
     );
@@ -140,6 +155,9 @@ export class EdgeTensor {
       micropriceSkewBps: sellSkew - buySkew,
       modelScore,
       orderFlowImbalance: sellOfi - buyOfi,
+      quoteAgeMs: timing.ageMs,
+      quoteFreshnessScore: timing.freshnessScore,
+      quoteSkewMs: timing.skewMs,
       riskAdjustedProfitUsd,
       suggestedSizeScale,
       survivalProbability,
@@ -182,6 +200,9 @@ export function serializeEdgeTensor(signal: EdgeTensorSignal) {
     micropriceSkewBps: signal.micropriceSkewBps.toFixed(3),
     modelScore: signal.modelScore,
     orderFlowImbalance: signal.orderFlowImbalance.toFixed(3),
+    quoteAgeMs: signal.quoteAgeMs,
+    quoteFreshnessScore: signal.quoteFreshnessScore.toFixed(3),
+    quoteSkewMs: signal.quoteSkewMs,
     riskAdjustedProfitUsd: usd(signal.riskAdjustedProfitUsd),
     suggestedSizeScale: signal.suggestedSizeScale.toFixed(3),
     survivalProbability: signal.survivalProbability.toFixed(3),
@@ -257,6 +278,19 @@ function notionalUsd(book: NormalizedOrderBook, quantity: Decimal): Decimal {
   const ask = topAsk(book);
   const fallback = midPrice(book);
   return (ask?.price ?? fallback ?? d(70000)).mul(quantity);
+}
+
+function quoteTiming(buyBook: NormalizedOrderBook, sellBook: NormalizedOrderBook): { ageMs: number; freshnessScore: number; skewMs: number } {
+  const now = Date.now();
+  const ageMs = Math.max(0, now - Math.min(buyBook.receivedAt, sellBook.receivedAt));
+  const skewMs = Math.abs(buyBook.receivedAt - sellBook.receivedAt);
+  const ageScore = clamp01(1 - ageMs / 2800);
+  const synchronizationScore = clamp01(1 - skewMs / 1800);
+  return {
+    ageMs,
+    freshnessScore: ageScore * 0.58 + synchronizationScore * 0.42,
+    skewMs
+  };
 }
 
 function ewma(previous: number, value: number, alpha: number): number {

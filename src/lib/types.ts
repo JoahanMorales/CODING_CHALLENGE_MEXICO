@@ -34,6 +34,9 @@ export interface EdgeModelSignal {
   micropriceSkewBps: string;
   modelScore: number;
   orderFlowImbalance: string;
+  quoteAgeMs: number;
+  quoteFreshnessScore: string;
+  quoteSkewMs: number;
   riskAdjustedProfitUsd: string;
   suggestedSizeScale: string;
   survivalProbability: string;
@@ -374,6 +377,7 @@ export interface GatewaySnapshot {
 export type GatewayMessage =
   | GatewaySnapshot
   | { type: "BOOK"; book: NormalizedOrderBook }
+  | { type: "BOOK_BATCH"; books: NormalizedOrderBook[] }
   | { type: "EXCHANGE_STATUS"; statuses: ExchangeConnectionStatus[] }
   | { type: "OPPORTUNITY"; opportunity: Opportunity; queue: Opportunity[] }
   | { type: "TRADE"; trade: Trade; wallets: WalletBalance[]; metrics: PerformanceMetrics; risk: RiskState }
