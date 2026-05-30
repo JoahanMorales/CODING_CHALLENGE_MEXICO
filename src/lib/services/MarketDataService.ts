@@ -1,4 +1,5 @@
 import type { ExchangeId, NormalizedOrderBook, OrderBookLevel, PricePoint, SymbolId } from "../types";
+import { EXCHANGE_IDS } from "../config/exchanges";
 import { EventBus } from "./EventBus";
 import { RiskManager } from "./RiskManager";
 
@@ -9,8 +10,6 @@ interface DemoState {
   tick: number;
   timer: ReturnType<typeof setInterval> | null;
 }
-
-const EXCHANGES: ExchangeId[] = ["binance", "kraken", "coinbase", "okx", "bybit"];
 
 export class MarketDataService {
   private readonly priceSeries: PricePoint[] = [];
@@ -58,7 +57,7 @@ export class MarketDataService {
     const spreadMultiplier = this.riskManager.getSpreadMultiplier();
     const liquidityMultiplier = this.riskManager.getLiquidityMultiplier();
 
-    EXCHANGES.forEach((exchange, index) => {
+    EXCHANGE_IDS.forEach((exchange, index) => {
       const exchangeBias = Math.sin((Date.now() / 900) + index) * 18;
       const pulseBias = arbPulse && index === 0 ? -90 : arbPulse && index === 1 ? 95 : 0;
       const btcMid = this.demoState.btc + exchangeBias + pulseBias;

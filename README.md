@@ -30,7 +30,7 @@ This is not a toy crypto dashboard. It is a real-time paper-trading system built
 
 | Capability | Why It Matters |
 |---|---|
-| Live exchange feeds | Binance, Kraken, Coinbase, OKX, and Bybit stream real BTC market data through the local WebSocket gateway. |
+| Live exchange feeds | Binance, Kraken, Coinbase, OKX, Bybit, Bitfinex, and Gate stream real BTC market data through the local WebSocket gateway. |
 | Three strategy engine | Cross-exchange arbitrage, triangular arbitrage, and statistical mean-reversion signals. |
 | Microstructure-aware scoring | The engine uses book depth, imbalance, microprice skew, fragmentation, and route pressure. |
 | ArbitrAI Edge Tensor | Proprietary explainable alpha layer estimating edge survival, adverse selection, risk-adjusted P&L, and route calibration. |
@@ -39,6 +39,8 @@ This is not a toy crypto dashboard. It is a real-time paper-trading system built
 | Scenario Lab + replay | Judges can trigger crash/liquidity/latency drills and replay the last five minutes of signals. |
 | Shadow Learning | Rejected and accepted signals are labeled after 0.5s/2s/5s markouts so the model learns from real live data even when it executes zero trades. |
 | Sandbox Execution Bridge | Optional Binance Spot Testnet + OKX Demo order bridge, protected by env keys and safe defaults. |
+| Realized sandbox ledger | Authenticated demo fills, venue fees, residual exposure, and realized sandbox P&L stay separate from paper estimates. |
+| Persistent learning journal | Fills, markouts, and AET calibration survive backend restarts through a compact JSONL journal. |
 | CSV export | The full session can be exported for audit in Excel/Sheets. |
 | Paint-friendly real-time UI | Backend processes every market event while the frontend receives throttled, useful snapshots. |
 | Clear live/demo distinction | Live mode uses real order books; demo mode uses geometric Brownian motion and synthetic dislocations. |
@@ -215,7 +217,7 @@ This is a major differentiator because live mode can prove the model is learning
 The original stat arb signal tracked one spread: Binance vs Kraken. The upgraded engine tracks all BTC/USDT venue pairs from the live universe:
 
 ```text
-5 venues = 10 rolling spread windows
+7 venues = 21 rolling spread windows
 spread z-score + OU-style half-life + hedge-cost penalty = expected convergence edge
 ```
 
@@ -310,9 +312,11 @@ Safety controls:
 - max sandbox notional defaults to `$25`;
 - only Binance <-> OKX cross-exchange routes are eligible first;
 - authenticated sandbox balances can be refreshed from both venues without exposing keys to the browser;
+- live sandbox submissions run an authenticated two-wallet preflight before either leg is sent;
 - a separate sandbox kill switch blocks order submission independently from the paper-trading circuit breaker;
 - `RECONCILE` labels validation-only runs and, in `LIVE_SANDBOX`, compares both exchange fills;
 - fill divergence pauses sandbox execution and produces a hedge plan for manual review instead of firing an uncontrolled follow-up order;
+- realized sandbox P&L is calculated from reconciled venue fills and remains visually separate from simulated paper P&L;
 - real withdrawal permission is never required and should never be granted.
 
 Environment variables:
@@ -388,6 +392,28 @@ The backend still processes every raw market event, but the browser receives a l
 
 This keeps the agent fast without hiding the real-time engine.
 
+### 20. Persistent Calibration Journal
+
+The Railway-ready backend writes only sanitized operational events to `data/session-events.jsonl`:
+
+- paper trades;
+- shadow-learning markouts;
+- sandbox execution reports;
+- reconciled sandbox fills and realized ledger entries.
+
+The route-level AET calibration is stored separately in `data/aet-calibration.json` and loaded when the gateway restarts. Secrets, signatures, and API keys are never written to the journal.
+
+### 21. Multi-Level OFI Filter
+
+The Edge Tensor now blends touch-level OFI with weighted top-five depth changes. Nearer levels receive greater weight:
+
+```text
+MLOFI = weighted bid-size change + weighted ask-size change
+normalized by visible weighted depth
+```
+
+This follows the practical direction of order-book research: short-horizon impact is better explained by order-flow imbalance than raw volume, and additional depth levels can improve out-of-sample fit. ArbitrAI uses the signal as an adverse-selection filter, not as a promise of directional profit.
+
 ## Architecture
 
 ```mermaid
@@ -398,6 +424,8 @@ flowchart LR
     C["Coinbase WS"]
     O["OKX WS"]
     Y["Bybit WS"]
+    F["Bitfinex WS"]
+    T["Gate WS"]
     R["REST fallback"]
   end
 
@@ -412,6 +440,7 @@ flowchart LR
     P["PnLTracker"]
     ER["EventRecorder"]
     G["WebSocketGateway"]
+    J["Persistent Journal"]
   end
 
   subgraph "Browser"
@@ -424,6 +453,8 @@ flowchart LR
   C --> M
   O --> M
   Y --> M
+  F --> M
+  T --> M
   R --> M
   M --> E
   E --> A
@@ -440,6 +471,7 @@ flowchart LR
   P --> G
   M --> G
   RM --> G
+  G --> J
   G --> Z
   Z --> UI
 ```
@@ -498,7 +530,7 @@ sequenceDiagram
 
 | Evaluation Criterion | ArbitrAI Evidence |
 |---|---|
-| Detection speed | Event-driven in-memory processing, measured detection latency, optimized UI broadcasts, five live venues. |
+| Detection speed | Event-driven in-memory processing, measured detection latency, optimized UI broadcasts, seven live venues. |
 | Net profit accuracy | Decimal.js, maker/taker fees, slippage, withdrawal amortization, latency, market-impact penalties, depth-walk fills. |
 | Robust business logic | Wallet balances, partial fills, capped size, circuit breaker, daily loss limit, rebalance warnings, scenario drills. |
 | Bot intelligence | Cross-exchange, triangular, multi-venue OU-style stat arb, maker-assisted execution, AET survival model, shadow learning, missed-opportunity explanations. |
@@ -511,7 +543,13 @@ Latest local observations from this iteration:
 
 | Observation | Result |
 |---|---:|
-| Live venues connected | 5/5 WebSocket live |
+| Live venues connected | 7/7 WebSocket live |
+| Live stat-arb route universe | 21 venue pairs |
+| Persisted operational events recovered | 449 |
+| AET route calibrations recovered | 21 |
+| Optimized 5s WebSocket sample | 126 book updates / 90 opportunity updates |
+| Shadow Learning UI renders after throttling | 16 in 5s, down from 455 |
+| Average detection latency after expansion | 2.67ms |
 | Live sample length | 15s |
 | Live UI book messages sampled | 339 |
 | Live opportunity messages sampled | 195 |
@@ -549,6 +587,8 @@ References:
 
 - [Limits to Arbitrage for Blockchain-Based Assets](https://arxiv.org/abs/1812.00595)
 - [Trade Arrival Dynamics and Quote Imbalance in a Limit Order Book](https://arxiv.org/abs/1312.0514)
+- [The Price Impact of Order Book Events](https://arxiv.org/abs/1011.6402)
+- [Multi-Level Order-Flow Imbalance in a Limit Order Book](https://arxiv.org/abs/1907.06230)
 - [High resolution microprice estimates from limit orderbook data](https://arxiv.org/abs/2411.13594)
 - [Market impact and efficiency in cryptoassets markets](https://link.springer.com/article/10.1007/s42521-023-00095-9)
 - [Exploring sources of statistical arbitrage opportunities among Bitcoin exchanges](https://www.sciencedirect.com/science/article/pii/S1544612322005116)
@@ -560,6 +600,8 @@ Exchange API references:
 - [OKX WebSocket public API](https://www.okx.com/docs-v5/en/#websocket-api-public-channel)
 - [OKX Trade API place order](https://www.okx.com/docs-v5/en/#order-book-trading-trade-post-place-order)
 - [Bybit V5 public orderbook WebSocket](https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook)
+- [Bitfinex public WebSocket channels](https://docs.bitfinex.com/docs/ws-public)
+- [Gate Spot WebSocket limited-level order book](https://www.gate.com/docs/developers/apiv4/ws/en/)
 
 ## Documentation and Design Inspiration
 
@@ -611,21 +653,22 @@ Current test focus:
 - `EdgeTensor` survival scoring
 - `RiskManager.shouldHalt()`
 - sandbox kill switch, balance parsing, and validation-only reconciliation
+- live-sandbox preflight and realized ledger accounting
 
 ## Known Limitations
 
 - ArbitrAI defaults to paper trading. Its optional authenticated bridge is intentionally limited to Binance Spot Testnet and OKX Demo Trading.
-- Live mode currently streams BTC/USDT or BTC/USD books from Binance, Kraken, Coinbase, OKX, and Bybit. Binance also streams ETH legs for live triangular checks; demo mode provides full synthetic triangular coverage across all venues.
+- Live mode currently streams BTC/USDT or BTC/USD books from Binance, Kraken, Coinbase, OKX, Bybit, Bitfinex, and Gate. Binance also streams ETH legs for live triangular checks; demo mode provides full synthetic triangular coverage across all venues.
 - Sandbox credentials are environment-specific: Binance Spot Testnet and OKX Demo Trading keys must be created in their matching simulated environments.
 - Real-money production trading would still require persistence, alerts, custody controls, rate-limit management, a reviewed hedge policy, and a staged capital rollout.
-- Reported P&L is simulated and should not be interpreted as real trading profit.
-- The replay store is in-memory for hackathon speed. A production version would persist event logs to a database or object store.
+- Paper P&L is simulated and should not be interpreted as real trading profit. Sandbox realized P&L is shown separately and still represents testnet/demo balances, not real money.
+- The persistent JSONL journal is intentionally lightweight for the hackathon. A production version would move operational events into PostgreSQL or an append-only event store.
 
 ## Roadmap
 
 | Next Upgrade | Why |
 |---|---|
-| Persistent event database | Keep replay/export history after backend restarts. |
+| PostgreSQL event store | Replace the JSONL journal with queryable durable storage. |
 | Visual replay timeline | Scrub through the last five minutes instead of replaying as one burst. |
 | More live ETH legs | Enable live triangular checks on OKX/Bybit when their ETH books are connected. |
 | Dynamic position sizing | Use AET `suggestedSizeScale` to size execution continuously. |

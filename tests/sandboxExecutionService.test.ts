@@ -97,8 +97,11 @@ describe("SandboxExecutionService", () => {
     });
     service.setMode("SANDBOX");
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input) => {
-      if (String(input).includes("testnet.binance.vision")) return jsonResponse({ orderId: "binance-filled" });
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.includes("/api/v3/account")) return jsonResponse({ balances: [{ asset: "USDT", free: "5000" }, { asset: "BTC", free: "1" }] });
+      if (url.includes("/api/v5/account/balance")) return jsonResponse({ code: "0", data: [{ details: [{ ccy: "USDT", availBal: "5000" }, { ccy: "BTC", availBal: "1" }] }] });
+      if (url.includes("testnet.binance.vision") && init?.method === "POST") return jsonResponse({ orderId: "binance-filled" });
       return jsonResponse({ code: "1", msg: "OKX demo rejected probe" });
     };
 
@@ -113,6 +116,34 @@ describe("SandboxExecutionService", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("records realized sandbox pnl after balanced venue fills", async () => {
+    const service = liveSandboxService();
+    service.setMode("SANDBOX");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.includes("/api/v3/account")) return jsonResponse({ balances: [{ asset: "USDT", free: "5000" }, { asset: "BTC", free: "1" }] });
+      if (url.includes("/api/v5/account/balance")) return jsonResponse({ code: "0", data: [{ details: [{ ccy: "USDT", availBal: "5000" }, { ccy: "BTC", availBal: "1" }] }] });
+      if (url.includes("/api/v3/order?") && init?.method === "POST") return jsonResponse({ orderId: "binance-order" });
+      if (url.includes("/api/v3/order?")) return jsonResponse({ status: "FILLED", executedQty: "0.00035", cummulativeQuoteQty: "24.50" });
+      if (url.includes("/api/v3/myTrades")) return jsonResponse([{ commission: "0.00000035", commissionAsset: "BTC" }]);
+      if (url.includes("/api/v5/trade/order") && init?.method === "POST") return jsonResponse({ code: "0", data: [{ ordId: "okx-order" }] });
+      return jsonResponse({ code: "0", data: [{ state: "filled", accFillSz: "0.00035", avgPx: "70200", fee: "-0.02457", feeCcy: "USDT" }] });
+    };
+
+    try {
+      const report = await service.execute(crossOpportunity());
+      const runtime = service.status();
+      expect(report?.status).toBe("SUBMITTED");
+      expect(runtime.lastPreflight?.status).toBe("READY");
+      expect(runtime.lastReconciliation?.status).toBe("BALANCED");
+      expect(runtime.ledger.executions).toBe(1);
+      expect(Number(runtime.ledger.realizedPnlUsd)).toBeGreaterThan(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 function configuredService() {
@@ -123,6 +154,17 @@ function configuredService() {
     OKX_DEMO_API_SECRET: "present",
     OKX_DEMO_API_PASSPHRASE: "present",
     SANDBOX_ORDER_MODE: "TEST_ORDER"
+  });
+}
+
+function liveSandboxService() {
+  return new SandboxExecutionService({
+    BINANCE_TESTNET_API_KEY: "present",
+    BINANCE_TESTNET_API_SECRET: "present",
+    OKX_DEMO_API_KEY: "present",
+    OKX_DEMO_API_SECRET: "present",
+    OKX_DEMO_API_PASSPHRASE: "present",
+    SANDBOX_ORDER_MODE: "LIVE_SANDBOX"
   });
 }
 

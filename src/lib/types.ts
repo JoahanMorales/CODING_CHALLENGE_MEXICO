@@ -1,4 +1,4 @@
-export type ExchangeId = "binance" | "kraken" | "coinbase" | "okx" | "bybit";
+export type ExchangeId = "binance" | "kraken" | "coinbase" | "okx" | "bybit" | "bitfinex" | "gate";
 
 export type SymbolId = "BTC/USDT" | "ETH/USDT" | "ETH/BTC";
 
@@ -51,6 +51,8 @@ export interface PricePoint {
   coinbase?: number;
   okx?: number;
   bybit?: number;
+  bitfinex?: number;
+  gate?: number;
 }
 
 export interface ExchangeConnectionStatus {
@@ -156,7 +158,40 @@ export interface SandboxFill {
   filledQuantity: string;
   quoteQuantity: string;
   averagePrice: string;
+  feeUsd: string;
+  feeSource: "VENUE" | "ESTIMATED";
   fetchedAt: number;
+}
+
+export interface SandboxPreflight {
+  checkedAt: number;
+  status: "IDLE" | "READY" | "BLOCKED";
+  reason: string;
+  buyNotionalUsd: string;
+  sellQuantityBtc: string;
+}
+
+export interface SandboxLedgerEntry {
+  id: string;
+  route: string;
+  recordedAt: number;
+  quantityBtc: string;
+  buyQuoteUsd: string;
+  sellQuoteUsd: string;
+  grossPnlUsd: string;
+  feesUsd: string;
+  netPnlUsd: string;
+  feeSource: "VENUE" | "ESTIMATED";
+}
+
+export interface SandboxLedgerSummary {
+  executions: number;
+  wins: number;
+  losses: number;
+  grossPnlUsd: string;
+  feesUsd: string;
+  realizedPnlUsd: string;
+  lastEntry?: SandboxLedgerEntry;
 }
 
 export interface SandboxReconciliation {
@@ -196,6 +231,8 @@ export interface ExecutionRuntimeState {
   killSwitchActive: boolean;
   killSwitchReason: string;
   lastReconciliation?: SandboxReconciliation;
+  lastPreflight?: SandboxPreflight;
+  ledger: SandboxLedgerSummary;
   lastReport?: SandboxExecutionReport;
 }
 

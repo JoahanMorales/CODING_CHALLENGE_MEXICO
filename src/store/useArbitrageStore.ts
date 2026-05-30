@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { INITIAL_WALLETS } from "@/lib/config/exchanges";
+import { EXCHANGE_IDS, INITIAL_WALLETS } from "@/lib/config/exchanges";
 import { ArbitrAIKernel } from "@/lib/services/ArbitrAIKernel";
 import type {
   ExchangeId,
@@ -116,6 +116,7 @@ const defaultExecutionRuntime: ExecutionRuntimeState = {
   maxNotionalUsd: "25.00",
   killSwitchActive: false,
   killSwitchReason: "",
+  ledger: { executions: 0, wins: 0, losses: 0, grossPnlUsd: "0.00000000", feesUsd: "0.00000000", realizedPnlUsd: "0.00000000" },
   venues: [
     { exchange: "binance", configured: false, environment: "spot-testnet", lastError: "", balances: [{ asset: "BTC", available: "0", locked: "0" }, { asset: "USDT", available: "0", locked: "0" }] },
     { exchange: "okx", configured: false, environment: "demo-trading", lastError: "", balances: [{ asset: "BTC", available: "0", locked: "0" }, { asset: "USDT", available: "0", locked: "0" }] }
@@ -441,8 +442,7 @@ function updateLivePriceSeries(series: PricePoint[], book: NormalizedOrderBook):
 }
 
 function stateExchangeStatuses(books: NormalizedOrderBook[]): ExchangeConnectionStatus[] {
-  const exchanges: ExchangeId[] = ["binance", "kraken", "coinbase", "okx", "bybit"];
-  return exchanges.map((exchange) => {
+  return EXCHANGE_IDS.map((exchange) => {
     const exchangeBooks = books.filter((book) => book.exchange === exchange);
     const lastMessageAt = exchangeBooks.reduce((latest, book) => Math.max(latest, book.receivedAt), 0);
     return {

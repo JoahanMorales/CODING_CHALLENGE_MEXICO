@@ -7,6 +7,8 @@ export interface ExchangeFeeConfig {
   reliability: number;
 }
 
+export const EXCHANGE_IDS: ExchangeId[] = ["binance", "kraken", "coinbase", "okx", "bybit", "bitfinex", "gate"];
+
 export const EXCHANGE_FEES: Record<ExchangeId, ExchangeFeeConfig> = {
   binance: {
     maker: "0.001",
@@ -37,6 +39,18 @@ export const EXCHANGE_FEES: Record<ExchangeId, ExchangeFeeConfig> = {
     taker: "0.001",
     withdrawalBtc: "0.0002",
     reliability: 0.92
+  },
+  bitfinex: {
+    maker: "0.001",
+    taker: "0.002",
+    withdrawalBtc: "0.0004",
+    reliability: 0.9
+  },
+  gate: {
+    maker: "0.001",
+    taker: "0.001",
+    withdrawalBtc: "0.0002",
+    reliability: 0.89
   }
 };
 
@@ -45,7 +59,9 @@ export const EXCHANGE_LABELS: Record<ExchangeId, string> = {
   kraken: "Kraken",
   coinbase: "Coinbase",
   okx: "OKX",
-  bybit: "Bybit"
+  bybit: "Bybit",
+  bitfinex: "Bitfinex",
+  gate: "Gate"
 };
 
 export const SYMBOLS: SymbolId[] = ["BTC/USDT", "ETH/USDT", "ETH/BTC"];
@@ -57,7 +73,9 @@ export const INITIAL_WALLETS: WalletSeed = {
   kraken: { btc: "1.0", usdt: "70000" },
   coinbase: { btc: "0.5", usdt: "35000" },
   okx: { btc: "0.8", usdt: "56000" },
-  bybit: { btc: "0.8", usdt: "56000" }
+  bybit: { btc: "0.8", usdt: "56000" },
+  bitfinex: { btc: "0.6", usdt: "42000" },
+  gate: { btc: "0.6", usdt: "42000" }
 };
 
 export const EXCHANGE_WS_ENDPOINTS = {
@@ -76,5 +94,11 @@ export const EXCHANGE_WS_ENDPOINTS = {
   },
   bybit: {
     spot: "wss://stream.bybit.com/v5/public/spot"
+  },
+  bitfinex: {
+    public: "wss://api-pub.bitfinex.com/ws/2"
+  },
+  gate: {
+    spot: "wss://api.gateio.ws/ws/v4/"
   }
 } as const;

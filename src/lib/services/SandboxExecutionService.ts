@@ -6,7 +6,10 @@ import type {
   SandboxAssetBalance,
   SandboxExecutionReport,
   SandboxFill,
+  SandboxLedgerEntry,
+  SandboxLedgerSummary,
   SandboxOrderMode,
+  SandboxPreflight,
   SandboxReconciliation,
   SandboxVenueStatus
 } from "../types";
@@ -35,6 +38,9 @@ export class SandboxExecutionService {
   private readonly venues: SandboxVenueStatus[];
   private lastReport: SandboxExecutionReport | undefined;
   private lastReconciliation: SandboxReconciliation | undefined;
+  private lastPreflight: SandboxPreflight | undefined;
+  private readonly ledgerEntries: SandboxLedgerEntry[] = [];
+  private readonly ledgerReportIds = new Set<string>();
   private killSwitchActive = false;
   private killSwitchReason = "";
 
@@ -81,6 +87,8 @@ export class SandboxExecutionService {
       killSwitchActive: this.killSwitchActive,
       killSwitchReason: this.killSwitchReason,
       lastReconciliation: this.lastReconciliation,
+      lastPreflight: this.lastPreflight,
+      ledger: this.ledgerSummary(),
       lastReport: this.lastReport
     };
   }
@@ -89,6 +97,14 @@ export class SandboxExecutionService {
     this.killSwitchActive = active;
     this.killSwitchReason = reason;
     return this.status();
+  }
+
+  restoreLedger(entries: SandboxLedgerEntry[]): void {
+    entries.slice(0, 100).forEach((entry) => {
+      if (this.ledgerReportIds.has(entry.id)) return;
+      this.ledgerEntries.push({ ...entry });
+      this.ledgerReportIds.add(entry.id);
+    });
   }
 
   async refreshBalances(): Promise<ExecutionRuntimeState> {
@@ -134,6 +150,7 @@ export class SandboxExecutionService {
         this.setKillSwitch(true, "Residual BTC exposure requires hedge review.");
       } else {
         this.lastReconciliation = reconciliation("BALANCED", "Both sandbox legs reconcile within BTC tolerance.", fills, residual.toFixed(8));
+        this.recordLedger(fills);
       }
     } catch (error) {
       this.lastReconciliation = reconciliation("FAILED", `Reconciliation failed: ${errorMessage(error)}`, [], "0", "BLOCKED");
@@ -157,6 +174,13 @@ export class SandboxExecutionService {
     if (this.config.orderMode === "DRY_RUN") {
       this.lastReport = this.report(opportunity, "DRY_RUN", "Sandbox DRY_RUN: order payloads planned but not submitted.", legs);
       return this.lastReport;
+    }
+    if (this.config.orderMode === "LIVE_SANDBOX") {
+      this.lastPreflight = await this.preflight(legs);
+      if (this.lastPreflight.status !== "READY") {
+        this.lastReport = this.report(opportunity, "SKIPPED", `Sandbox preflight blocked: ${this.lastPreflight.reason}`, legs);
+        return this.lastReport;
+      }
     }
 
     const submitted: SandboxExecutionReport["legs"] = [];
@@ -321,12 +345,16 @@ export class SandboxExecutionService {
       const payload = await this.binanceSignedGet("/api/v3/order", { symbol: "BTCUSDT", orderId: leg.orderId });
       const quantity = String(payload.executedQty ?? "0");
       const quote = String(payload.cummulativeQuoteQty ?? "0");
-      return fill("binance", leg.orderId, String(payload.status ?? "UNKNOWN"), quantity, quote);
+      const trades = await this.binanceSignedGetArray("/api/v3/myTrades", { symbol: "BTCUSDT", orderId: leg.orderId });
+      const average = d(quantity).greaterThan(0) ? d(quote).div(quantity) : d(0);
+      const venueFee = trades.reduce((sum, trade) => sum.plus(feeUsd(trade.commission, trade.commissionAsset, average)), d(0));
+      return fill("binance", leg.orderId, String(payload.status ?? "UNKNOWN"), quantity, quote, venueFee, trades.length ? "VENUE" : "ESTIMATED");
     }
     const payload = await this.okxSignedGet(`/api/v5/trade/order?instId=BTC-USDT&ordId=${encodeURIComponent(leg.orderId)}`);
     const data = Array.isArray(payload.data) ? payload.data.find(isRecord) : undefined;
     const quantity = String(data?.accFillSz ?? "0");
     const average = String(data?.avgPx ?? "0");
+    const venueFee = feeUsd(data?.fee, data?.feeCcy, d(average || "0"));
     return {
       exchange: "okx",
       orderId: leg.orderId,
@@ -334,6 +362,8 @@ export class SandboxExecutionService {
       filledQuantity: quantity,
       quoteQuantity: d(quantity).mul(average || "0").toFixed(8),
       averagePrice: average,
+      feeUsd: (data?.fee ? venueFee : estimatedFeeUsd("okx", quantity, average)).toFixed(8),
+      feeSource: data?.fee ? "VENUE" : "ESTIMATED",
       fetchedAt: Date.now()
     };
   }
@@ -348,6 +378,18 @@ export class SandboxExecutionService {
     const payload = await jsonRecord(response);
     if (!response.ok) throw new Error(String(payload.msg ?? `Binance ${response.status}`));
     return payload;
+  }
+
+  private async binanceSignedGetArray(path: string, extra: Record<string, string> = {}): Promise<Record<string, unknown>[]> {
+    if (!this.config.binanceApiKey || !this.config.binanceApiSecret) throw new Error("Binance testnet API key missing");
+    const params = new URLSearchParams({ ...extra, recvWindow: "5000", timestamp: String(Date.now()) });
+    params.set("signature", await hmacSha256Hex(this.config.binanceApiSecret, params.toString()));
+    const response = await fetch(`https://testnet.binance.vision${path}?${params.toString()}`, {
+      headers: { "X-MBX-APIKEY": this.config.binanceApiKey }
+    });
+    const payload = (await response.json().catch(() => [])) as unknown;
+    if (!response.ok) throw new Error(isRecord(payload) ? String(payload.msg ?? `Binance ${response.status}`) : `Binance ${response.status}`);
+    return Array.isArray(payload) ? payload.filter(isRecord) : [];
   }
 
   private async okxSignedGet(path: string): Promise<Record<string, unknown>> {
@@ -400,6 +442,67 @@ export class SandboxExecutionService {
   private hasConfiguredVenue(): boolean {
     return this.venues.some((venue) => venue.configured);
   }
+
+  private async preflight(legs: SandboxLeg[]): Promise<SandboxPreflight> {
+    if (legs.length !== 2 || this.venues.some((venue) => !venue.configured)) {
+      return preflight("BLOCKED", "Both Binance Testnet and OKX Demo credentials are required.");
+    }
+    await this.refreshBalances();
+    const buy = legs.find((leg) => leg.side === "BUY");
+    const sell = legs.find((leg) => leg.side === "SELL");
+    if (!buy || !sell) return preflight("BLOCKED", "A buy and sell leg are required.");
+    const buyNotional = d(buy.price).mul(buy.quantity);
+    const buyUsdt = this.balance(buy.exchange, "USDT");
+    const sellBtc = this.balance(sell.exchange, "BTC");
+    if (buyUsdt.lessThan(buyNotional)) return preflight("BLOCKED", `${buy.exchange} USDT balance is below ${buyNotional.toFixed(2)}.`, buyNotional, sell.quantity);
+    if (sellBtc.lessThan(sell.quantity)) return preflight("BLOCKED", `${sell.exchange} BTC balance is below ${sell.quantity}.`, buyNotional, sell.quantity);
+    if (this.venues.some((venue) => venue.lastError.startsWith("Balance refresh:"))) {
+      return preflight("BLOCKED", "Authenticated balance refresh failed.", buyNotional, sell.quantity);
+    }
+    return preflight("READY", "Both prefunded sandbox legs passed balance checks.", buyNotional, sell.quantity);
+  }
+
+  private balance(exchange: "binance" | "okx", asset: "BTC" | "USDT"): Decimal {
+    return d(this.venues.find((venue) => venue.exchange === exchange)?.balances.find((balance) => balance.asset === asset)?.available ?? "0");
+  }
+
+  private recordLedger(fills: SandboxFill[]): void {
+    if (!this.lastReport || this.ledgerReportIds.has(this.lastReport.id)) return;
+    const buy = fills.find((fill) => this.lastReport?.legs.find((leg) => leg.orderId === fill.orderId)?.side === "BUY");
+    const sell = fills.find((fill) => this.lastReport?.legs.find((leg) => leg.orderId === fill.orderId)?.side === "SELL");
+    if (!buy || !sell) return;
+    const gross = d(sell.quoteQuantity).minus(buy.quoteQuantity);
+    const fees = d(buy.feeUsd).plus(sell.feeUsd);
+    const entry: SandboxLedgerEntry = {
+      id: this.lastReport.id,
+      route: this.lastReport.route,
+      recordedAt: Date.now(),
+      quantityBtc: Decimal.min(buy.filledQuantity, sell.filledQuantity).toFixed(8),
+      buyQuoteUsd: d(buy.quoteQuantity).toFixed(8),
+      sellQuoteUsd: d(sell.quoteQuantity).toFixed(8),
+      grossPnlUsd: gross.toFixed(8),
+      feesUsd: fees.toFixed(8),
+      netPnlUsd: gross.minus(fees).toFixed(8),
+      feeSource: buy.feeSource === "VENUE" && sell.feeSource === "VENUE" ? "VENUE" : "ESTIMATED"
+    };
+    this.ledgerEntries.unshift(entry);
+    this.ledgerEntries.splice(100);
+    this.ledgerReportIds.add(this.lastReport.id);
+  }
+
+  private ledgerSummary(): SandboxLedgerSummary {
+    const gross = this.ledgerEntries.reduce((sum, entry) => sum.plus(entry.grossPnlUsd), d(0));
+    const fees = this.ledgerEntries.reduce((sum, entry) => sum.plus(entry.feesUsd), d(0));
+    return {
+      executions: this.ledgerEntries.length,
+      wins: this.ledgerEntries.filter((entry) => d(entry.netPnlUsd).greaterThan(0)).length,
+      losses: this.ledgerEntries.filter((entry) => d(entry.netPnlUsd).lessThan(0)).length,
+      grossPnlUsd: gross.toFixed(8),
+      feesUsd: fees.toFixed(8),
+      realizedPnlUsd: gross.minus(fees).toFixed(8),
+      lastEntry: this.ledgerEntries[0]
+    };
+  }
 }
 
 function emptyBalances(): SandboxAssetBalance[] {
@@ -413,16 +516,54 @@ function assetBalances(input: Array<{ asset: string; available: string; locked: 
   });
 }
 
-function fill(exchange: "binance" | "okx", orderId: string, status: string, quantity: string, quote: string): SandboxFill {
+function fill(
+  exchange: "binance" | "okx",
+  orderId: string,
+  status: string,
+  quantity: string,
+  quote: string,
+  venueFee = d(0),
+  feeSource: SandboxFill["feeSource"] = "ESTIMATED"
+): SandboxFill {
+  const average = d(quantity).greaterThan(0) ? d(quote).div(quantity) : d(0);
   return {
     exchange,
     orderId,
     status,
     filledQuantity: quantity,
     quoteQuantity: quote,
-    averagePrice: d(quantity).greaterThan(0) ? d(quote).div(quantity).toFixed(8) : "0",
+    averagePrice: average.toFixed(8),
+    feeUsd: (feeSource === "VENUE" ? venueFee : estimatedFeeUsd(exchange, quantity, average)).toFixed(8),
+    feeSource,
     fetchedAt: Date.now()
   };
+}
+
+function preflight(
+  status: SandboxPreflight["status"],
+  reason: string,
+  buyNotionalUsd = d(0),
+  sellQuantityBtc = "0"
+): SandboxPreflight {
+  return {
+    checkedAt: Date.now(),
+    status,
+    reason,
+    buyNotionalUsd: d(buyNotionalUsd).toFixed(8),
+    sellQuantityBtc: d(sellQuantityBtc).toFixed(8)
+  };
+}
+
+function estimatedFeeUsd(exchange: "binance" | "okx", quantity: Decimal.Value, averagePrice: Decimal.Value): Decimal {
+  const takerRate = exchange === "binance" ? d("0.001") : d("0.001");
+  return d(quantity).mul(averagePrice).mul(takerRate);
+}
+
+function feeUsd(value: unknown, asset: unknown, averagePrice: Decimal): Decimal {
+  const fee = d(String(value ?? "0")).abs();
+  if (String(asset ?? "").toUpperCase() === "BTC") return fee.mul(averagePrice);
+  if (String(asset ?? "").toUpperCase() === "USDT") return fee;
+  return d(0);
 }
 
 function reconciliation(

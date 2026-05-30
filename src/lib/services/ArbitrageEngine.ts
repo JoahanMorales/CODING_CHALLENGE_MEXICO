@@ -1,4 +1,4 @@
-import { CROSS_EXCHANGE_THRESHOLD_PCT, EXCHANGE_FEES } from "../config/exchanges";
+import { CROSS_EXCHANGE_THRESHOLD_PCT, EXCHANGE_FEES, EXCHANGE_IDS } from "../config/exchanges";
 import { Decimal, d, pct, usd, ZERO } from "../math/decimal";
 import type { ExchangeId, NormalizedOrderBook, Opportunity, SymbolId } from "../types";
 import { EdgeTensor, serializeEdgeTensor } from "./EdgeTensor";
@@ -53,6 +53,14 @@ export class ArbitrageEngine {
       realizedPnlUsd: pnlUsd,
       weight: 0.22
     });
+  }
+
+  exportCalibration() {
+    return this.edgeTensor.exportCalibration();
+  }
+
+  importCalibration(calibration: ReturnType<EdgeTensor["exportCalibration"]>): void {
+    this.edgeTensor.importCalibration(calibration);
   }
 
   private detectCrossExchange(startedAt: number): Opportunity[] {
@@ -205,7 +213,7 @@ export class ArbitrageEngine {
 
   private detectTriangular(startedAt: number): Opportunity[] {
     const opportunities: Opportunity[] = [];
-    (["binance", "kraken", "coinbase", "okx", "bybit"] as ExchangeId[]).forEach((exchange) => {
+    EXCHANGE_IDS.forEach((exchange) => {
       const btcUsdt = this.books.get(bookKey(exchange, "BTC/USDT"));
       const ethUsdt = this.books.get(bookKey(exchange, "ETH/USDT"));
       const ethBtc = this.books.get(bookKey(exchange, "ETH/BTC"));

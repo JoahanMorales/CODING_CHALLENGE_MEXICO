@@ -2,6 +2,8 @@ import http from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import WebSocket, { WebSocketServer } from "ws";
 import { ArbitrAIKernel } from "../src/lib/services/ArbitrAIKernel";
+import { EXCHANGE_IDS } from "../src/lib/config/exchanges";
+import { PersistentJournal } from "./PersistentJournal";
 import type {
   ExchangeConnectionStatus,
   ExchangeId,
@@ -16,12 +18,18 @@ loadLocalEnv();
 
 const port = Number(process.env.WS_PORT ?? process.env.PORT ?? 8080);
 const kernel = new ArbitrAIKernel();
+const journal = new PersistentJournal();
+kernel.engine.importCalibration(journal.loadCalibration());
+kernel.sandboxExecution.restoreLedger(journal.loadSandboxLedger());
 const clients = new Set<WebSocket>();
 let connector: ExchangeConnector | null = null;
 const pendingBookBroadcasts = new Map<string, Extract<GatewayMessage, { type: "BOOK" }>>();
 const pendingRejectedSignals = new Map<string, Extract<GatewayMessage, { type: "OPPORTUNITY" }>>();
 let bookFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let rejectedSignalFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingLearningMessage: Extract<GatewayMessage, { type: "LEARNING" }> | null = null;
+let learningFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let calibrationFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
@@ -31,6 +39,7 @@ const server = http.createServer((req, res) => {
         ok: true,
         service: "arbitrai-gateway",
         time: new Date().toISOString(),
+        journal: journal.summary(),
         exchanges: connector?.statuses() ?? []
       })
     );
@@ -67,6 +76,15 @@ wss.on("connection", (socket) => {
 });
 
 kernel.bus.on("gateway:message", (message) => routeGatewayMessage(message));
+kernel.bus.on("gateway:message", (message) => {
+  journal.record(message);
+  if ((message.type === "LEARNING" || message.type === "TRADE") && !calibrationFlushTimer) {
+    calibrationFlushTimer = setTimeout(() => {
+      journal.saveCalibration(kernel.engine.exportCalibration());
+      calibrationFlushTimer = null;
+    }, 1000);
+  }
+});
 
 function routeGatewayMessage(message: GatewayMessage): void {
   if (message.type === "BOOK") {
@@ -79,7 +97,24 @@ function routeGatewayMessage(message: GatewayMessage): void {
     return;
   }
 
+  if (message.type === "LEARNING") {
+    queueLearningBroadcast(message);
+    return;
+  }
+
   broadcast(message);
+}
+
+function queueLearningBroadcast(message: Extract<GatewayMessage, { type: "LEARNING" }>): void {
+  // Every markout still calibrates AET and reaches the journal. React receives
+  // only the newest summary at a paint-friendly cadence.
+  pendingLearningMessage = message;
+  if (learningFlushTimer) return;
+  learningFlushTimer = setTimeout(() => {
+    if (pendingLearningMessage) broadcast(pendingLearningMessage);
+    pendingLearningMessage = null;
+    learningFlushTimer = null;
+  }, 280);
 }
 
 function queueBookBroadcast(message: Extract<GatewayMessage, { type: "BOOK" }>): void {
@@ -121,12 +156,14 @@ class ExchangeConnector {
   private readonly connectionStatuses = new Map<ExchangeId, ExchangeConnectionStatus>();
   private readonly bybitBids = new Map<string, string>();
   private readonly bybitAsks = new Map<string, string>();
+  private readonly bitfinexBids = new Map<string, string>();
+  private readonly bitfinexAsks = new Map<string, string>();
   private poller: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly appKernel: ArbitrAIKernel) {}
 
   start(): void {
-    (["binance", "kraken", "coinbase", "okx", "bybit"] as ExchangeId[]).forEach((exchange) => {
+    EXCHANGE_IDS.forEach((exchange) => {
       this.connectionStatuses.set(exchange, {
         exchange,
         transport: "websocket",
@@ -142,6 +179,8 @@ class ExchangeConnector {
     this.connectCoinbase();
     this.connectOkx();
     this.connectBybit();
+    this.connectBitfinex();
+    this.connectGate();
     this.poller = setInterval(() => void this.pollRealRestFallback(), 2500);
     setInterval(() => broadcast({ type: "EXCHANGE_STATUS", statuses: this.statuses() }), 1000);
   }
@@ -276,6 +315,68 @@ class ExchangeConnector {
     this.attachReconnect("bybit", socket, () => this.connectBybit());
   }
 
+  private connectBitfinex(): void {
+    this.mark("bitfinex", "websocket", "connecting");
+    const socket = new WebSocket("wss://api-pub.bitfinex.com/ws/2");
+    let channelId = 0;
+    socket.on("open", () => {
+      socket.send(JSON.stringify({ event: "subscribe", channel: "book", symbol: "tBTCUSD", prec: "P0", freq: "F0", len: "25" }));
+    });
+    socket.on("message", (payload) => {
+      const parsed = safeParse(payload.toString());
+      if (isRecord(parsed) && parsed.event === "subscribed" && parsed.channel === "book") {
+        channelId = Number(parsed.chanId ?? 0);
+        return;
+      }
+      if (!Array.isArray(parsed) || Number(parsed[0]) !== channelId || parsed[1] === "hb") return;
+      const updates = Array.isArray(parsed[1]?.[0]) ? parsed[1] : [parsed[1]];
+      updates.filter(Array.isArray).forEach((level: unknown[]) => this.applyBitfinexLevel(level));
+      const bids = sortedLevelsFromMap(this.bitfinexBids, "bid");
+      const asks = sortedLevelsFromMap(this.bitfinexAsks, "ask");
+      if (bids.length && asks.length) {
+        this.appKernel.ingest(makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now()));
+        this.mark("bitfinex", "websocket", "live");
+      }
+    });
+    this.attachReconnect("bitfinex", socket, () => this.connectBitfinex());
+  }
+
+  private connectGate(): void {
+    this.mark("gate", "websocket", "connecting");
+    const socket = new WebSocket("wss://api.gateio.ws/ws/v4/");
+    socket.on("open", () => {
+      socket.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel: "spot.order_book", event: "subscribe", payload: ["BTC_USDT", "5", "100ms"] }));
+    });
+    socket.on("message", (payload) => {
+      const parsed = safeParse(payload.toString());
+      if (!isRecord(parsed) || parsed.channel !== "spot.order_book" || parsed.event !== "update") return;
+      const result = readRecord(parsed, "result");
+      if (!result) return;
+      const bids = levelsFromUnknown(result.bids);
+      const asks = levelsFromUnknown(result.asks);
+      const ts = Number(readStringOrNumber(result, "t") ?? Date.now());
+      if (bids.length && asks.length) {
+        this.appKernel.ingest(makeBook("gate", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+        this.mark("gate", "websocket", "live");
+      }
+    });
+    this.attachReconnect("gate", socket, () => this.connectGate());
+  }
+
+  private applyBitfinexLevel(level: unknown[]): void {
+    const price = String(level[0] ?? "");
+    const count = Number(level[1] ?? 0);
+    const amount = Number(level[2] ?? 0);
+    if (!price) return;
+    if (count === 0) {
+      this.bitfinexBids.delete(price);
+      this.bitfinexAsks.delete(price);
+      return;
+    }
+    if (amount > 0) this.bitfinexBids.set(price, String(amount));
+    if (amount < 0) this.bitfinexAsks.set(price, String(Math.abs(amount)));
+  }
+
   private applyBybitLevels(target: Map<string, string>, levels: Array<[string, string]>, reset: boolean): void {
     if (reset) target.clear();
     levels.forEach(([price, size]) => {
@@ -299,7 +400,7 @@ class ExchangeConnector {
   }
 
   private async pollRealRestFallback(): Promise<void> {
-    await Promise.allSettled([this.pollBinanceDepth(), this.pollKrakenDepth(), this.pollCoinbaseBook(), this.pollOkxBook(), this.pollBybitBook()]);
+    await Promise.allSettled([this.pollBinanceDepth(), this.pollKrakenDepth(), this.pollCoinbaseBook(), this.pollOkxBook(), this.pollBybitBook(), this.pollBitfinexBook(), this.pollGateBook()]);
   }
 
   private async pollBinanceDepth(): Promise<void> {
@@ -378,6 +479,31 @@ class ExchangeConnector {
     if (bids.length && asks.length) {
       this.appKernel.ingest(makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
       this.mark("bybit", "rest-polling", "polling");
+    }
+  }
+
+  private async pollBitfinexBook(): Promise<void> {
+    const response = await fetch("https://api-pub.bitfinex.com/v2/book/tBTCUSD/P0?len=25");
+    const payload = (await response.json()) as unknown;
+    if (!Array.isArray(payload)) return;
+    payload.filter(Array.isArray).forEach((level) => this.applyBitfinexLevel(level));
+    const bids = sortedLevelsFromMap(this.bitfinexBids, "bid");
+    const asks = sortedLevelsFromMap(this.bitfinexAsks, "ask");
+    if (bids.length && asks.length) {
+      this.appKernel.ingest(makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now()));
+      this.mark("bitfinex", "rest-polling", "polling");
+    }
+  }
+
+  private async pollGateBook(): Promise<void> {
+    const response = await fetch("https://api.gateio.ws/api/v4/spot/order_book?currency_pair=BTC_USDT&limit=5");
+    const payload = (await response.json()) as unknown;
+    if (!isRecord(payload)) return;
+    const bids = levelsFromUnknown(payload.bids);
+    const asks = levelsFromUnknown(payload.asks);
+    if (bids.length && asks.length) {
+      this.appKernel.ingest(makeBook("gate", "BTC/USDT", bids, asks, Date.now()));
+      this.mark("gate", "rest-polling", "polling");
     }
   }
 

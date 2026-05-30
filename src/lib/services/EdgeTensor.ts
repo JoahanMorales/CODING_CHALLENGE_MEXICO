@@ -4,12 +4,13 @@ import { midPrice, topAsk, topBid } from "./feeMath";
 
 interface VenueState {
   ewmaOfi: number;
+  ewmaMultiLevelOfi: number;
   ewmaVolatilityBps: number;
   lastBook?: NormalizedOrderBook;
   lastMid?: Decimal;
 }
 
-interface RouteCalibration {
+export interface RouteCalibration {
   bias: number;
   observations: number;
 }
@@ -53,6 +54,7 @@ export class EdgeTensor {
     const key = stateKey(book.exchange);
     const state = this.venueStates.get(key) ?? {
       ewmaOfi: 0,
+      ewmaMultiLevelOfi: 0,
       ewmaVolatilityBps: 0
     };
     const previous = state.lastBook;
@@ -61,6 +63,7 @@ export class EdgeTensor {
     if (previous) {
       const ofi = normalizedOrderFlowImbalance(previous, book);
       state.ewmaOfi = ewma(state.ewmaOfi, ofi, 0.22);
+      state.ewmaMultiLevelOfi = ewma(state.ewmaMultiLevelOfi, normalizedMultiLevelOfi(previous, book), 0.18);
     }
 
     if (mid && state.lastMid && state.lastMid.greaterThan(0)) {
@@ -82,13 +85,18 @@ export class EdgeTensor {
     const sellImbalance = bookImbalance(input.sellBook);
     const buyOfi = buyState?.ewmaOfi ?? 0;
     const sellOfi = sellState?.ewmaOfi ?? 0;
+    const buyMultiLevelOfi = buyState?.ewmaMultiLevelOfi ?? 0;
+    const sellMultiLevelOfi = sellState?.ewmaMultiLevelOfi ?? 0;
     const volatilityBps = ((buyState?.ewmaVolatilityBps ?? 0) + (sellState?.ewmaVolatilityBps ?? 0)) / 2;
     const netEdgeBps = input.netSpreadPct.mul(10000).toNumber();
     const liquidityScore = liquidityDepthScore(input.buyBook, input.sellBook, input.quantityBtc);
 
     // Cross-venue arbitrage survives better when the buy venue shows sell pressure
     // and the sell venue shows buy pressure. OFI reacts faster than mid-price.
-    const pressureAlignment = sigmoid((-buyOfi + sellOfi) * 1.35);
+    // Cont/Kukanov/Stoikov show that OFI scales inversely with market depth.
+    // Xu/Gould/Howison extend that intuition deeper into the book. The blend
+    // reacts quickly at the touch while rejecting edges contradicted by depth.
+    const pressureAlignment = sigmoid(((-buyOfi + sellOfi) * 0.72 + (-buyMultiLevelOfi + sellMultiLevelOfi) * 0.58) * 1.35);
     const micropriceAlignment = sigmoid((-buySkew + sellSkew) / 3.2);
     const depthAlignment = sigmoid((-buyImbalance + sellImbalance) * 1.15);
     const alignment = pressureAlignment * 0.48 + micropriceAlignment * 0.34 + depthAlignment * 0.18;
@@ -150,6 +158,20 @@ export class EdgeTensor {
       observations: current.observations + weight
     });
   }
+
+  exportCalibration(): Record<string, RouteCalibration> {
+    return Object.fromEntries([...this.routeCalibration.entries()].map(([route, calibration]) => [route, { ...calibration }]));
+  }
+
+  importCalibration(calibration: Record<string, RouteCalibration>): void {
+    Object.entries(calibration).forEach(([route, value]) => {
+      if (!Number.isFinite(value.bias) || !Number.isFinite(value.observations)) return;
+      this.routeCalibration.set(route, {
+        bias: Math.max(-0.16, Math.min(0.16, value.bias)),
+        observations: Math.max(0, value.observations)
+      });
+    });
+  }
 }
 
 export function serializeEdgeTensor(signal: EdgeTensorSignal) {
@@ -186,6 +208,24 @@ function normalizedOrderFlowImbalance(previous: NormalizedOrderBook, current: No
       : prevAsk.size.minus(currAsk.size);
   const depth = currBid.size.plus(currAsk.size).plus(prevBid.size).plus(prevAsk.size);
   return depth.greaterThan(0) ? bidContribution.plus(askContribution).div(depth).toNumber() : 0;
+}
+
+function normalizedMultiLevelOfi(previous: NormalizedOrderBook, current: NormalizedOrderBook): number {
+  let weightedFlow = d(0);
+  let weightedDepth = d(0);
+  for (let index = 0; index < 5; index += 1) {
+    const weight = d(1).div(index + 1);
+    const previousBid = previous.bids[index];
+    const currentBid = current.bids[index];
+    const previousAsk = previous.asks[index];
+    const currentAsk = current.asks[index];
+    if (!previousBid || !currentBid || !previousAsk || !currentAsk) continue;
+    const bidDelta = d(currentBid.size).minus(previousBid.size);
+    const askDelta = d(previousAsk.size).minus(currentAsk.size);
+    weightedFlow = weightedFlow.plus(bidDelta.plus(askDelta).mul(weight));
+    weightedDepth = weightedDepth.plus(d(currentBid.size).plus(currentAsk.size).mul(weight));
+  }
+  return weightedDepth.greaterThan(0) ? weightedFlow.div(weightedDepth).toNumber() : 0;
 }
 
 function bookImbalance(book: NormalizedOrderBook): number {

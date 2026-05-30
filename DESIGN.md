@@ -208,6 +208,8 @@ Must show:
 - authenticated BTC/USDT balances per sandbox venue;
 - sandbox kill switch state;
 - latest reconciliation state, residual BTC, and hedge action.
+- realized sandbox P&L, demo fill count, and demo fees separated from paper P&L;
+- latest authenticated preflight state.
 
 Design rule: arming sandbox should feel deliberate and controlled, not like a game button.
 
@@ -216,6 +218,16 @@ Operational controls:
 - `REFRESH FUNDS`: fetch authenticated balances from Binance Spot Testnet and OKX Demo.
 - `RECONCILE`: label validation-only runs or compare both demo fills after `LIVE_SANDBOX`.
 - `KILL SWITCH`: stop sandbox submission independently from the quantitative circuit breaker.
+
+### Progressive Disclosure
+
+The default viewport should answer three questions quickly:
+
+1. Is market data healthy?
+2. Is there an executable edge?
+3. Did authenticated sandbox execution realize P&L?
+
+Keep secondary depth ladders and wallet allocations behind native disclosure controls. Traders can inspect them without forcing judges to parse every row at once.
 
 ## 6. Interaction Rules
 

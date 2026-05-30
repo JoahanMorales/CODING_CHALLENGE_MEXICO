@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { EXCHANGE_LABELS } from "@/lib/config/exchanges";
+import { EXCHANGE_IDS, EXCHANGE_LABELS } from "@/lib/config/exchanges";
 import type {
   ExchangeConnectionStatus,
   ExchangeId,
@@ -32,7 +32,7 @@ import type {
 } from "@/lib/types";
 import { btcBookKey, useArbitrageStore } from "@/store/useArbitrageStore";
 
-const exchanges: ExchangeId[] = ["binance", "kraken", "coinbase", "okx", "bybit"];
+const exchanges: ExchangeId[] = EXCHANGE_IDS;
 const opportunityTypes: OpportunityType[] = ["CROSS_EXCHANGE", "STAT_ARB", "TRIANGULAR"];
 
 const strategyLabel: Record<OpportunityType, string> = {
@@ -244,18 +244,18 @@ function SystemHealth({
         <HealthStat label="Losses" value={`${risk.consecutiveLosses}/3`} tone={risk.consecutiveLosses ? "amber" : "emerald"} />
       </div>
 
-      <div className="mt-3 grid gap-2">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {exchanges.map((exchange) => {
           const status = statuses.find((item) => item.exchange === exchange);
           const age = status?.lastMessageAt ? Math.max(0, Date.now() - status.lastMessageAt) : 0;
           return (
-            <div key={exchange} className="flex items-center justify-between rounded-lg border border-white/80 bg-white/75 px-3 py-2">
+            <div key={exchange} className="flex items-center justify-between rounded-lg border border-white/80 bg-white/75 px-2 py-2">
               <div className="flex items-center gap-2">
               <span className={`h-2 w-2 rounded-full ${statusDot(status?.status)}`} />
               <span className="text-xs font-black uppercase text-zinc-700">{EXCHANGE_LABELS[exchange]}</span>
             </div>
-              <span className="font-mono text-[10px] font-semibold text-zinc-500">
-                R{status?.reliabilityScore ?? 55} / {status?.transport ?? "local"} / {status?.lastMessageAt ? `${age}ms` : "--"}
+              <span className="font-mono text-[9px] font-semibold text-zinc-500">
+                R{status?.reliabilityScore ?? 55} / {status?.lastMessageAt ? formatAge(age) : "--"}
               </span>
             </div>
           );
@@ -354,10 +354,13 @@ function MarketCard({
         <PriceTile label="Spread" tone="sky" value={`${spread}%`} />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <DepthSide levels={book?.bids ?? []} side="bid" title="Bid depth" />
-        <DepthSide levels={book?.asks ?? []} side="ask" title="Ask depth" />
-      </div>
+      <details className="mt-2">
+        <summary className="cursor-pointer font-mono text-[10px] font-black uppercase text-sky-700">Depth ladder</summary>
+        <div className="mt-2 grid grid-cols-2 gap-3">
+          <DepthSide levels={book?.bids ?? []} side="bid" title="Bid depth" />
+          <DepthSide levels={book?.asks ?? []} side="ask" title="Ask depth" />
+        </div>
+      </details>
     </article>
   );
 }
@@ -384,6 +387,8 @@ function PriceChartPanel({ marketDrift, priceSeries }: { marketDrift: number; pr
             <Line type="monotone" dataKey="coinbase" stroke="#f59e0b" dot={false} strokeWidth={2} />
             <Line type="monotone" dataKey="okx" stroke="#8b5cf6" dot={false} strokeWidth={2} />
             <Line type="monotone" dataKey="bybit" stroke="#ec4899" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="bitfinex" stroke="#64748b" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="gate" stroke="#14b8a6" dot={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -695,6 +700,11 @@ function ExecutionPanel({
             </span>
           </div>
         )}
+        <div className="mt-2 grid grid-cols-3 gap-2 border-t border-sky-100 pt-2">
+          <TinyMetric label="Sandbox Realized" value={`$${Number(runtime.ledger.realizedPnlUsd).toFixed(4)}`} tone={Number(runtime.ledger.realizedPnlUsd) >= 0 ? "emerald" : "rose"} />
+          <TinyMetric label="Demo Fills" value={String(runtime.ledger.executions)} tone="sky" />
+          <TinyMetric label="Demo Fees" value={`$${Number(runtime.ledger.feesUsd).toFixed(4)}`} tone="amber" />
+        </div>
         <div className="mt-2 grid gap-2 border-t border-sky-100 pt-2 sm:grid-cols-2">
           {runtime.venues.map((venue) => {
             const btc = venue.balances.find((balance) => balance.asset === "BTC");
@@ -734,6 +744,11 @@ function ExecutionPanel({
         {runtime.lastReconciliation && (
           <div className="mt-2 truncate font-mono text-[9px] font-bold text-zinc-500">
             REC {runtime.lastReconciliation.status} / residual {runtime.lastReconciliation.residualBtc} BTC / hedge {runtime.lastReconciliation.hedgeAction}
+          </div>
+        )}
+        {runtime.lastPreflight && (
+          <div className={`mt-1 truncate font-mono text-[9px] font-bold ${runtime.lastPreflight.status === "READY" ? "text-emerald-700" : "text-rose-700"}`}>
+            PREFLIGHT {runtime.lastPreflight.status} / {runtime.lastPreflight.reason}
           </div>
         )}
       </div>
@@ -799,11 +814,14 @@ function WalletPanel({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2">
-        {wallets.map((wallet) => (
-          <WalletRow key={wallet.exchange} wallet={wallet} />
-        ))}
-      </div>
+      <details className="mt-3">
+        <summary className="cursor-pointer font-mono text-[10px] font-black uppercase text-sky-700">Wallet allocation details</summary>
+        <div className="mt-2 grid gap-2">
+          {wallets.map((wallet) => (
+            <WalletRow key={wallet.exchange} wallet={wallet} />
+          ))}
+        </div>
+      </details>
 
       {mode === "DEMO" && (
         <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
