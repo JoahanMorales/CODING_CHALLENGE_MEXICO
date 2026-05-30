@@ -70,6 +70,8 @@ The frontend defaults to:
 NEXT_PUBLIC_WS_URL=ws://localhost:8080
 ```
 
+The local WebSocket gateway loads `.env` on startup without overriding environment variables already injected by the hosting platform.
+
 ## Live vs Demo
 
 | Mode | Data Source | Execution | Purpose |

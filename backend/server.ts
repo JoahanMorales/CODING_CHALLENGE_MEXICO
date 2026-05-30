@@ -1,4 +1,5 @@
 import http from "node:http";
+import { existsSync, readFileSync } from "node:fs";
 import WebSocket, { WebSocketServer } from "ws";
 import { ArbitrAIKernel } from "../src/lib/services/ArbitrAIKernel";
 import type {
@@ -10,6 +11,8 @@ import type {
   OrderBookLevel,
   SymbolId
 } from "../src/lib/types";
+
+loadLocalEnv();
 
 const port = Number(process.env.WS_PORT ?? process.env.PORT ?? 8080);
 const kernel = new ArbitrAIKernel();
@@ -487,6 +490,21 @@ function readStringOrNumber(source: unknown, key: string): string | null {
   if (!isRecord(source)) return null;
   const value = source[key];
   return typeof value === "string" || typeof value === "number" ? String(value) : null;
+}
+
+function loadLocalEnv(): void {
+  if (!existsSync(".env")) return;
+  readFileSync(".env", "utf8")
+    .split(/\r?\n/)
+    .forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const separator = trimmed.indexOf("=");
+      if (separator <= 0) return;
+      const key = trimmed.slice(0, separator).trim();
+      const value = trimmed.slice(separator + 1).trim().replace(/^(['"])(.*)\1$/, "$2");
+      if (process.env[key] === undefined) process.env[key] = value;
+    });
 }
 
 server.listen(port, () => {
