@@ -5,6 +5,11 @@
 </p>
 
 <p align="center">
+  Built by <a href="https://github.com/JoahanMorales">JoahanMorales</a> ·
+  <a href="https://www.linkedin.com/in/joahan-morales/">LinkedIn</a>
+</p>
+
+<p align="center">
   <a href="#quick-start">Quick Start</a> |
   <a href="#innovation-ledger">Innovation Ledger</a> |
   <a href="#architecture">Architecture</a> |

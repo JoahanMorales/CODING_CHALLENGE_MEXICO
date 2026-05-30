@@ -19,9 +19,9 @@ export function AetFlowCanvas({ detailed = false }: { detailed?: boolean }) {
     const draw = () => {
       const rect = canvas.getBoundingClientRect();
       const scale = window.devicePixelRatio || 1;
-      if (canvas.width !== rect.width * scale || canvas.height !== rect.height * scale) {
-        canvas.width = rect.width * scale;
-        canvas.height = rect.height * scale;
+      if (canvas.width !== Math.round(rect.width * scale) || canvas.height !== Math.round(rect.height * scale)) {
+        canvas.width = Math.round(rect.width * scale);
+        canvas.height = Math.round(rect.height * scale);
       }
       context.setTransform(scale, 0, 0, scale, 0, 0);
       context.clearRect(0, 0, rect.width, rect.height);
@@ -34,73 +34,101 @@ export function AetFlowCanvas({ detailed = false }: { detailed?: boolean }) {
     return () => window.cancelAnimationFrame(animationFrame);
   }, [detailed]);
 
-  return <canvas aria-label="Flujo visual determinístico del ArbitrAI Edge Tensor" className="h-full w-full" ref={canvasRef} />;
+  return <canvas aria-label="Flujo visual del ArbitrAI Edge Tensor" className="h-full w-full" ref={canvasRef} />;
 }
 
 function drawFlow(context: CanvasRenderingContext2D, width: number, height: number, frame: number, detailed: boolean): void {
-  const tensorX = width * 0.52;
-  const tensorY = height * 0.5;
-  const executionX = width * 0.88;
-  const radius = Math.max(5, Math.min(8, width / 110));
-  const routeStart = width * 0.09;
+  const compact = width < 620;
+  const routeStart = compact ? 22 : width * 0.06;
+  const normalizeX = compact ? width * 0.31 : width * 0.29;
+  const tensorX = compact ? width * 0.59 : width * 0.56;
+  const executionX = compact ? width * 0.84 : width * 0.84;
+  const centerY = detailed ? height * 0.42 : height * 0.5;
+  const top = detailed ? 34 : 26;
+  const bottom = detailed ? height - 104 : height - 28;
+  const radius = compact ? 4 : 5;
 
-  context.lineWidth = 1;
+  drawGrid(context, width, height);
+  drawStage(context, normalizeX, centerY, compact ? 64 : 82, compact ? 60 : 76, "#F0F9FF", "#7DD3FC", "NORMALIZA", "top 5");
+  drawStage(context, tensorX, centerY, compact ? 72 : 96, compact ? 74 : 88, "#ECFDF5", "#6EE7B7", "AET", "72% surv.");
+  drawStage(context, executionX, centerY, compact ? 62 : 84, compact ? 60 : 76, "#FFF7ED", "#FDBA74", "COLA", "score");
+
   venues.forEach((venue, index) => {
-    const y = 28 + index * ((height - 56) / (venues.length - 1));
+    const y = top + index * ((bottom - top) / (venues.length - 1));
     const selected = index === 1 || index === 4;
-    context.strokeStyle = selected ? "rgba(14, 165, 233, 0.55)" : "rgba(148, 163, 184, 0.28)";
-    context.beginPath();
-    context.moveTo(routeStart + radius, y);
-    context.lineTo(tensorX - 46, tensorY);
-    context.stroke();
-    drawDot(context, routeStart, y, radius, selected ? "#0ea5e9" : "#94a3b8");
-    context.fillStyle = selected ? "#0369a1" : "#64748b";
-    context.font = "700 10px ui-monospace, SFMono-Regular, monospace";
-    context.fillText(venue, routeStart + 14, y + 4);
-    drawPulse(context, routeStart + radius, y, tensorX - 48, tensorY, frame + index * 17, selected ? "#0ea5e9" : "#cbd5e1");
+    drawLine(context, routeStart + radius, y, normalizeX - (compact ? 33 : 43), centerY, selected ? "rgba(14,165,233,0.58)" : "rgba(148,163,184,0.25)");
+    drawDot(context, routeStart, y, radius, selected ? "#0EA5E9" : "#CBD5E1");
+    if (!compact || index % 2 === 0) {
+      context.fillStyle = selected ? "#0369A1" : "#64748B";
+      context.font = `${selected ? 800 : 700} ${compact ? 8 : 9}px ui-monospace, SFMono-Regular, monospace`;
+      context.fillText(venue, routeStart + 10, y + 3);
+    }
+    drawPulse(context, routeStart + radius, y, normalizeX - (compact ? 34 : 44), centerY, frame + index * 17, selected ? "#0EA5E9" : "#CBD5E1");
   });
 
-  context.fillStyle = "rgba(224, 242, 254, 0.94)";
-  context.strokeStyle = "#7dd3fc";
-  roundedRect(context, tensorX - 46, tensorY - 46, 92, 92, 18);
+  drawLine(context, normalizeX + (compact ? 33 : 43), centerY, tensorX - (compact ? 37 : 49), centerY, "rgba(14,165,233,0.64)", 2);
+  drawPulse(context, normalizeX + 34, centerY, tensorX - 39, centerY, frame + 26, "#0EA5E9");
+  drawLine(context, tensorX + (compact ? 37 : 49), centerY, executionX - (compact ? 32 : 44), centerY, "rgba(16,185,129,0.72)", 2);
+  drawPulse(context, tensorX + 39, centerY, executionX - 34, centerY, frame + 52, "#10B981");
+
+  if (detailed) {
+    const labels = compact
+      ? [["MLOFI", "#E0F2FE", "#075985"], ["COSTOS", "#FEF3C7", "#92400E"], ["RIESGO", "#FFE4E6", "#BE123C"]]
+      : [["MLOFI TOP-5", "#E0F2FE", "#075985"], ["MICROPRICE", "#E0F2FE", "#075985"], ["COSTOS", "#FEF3C7", "#92400E"], ["LATENCIA", "#FEF3C7", "#92400E"], ["RIESGO", "#FFE4E6", "#BE123C"]];
+    const gap = compact ? 6 : 8;
+    const boxWidth = compact ? 64 : 82;
+    const totalWidth = labels.length * boxWidth + (labels.length - 1) * gap;
+    const startX = Math.max(10, (width - totalWidth) / 2);
+    labels.forEach(([label, fill, text], index) => {
+      const x = startX + index * (boxWidth + gap);
+      const y = height - 54;
+      context.fillStyle = fill;
+      context.strokeStyle = text;
+      roundedRect(context, x, y, boxWidth, 24, 7);
+      context.fill();
+      context.globalAlpha = 0.34;
+      context.stroke();
+      context.globalAlpha = 1;
+      context.fillStyle = text;
+      context.font = `800 ${compact ? 7 : 8}px ui-monospace, SFMono-Regular, monospace`;
+      context.textAlign = "center";
+      context.fillText(label, x + boxWidth / 2, y + 15);
+    });
+    context.textAlign = "start";
+  }
+}
+
+function drawGrid(context: CanvasRenderingContext2D, width: number, height: number): void {
+  context.strokeStyle = "rgba(186,230,253,0.25)";
+  context.lineWidth = 1;
+  for (let x = 0; x < width; x += 32) drawLine(context, x, 0, x, height, context.strokeStyle);
+  for (let y = 0; y < height; y += 32) drawLine(context, 0, y, width, y, context.strokeStyle);
+}
+
+function drawStage(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, fill: string, stroke: string, title: string, value: string): void {
+  context.fillStyle = fill;
+  context.strokeStyle = stroke;
+  context.lineWidth = 1.4;
+  roundedRect(context, x - width / 2, y - height / 2, width, height, 16);
   context.fill();
   context.stroke();
-  context.fillStyle = "#075985";
-  context.font = "900 17px ui-sans-serif, system-ui";
   context.textAlign = "center";
-  context.fillText("AET", tensorX, tensorY - 5);
-  context.font = "800 9px ui-monospace, SFMono-Regular, monospace";
-  context.fillText("SURVIVAL 72%", tensorX, tensorY + 15);
+  context.fillStyle = "#0F172A";
+  context.font = `900 ${width < 80 ? 9 : 11}px ui-sans-serif, system-ui`;
+  context.fillText(title, x, y - 4);
+  context.fillStyle = "#0369A1";
+  context.font = `800 ${width < 80 ? 8 : 9}px ui-monospace, SFMono-Regular, monospace`;
+  context.fillText(value, x, y + 14);
   context.textAlign = "start";
+}
 
-  context.strokeStyle = "rgba(16, 185, 129, 0.7)";
-  context.lineWidth = 2;
+function drawLine(context: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string, width = 1): void {
+  context.strokeStyle = color;
+  context.lineWidth = width;
   context.beginPath();
-  context.moveTo(tensorX + 46, tensorY);
-  context.lineTo(executionX - 18, tensorY);
+  context.moveTo(x1, y1);
+  context.lineTo(x2, y2);
   context.stroke();
-  drawPulse(context, tensorX + 46, tensorY, executionX - 20, tensorY, frame + 35, "#10b981");
-  drawDot(context, executionX, tensorY, radius + 3, "#10b981");
-  context.fillStyle = "#047857";
-  context.font = "900 10px ui-monospace, SFMono-Regular, monospace";
-  context.fillText("EXEC", executionX + 16, tensorY + 4);
-
-  if (!detailed) return;
-  const labels = ["MLOFI", "MICROPRICE", "COSTS", "LATENCY", "IMPACT"];
-  labels.forEach((label, index) => {
-    const x = tensorX - 118 + index * 58;
-    const y = tensorY + 88;
-    context.fillStyle = index < 3 ? "#e0f2fe" : "#fef3c7";
-    context.strokeStyle = index < 3 ? "#bae6fd" : "#fde68a";
-    roundedRect(context, x, y, 50, 22, 7);
-    context.fill();
-    context.stroke();
-    context.fillStyle = index < 3 ? "#075985" : "#92400e";
-    context.font = "800 7px ui-monospace, SFMono-Regular, monospace";
-    context.textAlign = "center";
-    context.fillText(label, x + 25, y + 14);
-  });
-  context.textAlign = "start";
 }
 
 function drawDot(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string): void {

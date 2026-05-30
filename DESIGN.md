@@ -53,9 +53,17 @@ Rules:
 - Use monospace only for data, status codes, route tags, and numbers.
 - Avoid oversized hero typography inside the app.
 
+## 3.1 Language
+
+- Public UI copy is Spanish.
+- Keep quant terms only when they are standard and useful: `bid`, `ask`, `spread`, `score`, `paper P&L`, `TEST_ORDER`, `MLOFI`, `microprice`, and `Shadow Learning`.
+- Explain specialized terms on the Intelligence page instead of translating them literally or mixing languages casually.
+- Operational status codes may remain uppercase when they map directly to backend state.
+
 ## 4. Layout Principles
 
 - Public navigation uses four routes: `Inicio`, `Terminal`, `Inteligencia`, and `Resultados`.
+- The active route must always be highlighted. Terminal keeps the same shared navigation as the editorial pages.
 - Landing and intelligence pages stay editorial and calm; only `/terminal` opens the market WebSocket.
 - One-screen command center with three vertical work areas:
   - left: system and market data;

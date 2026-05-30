@@ -1,13 +1,13 @@
 import { AetFlowCanvas } from "@/components/AetFlowCanvas";
+import { AetPipelineDiagram } from "@/components/AetPipelineDiagram";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
 
-const layers = [
-  ["01", "Normalize", "Siete order books llegan a un esquema común BTC/USDT con top-5 depth y timestamp de recepción."],
-  ["02", "Measure", "MLOFI, microprice skew, fragmentación y EWMA de volatilidad describen presión local y riesgo de selección adversa."],
-  ["03", "Price", "Fees maker/taker, retiro amortizado, slippage, latencia e impacto convierten el spread visible en edge neto."],
-  ["04", "Survive", "AET estima si la ventaja persistirá durante ambas piernas y reduce tamaño cuando la profundidad no acompaña."],
-  ["05", "Learn", "Markouts de 500ms, 2s y 5s actualizan una calibración por ruta incluso cuando una señal fue rechazada."]
+const formulas = [
+  ["MLOFI", "Σ peso(nivel) × Δ profundidad", "Mide cómo cambia la presión compradora y vendedora en los primeros cinco niveles del libro."],
+  ["Microprice", "(ask × volumen bid + bid × volumen ask) / volumen total", "Ajusta el precio medio con el desequilibrio visible en la punta del libro."],
+  ["Beneficio neto", "ingreso venta - costo compra - fees - slippage - red", "Evita ejecutar spreads atractivos que dejan de ser rentables después de costos."],
+  ["Supervivencia AET", "sigmoid(edge - selección adversa - latencia - impacto)", "Estima si la oportunidad seguirá existiendo al completar ambas piernas."]
 ];
 
 export default function IntelligencePage() {
@@ -16,15 +16,18 @@ export default function IntelligencePage() {
       <PublicSiteHeader />
       <section className="border-b border-sky-100 px-5 py-12">
         <div className="mx-auto max-w-7xl">
-          <p className="font-mono text-[10px] font-black uppercase text-sky-700">Inteligencia explicable</p>
+          <p className="font-mono text-[10px] font-black uppercase text-sky-700">Modelo cuantitativo explicable</p>
           <div className="mt-4 grid gap-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-center">
             <div>
               <h1 className="text-4xl font-black leading-tight text-zinc-950 sm:text-6xl">ArbitrAI Edge Tensor</h1>
               <p className="mt-4 max-w-xl text-base font-semibold leading-7 text-zinc-600">
-                El modelo no pregunta únicamente si un bid supera un ask. Pregunta si el edge sobrevivirá costos, latencia y presión del libro el tiempo suficiente para ejecutar ambas piernas.
+                Un spread visible no basta. AET calcula si la diferencia de precio conserva valor después de comisiones, deslizamiento, latencia, profundidad disponible y riesgo de que el libro se mueva en contra.
+              </p>
+              <p className="mt-3 max-w-xl text-sm font-semibold leading-6 text-zinc-500">
+                El resultado es una decisión trazable: ejecutar, reducir tamaño, observar o descartar.
               </p>
             </div>
-            <div className="h-[360px] overflow-hidden rounded-3xl border border-sky-100 bg-white shadow-lg shadow-sky-100/70">
+            <div className="h-[340px] overflow-hidden rounded-3xl border border-sky-100 bg-white shadow-lg shadow-sky-100/70 sm:h-[420px]">
               <AetFlowCanvas detailed />
             </div>
           </div>
@@ -33,39 +36,55 @@ export default function IntelligencePage() {
 
       <section className="px-5 py-12">
         <div className="mx-auto max-w-7xl">
-          <div className="grid gap-3">
-            {layers.map(([number, title, copy]) => (
-              <article className="grid gap-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:grid-cols-[72px_170px_1fr] sm:items-center" key={number}>
-                <span className="font-mono text-2xl font-black text-sky-600">{number}</span>
-                <h2 className="text-lg font-black text-zinc-950">{title}</h2>
-                <p className="text-sm font-semibold leading-6 text-zinc-500">{copy}</p>
-              </article>
-            ))}
+          <p className="font-mono text-[10px] font-black uppercase text-sky-700">Pipeline completo</p>
+          <h2 className="mt-2 max-w-3xl text-3xl font-black text-zinc-950">De siete libros de órdenes a una ejecución priorizada</h2>
+          <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-zinc-500">
+            Cada bloque tiene una responsabilidad acotada. El motor procesa todos los eventos; la interfaz recibe una versión resumida para mantenerse fluida.
+          </p>
+          <div className="mt-6">
+            <AetPipelineDiagram />
           </div>
         </div>
       </section>
 
       <section className="border-y border-sky-100 bg-white px-5 py-12">
         <div className="mx-auto max-w-7xl">
-          <p className="font-mono text-[10px] font-black uppercase text-sky-700">Waterfall económico</p>
-          <h2 className="mt-2 text-3xl font-black text-zinc-950">Del spread bruto al edge ejecutable</h2>
-          <div className="mt-6 grid gap-3 md:grid-cols-5">
-            <Waterfall label="Spread bruto" value="+18.4 bps" tone="sky" />
-            <Waterfall label="Fees" value="-10.0 bps" tone="rose" />
-            <Waterfall label="Slippage" value="-2.3 bps" tone="amber" />
-            <Waterfall label="Adverse selection" value="-1.8 bps" tone="amber" />
-            <Waterfall label="Edge neto" value="+4.3 bps" tone="emerald" />
+          <p className="font-mono text-[10px] font-black uppercase text-sky-700">Núcleo matemático</p>
+          <h2 className="mt-2 text-3xl font-black text-zinc-950">Variables observables, decisiones auditables</h2>
+          <div className="mt-6 grid gap-3 lg:grid-cols-2">
+            {formulas.map(([name, formula, explanation]) => (
+              <article className="rounded-2xl border border-zinc-200 bg-[#fbfdff] p-5" key={name}>
+                <h3 className="text-lg font-black text-zinc-950">{name}</h3>
+                <code className="mt-3 block overflow-x-auto rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 font-mono text-xs font-black text-sky-800">{formula}</code>
+                <p className="mt-3 text-sm font-semibold leading-6 text-zinc-500">{explanation}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
 
       <section className="px-5 py-12">
         <div className="mx-auto max-w-7xl">
+          <p className="font-mono text-[10px] font-black uppercase text-sky-700">Waterfall económico</p>
+          <h2 className="mt-2 text-3xl font-black text-zinc-950">Del spread bruto al beneficio ejecutable</h2>
+          <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-zinc-500">Ejemplo ilustrativo medido en puntos base: un punto base equivale a 0.01%.</p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <Waterfall label="Spread bruto" value="+18.4 bps" tone="sky" />
+            <Waterfall label="Comisiones" value="-10.0 bps" tone="rose" />
+            <Waterfall label="Deslizamiento" value="-2.3 bps" tone="amber" />
+            <Waterfall label="Selección adversa" value="-1.8 bps" tone="amber" />
+            <Waterfall label="Edge neto" value="+4.3 bps" tone="emerald" />
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-sky-100 bg-white px-5 py-12">
+        <div className="mx-auto max-w-7xl">
           <p className="font-mono text-[10px] font-black uppercase text-sky-700">Referencias primarias</p>
           <div className="mt-4 grid gap-3 lg:grid-cols-3">
-            <Reference href="https://arxiv.org/abs/1011.6402" title="Price Impact of Order Book Events">Order-flow imbalance como señal de impacto de corto horizonte.</Reference>
-            <Reference href="https://arxiv.org/abs/1907.06230" title="Multi-Level Order-Flow Imbalance">Profundidad adicional para mejorar ajuste fuera de muestra.</Reference>
-            <Reference href="https://arxiv.org/abs/1812.00595" title="Limits to Arbitrage for Blockchain-Based Assets">Costos, capital y latencia explican por qué persisten divergencias visibles.</Reference>
+            <Reference href="https://arxiv.org/abs/1011.6402" title="Price Impact of Order Book Events">Fundamento para usar desequilibrio del flujo de órdenes como señal de impacto a corto horizonte.</Reference>
+            <Reference href="https://arxiv.org/abs/1907.06230" title="Multi-Level Order-Flow Imbalance">Motivación para incorporar varios niveles de profundidad y no depender únicamente del mejor bid y ask.</Reference>
+            <Reference href="https://arxiv.org/abs/1812.00595" title="Limits to Arbitrage for Blockchain-Based Assets">Marco para considerar costos, capital, latencia y fricciones operativas antes de ejecutar.</Reference>
           </div>
         </div>
       </section>
@@ -97,4 +116,3 @@ function Reference({ children, href, title }: { children: React.ReactNode; href:
     </a>
   );
 }
-
