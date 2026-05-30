@@ -38,6 +38,7 @@ This is not a toy crypto dashboard. It is a real-time paper-trading system built
 | Missed opportunity desk | Rejected signals are explained by fees, adverse selection, liquidity impact, or risk controls. |
 | Scenario Lab + replay | Judges can trigger crash/liquidity/latency drills and replay the last five minutes of signals. |
 | Shadow Learning | Rejected and accepted signals are labeled after 0.5s/2s/5s markouts so the model learns from real live data even when it executes zero trades. |
+| Sandbox Execution Bridge | Optional Binance Spot Testnet + OKX Demo order bridge, protected by env keys and safe defaults. |
 | CSV export | The full session can be exported for audit in Excel/Sheets. |
 | Paint-friendly real-time UI | Backend processes every market event while the frontend receives throttled, useful snapshots. |
 | Clear live/demo distinction | Live mode uses real order books; demo mode uses geometric Brownian motion and synthetic dislocations. |
@@ -279,7 +280,48 @@ timestamp, kind, type, route, status, size_btc, pnl_usd, fees_usd, score, net_sp
 
 This is included so jurors can inspect the economics outside the dashboard.
 
-### 16. Risk Controls That Judges Can Test
+### 16. Sandbox Execution Bridge
+
+The system now has a protected path from paper trading toward real exchange execution without risking real capital.
+
+Default behavior is still safe:
+
+```text
+Execution mode: PAPER
+Sandbox order mode: DRY_RUN
+Real-money orders: impossible from this code path
+```
+
+When test credentials are provided, the backend can arm `SANDBOX` mode:
+
+| Venue | Environment | Endpoint Purpose |
+|---|---|---|
+| Binance | Spot Testnet | Signed limit IOC orders or `/api/v3/order/test` validation. |
+| OKX | Demo Trading | Signed demo orders with `x-simulated-trading: 1`. |
+
+Safety controls:
+
+- sandbox is disabled unless API keys are present;
+- default `DRY_RUN` plans payloads but submits nothing;
+- `TEST_ORDER` validates Binance payloads without a live testnet fill;
+- `LIVE_SANDBOX` submits only to testnet/demo venues;
+- max sandbox notional defaults to `$25`;
+- only Binance <-> OKX cross-exchange routes are eligible first;
+- real withdrawal permission is never required and should never be granted.
+
+Environment variables:
+
+```bash
+SANDBOX_ORDER_MODE=DRY_RUN
+SANDBOX_MAX_NOTIONAL_USD=25
+BINANCE_TESTNET_API_KEY=
+BINANCE_TESTNET_API_SECRET=
+OKX_DEMO_API_KEY=
+OKX_DEMO_API_SECRET=
+OKX_DEMO_API_PASSPHRASE=
+```
+
+### 17. Risk Controls That Judges Can Test
 
 | Risk Control | Implementation |
 |---|---|
@@ -291,7 +333,7 @@ This is included so jurors can inspect the economics outside the dashboard.
 | Latency simulation | Adds randomized 50-350ms network/execution delay depending on execution style, multiplied by latency drills. |
 | Slippage model | Uses depth-sensitive 0.02%-0.05% slippage. |
 
-### 17. Wallet and Rebalancing Simulation
+### 18. Wallet and Rebalancing Simulation
 
 Each exchange has independent BTC and USDT balances. After simulated execution:
 
@@ -302,7 +344,7 @@ Each exchange has independent BTC and USDT balances. After simulated execution:
 - low BTC/USDT balances trigger `REBALANCING NEEDED`;
 - the UI estimates rebalance cost.
 
-### 18. Paint-Friendly Realtime UI
+### 19. Paint-Friendly Realtime UI
 
 The backend still processes every raw market event, but the browser receives a lighter stream:
 
@@ -423,8 +465,8 @@ sequenceDiagram
 | Net profit accuracy | Decimal.js, maker/taker fees, slippage, withdrawal amortization, latency, market-impact penalties, depth-walk fills. |
 | Robust business logic | Wallet balances, partial fills, capped size, circuit breaker, daily loss limit, rebalance warnings, scenario drills. |
 | Bot intelligence | Cross-exchange, triangular, multi-venue OU-style stat arb, maker-assisted execution, AET survival model, shadow learning, missed-opportunity explanations. |
-| Code quality | Strict TypeScript, separate service classes, unit tests, explicit types, deployment configs. |
-| UI/UX | Light institutional command center, edge radar, strategy matrix, missed-opportunity desk, P&L cockpit, live/demo clarity, CSV export. |
+| Code quality | Strict TypeScript, separate service classes, unit tests, explicit types, sandbox execution guardrails, deployment configs. |
+| UI/UX | Light institutional command center, edge radar, strategy matrix, missed-opportunity desk, shadow learning, execution bridge, P&L cockpit, live/demo clarity, CSV export. |
 
 ## Performance Benchmarks
 
@@ -444,6 +486,7 @@ Latest local observations from this iteration:
 | Live Shadow Learning labels | 674 |
 | Live avoided-loss dollars | $1,592.45 |
 | Live average detection latency | 3.37ms |
+| Sandbox execution default | PAPER + DRY_RUN, no credentials required |
 | Demo scenario sample | 8s liquidity-drain drill |
 | Demo opportunities scored | 246 |
 | Demo stat-arb signals | 231 |
@@ -476,7 +519,9 @@ References:
 
 Exchange API references:
 
+- [Binance Spot API official docs and Spot Testnet](https://github.com/binance/binance-spot-api-docs)
 - [OKX WebSocket public API](https://www.okx.com/docs-v5/en/#websocket-api-public-channel)
+- [OKX Trade API place order](https://www.okx.com/docs-v5/en/#order-book-trading-trade-post-place-order)
 - [Bybit V5 public orderbook WebSocket](https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook)
 
 ## Documentation and Design Inspiration

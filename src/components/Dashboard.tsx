@@ -16,6 +16,8 @@ import { EXCHANGE_LABELS } from "@/lib/config/exchanges";
 import type {
   ExchangeConnectionStatus,
   ExchangeId,
+  ExecutionRuntimeMode,
+  ExecutionRuntimeState,
   LearningSummary,
   NormalizedOrderBook,
   Opportunity,
@@ -47,6 +49,7 @@ export function Dashboard() {
     resetRisk,
     replayHistory,
     exportSessionCsv,
+    setExecutionRuntimeMode,
     mode,
     connected,
     connectionError,
@@ -65,6 +68,7 @@ export function Dashboard() {
     risk,
     metrics,
     learning,
+    executionRuntime,
     priceSeries
   } = useArbitrageStore();
 
@@ -116,7 +120,7 @@ export function Dashboard() {
           </aside>
 
           <section className="grid min-h-0 gap-3 overflow-hidden xl:grid-rows-[auto_auto_auto_minmax(0,1fr)]">
-            <ActiveEdgePanel latestExecutable={latestExecutable} latestSignal={latestSignal} metrics={metrics} risk={risk} />
+            <ActiveEdgePanel latestExecutable={latestExecutable} latestSignal={latestSignal} latestTrade={trades[0]} metrics={metrics} risk={risk} />
             <StrategyMatrix stats={strategyStats} />
             <MissedOpportunityPanel opportunities={missedOpportunities} />
             <SignalFeed opportunities={visibleOpportunities} replaying={replayOpportunities.length > 0} />
@@ -125,7 +129,7 @@ export function Dashboard() {
           <aside className="grid min-h-0 gap-3 overflow-y-auto pr-1 xl:grid-rows-[auto_auto_auto_minmax(250px,0.8fr)]">
             <PerformancePanel metrics={metrics} pnlSeries={pnlSeries} risk={risk} />
             <LearningPanel learning={learning} />
-            <ExecutionPanel executionQueue={executionQueue} trades={trades} />
+            <ExecutionPanel executionQueue={executionQueue} runtime={executionRuntime} setExecutionRuntimeMode={setExecutionRuntimeMode} trades={trades} />
             <WalletPanel
               applyWalletSeed={applyWalletSeed}
               mode={mode}
@@ -379,18 +383,27 @@ function PriceChartPanel({ marketDrift, priceSeries }: { marketDrift: number; pr
 function ActiveEdgePanel({
   latestExecutable,
   latestSignal,
+  latestTrade,
   metrics,
   risk
 }: {
   latestExecutable?: Opportunity;
   latestSignal?: Opportunity;
+  latestTrade?: Trade;
   metrics: PerformanceMetrics;
   risk: RiskState;
 }) {
   const freshExecutable = latestExecutable && Date.now() - latestExecutable.createdAt < 2500 ? latestExecutable : undefined;
   const featured = freshExecutable ?? latestSignal;
-  const positive = featured ? Number(featured.expectedProfitUsd) >= 0 : true;
+  const positive = freshExecutable ? Number(freshExecutable.expectedProfitUsd) >= 0 : latestTrade ? Number(latestTrade.pnlUsd) >= 0 : featured ? Number(featured.expectedProfitUsd) >= 0 : true;
   const status = risk.circuitBreakerActive ? "Trading Paused" : freshExecutable ? "Edge Active" : metrics.tradesExecuted ? "Executing Session" : "Scanning";
+  const primaryRoute = risk.circuitBreakerActive
+    ? "Risk controls stopped execution after 3 material losses. Market data is still live."
+    : freshExecutable
+      ? freshExecutable.route
+      : latestTrade
+        ? `Last fill: ${latestTrade.route}`
+        : featured?.route ?? "Waiting for first signal";
   return (
     <Panel
       className={
@@ -411,14 +424,14 @@ function ActiveEdgePanel({
             {featured?.highImpact && <StatusPill label="High Impact" tone="amber" />}
           </div>
           <div className="mt-3 min-h-[30px] text-sm font-black text-zinc-800">
-            {risk.circuitBreakerActive ? "Risk controls stopped execution after 3 material losses. Market data is still live." : featured?.route ?? "Waiting for first signal"}
+            {primaryRoute}
           </div>
         </div>
 
         <div className="grid grid-cols-5 gap-2 font-mono sm:min-w-[540px]">
-          <SignalNumber label="Score" value={featured ? String(featured.score) : "--"} tone="sky" />
-          <SignalNumber label="Net" value={featured ? `${featured.netSpreadPct}%` : "--"} tone={positive ? "emerald" : "rose"} />
-          <SignalNumber label="P&L" value={featured ? `$${featured.expectedProfitUsd}` : "$0.00"} tone={positive ? "emerald" : "rose"} />
+          <SignalNumber label="Score" value={freshExecutable ? String(freshExecutable.score) : featured ? String(featured.score) : "--"} tone="sky" />
+          <SignalNumber label="Net" value={freshExecutable ? `${freshExecutable.netSpreadPct}%` : featured ? `${featured.netSpreadPct}%` : "--"} tone={positive ? "emerald" : "rose"} />
+          <SignalNumber label="P&L" value={freshExecutable ? `$${freshExecutable.expectedProfitUsd}` : latestTrade ? `$${latestTrade.pnlUsd}` : featured ? `$${featured.expectedProfitUsd}` : "$0.00"} tone={positive ? "emerald" : "rose"} />
           <SignalNumber label="Surv" value={featured?.edgeModel ? `${(Number(featured.edgeModel.survivalProbability) * 100).toFixed(0)}%` : "--"} tone={featured?.edgeModel && Number(featured.edgeModel.survivalProbability) >= 0.55 ? "emerald" : "amber"} />
           <SignalNumber label="Exec" value={String(metrics.tradesExecuted)} tone="zinc" />
         </div>
@@ -619,9 +632,53 @@ function LearningPanel({ learning }: { learning: LearningSummary }) {
   );
 }
 
-function ExecutionPanel({ executionQueue, trades }: { executionQueue: Opportunity[]; trades: Trade[] }) {
+function ExecutionPanel({
+  executionQueue,
+  runtime,
+  setExecutionRuntimeMode,
+  trades
+}: {
+  executionQueue: Opportunity[];
+  runtime: ExecutionRuntimeState;
+  setExecutionRuntimeMode: (mode: ExecutionRuntimeMode) => void;
+  trades: Trade[];
+}) {
+  const configured = runtime.venues.filter((venue) => venue.configured).length;
   return (
     <Panel>
+      <div className="mb-3 rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <SectionKicker>Execution Bridge</SectionKicker>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <StatusPill label={runtime.mode} tone={runtime.mode === "SANDBOX" ? "violet" : "zinc"} />
+              <StatusPill label={runtime.orderMode.replace(/_/g, " ")} tone={runtime.orderMode === "LIVE_SANDBOX" ? "amber" : "sky"} />
+              <span className="font-mono text-[10px] font-black text-zinc-500">
+                {configured}/{runtime.venues.length} venues / max ${runtime.maxNotionalUsd}
+              </span>
+            </div>
+          </div>
+          <button
+            className={`rounded-xl border px-3 py-2 font-mono text-[10px] font-black transition ${
+              runtime.mode === "SANDBOX"
+                ? "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
+                : "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+            }`}
+            onClick={() => setExecutionRuntimeMode(runtime.mode === "SANDBOX" ? "PAPER" : "SANDBOX")}
+            type="button"
+          >
+            {runtime.mode === "SANDBOX" ? "PAPER ONLY" : "ARM SANDBOX"}
+          </button>
+        </div>
+        {runtime.lastReport && (
+          <div className="mt-2 flex items-center justify-between gap-3 border-t border-sky-100 pt-2 font-mono text-[10px] font-black text-zinc-500">
+            <span className="truncate">{runtime.lastReport.reason}</span>
+            <span className={runtime.lastReport.status === "FAILED" ? "text-rose-700" : runtime.lastReport.status === "SUBMITTED" ? "text-emerald-700" : "text-sky-700"}>
+              {runtime.lastReport.status}
+            </span>
+          </div>
+        )}
+      </div>
       <div className="grid gap-3 lg:grid-cols-2">
         <div>
           <div className="mb-2 flex items-center justify-between">

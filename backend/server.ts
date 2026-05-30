@@ -47,6 +47,8 @@ wss.on("connection", (socket) => {
     if (command === "SIMULATE_MARKET_CRASH") kernel.simulateMarketCrash();
     if (command === "RESET_RISK") kernel.resetRisk();
     if (command === "REPLAY_HISTORY") kernel.replayHistory();
+    if (command === "SET_EXECUTION_MODE:PAPER") kernel.setExecutionMode("PAPER");
+    if (command === "SET_EXECUTION_MODE:SANDBOX") kernel.setExecutionMode("SANDBOX");
     if (command.startsWith("RUN_SCENARIO:")) {
       const scenario = command.replace("RUN_SCENARIO:", "");
       if (scenario === "MARKET_CRASH" || scenario === "LIQUIDITY_DRAIN" || scenario === "LATENCY_SPIKE") {

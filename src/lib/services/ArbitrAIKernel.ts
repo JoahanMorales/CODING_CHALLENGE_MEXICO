@@ -1,4 +1,4 @@
-import type { GatewayMessage, GatewaySnapshot, NormalizedOrderBook, Opportunity, ScenarioKind, WalletSeed } from "../types";
+import type { ExecutionRuntimeMode, GatewayMessage, GatewaySnapshot, NormalizedOrderBook, Opportunity, ScenarioKind, WalletSeed } from "../types";
 import { ArbitrageEngine } from "./ArbitrageEngine";
 import { CounterfactualLearner } from "./CounterfactualLearner";
 import { EventBus } from "./EventBus";
@@ -7,6 +7,7 @@ import { ExecutionSimulator } from "./ExecutionSimulator";
 import { MarketDataService } from "./MarketDataService";
 import { PnLTracker } from "./PnLTracker";
 import { RiskManager } from "./RiskManager";
+import { SandboxExecutionService } from "./SandboxExecutionService";
 
 export class ArbitrAIKernel {
   readonly bus = new EventBus();
@@ -17,6 +18,7 @@ export class ArbitrAIKernel {
   readonly pnlTracker = new PnLTracker();
   readonly recorder = new EventRecorder();
   readonly learner = new CounterfactualLearner();
+  readonly sandboxExecution = new SandboxExecutionService();
 
   private readonly opportunities: Opportunity[] = [];
   private readonly executionQueue: Opportunity[] = [];
@@ -59,6 +61,11 @@ export class ArbitrAIKernel {
     this.publish({ type: "REPLAY", opportunities: replay.opportunities, trades: replay.trades, events: replay.events });
   }
 
+  setExecutionMode(mode: ExecutionRuntimeMode): void {
+    const runtime = this.sandboxExecution.setMode(mode);
+    this.publish({ type: "EXECUTION_RUNTIME", runtime });
+  }
+
   snapshot(): GatewaySnapshot {
     return {
       type: "SNAPSHOT",
@@ -70,7 +77,8 @@ export class ArbitrAIKernel {
       risk: this.riskManager.getState(this.simulator.exposureBtc()),
       metrics: this.pnlTracker.metrics(),
       priceSeries: this.marketData.priceHistory(),
-      learning: this.learner.summary()
+      learning: this.learner.summary(),
+      executionRuntime: this.sandboxExecution.status()
     };
   }
 
@@ -120,6 +128,8 @@ export class ArbitrAIKernel {
       const metrics = this.pnlTracker.recordTrade(trade);
       this.engine.recordExecutionOutcome(opportunity, Number(trade.pnlUsd));
       this.publish({ type: "TRADE", trade, wallets: this.simulator.balances(), metrics, risk });
+      const sandboxReport = await this.sandboxExecution.execute(opportunity);
+      if (sandboxReport) this.publish({ type: "EXECUTION_RUNTIME", runtime: this.sandboxExecution.status(), report: sandboxReport });
     }
 
     this.executing = false;

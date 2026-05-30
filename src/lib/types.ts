@@ -12,6 +12,10 @@ export type ExecutionStyle = "INSTANT_TAKER" | "MAKER_ASSISTED" | "TRIANGULAR_CY
 
 export type ScenarioKind = "MARKET_CRASH" | "LIQUIDITY_DRAIN" | "LATENCY_SPIKE";
 
+export type ExecutionRuntimeMode = "PAPER" | "SANDBOX";
+
+export type SandboxOrderMode = "DRY_RUN" | "TEST_ORDER" | "LIVE_SANDBOX";
+
 export interface EdgeModelSignal {
   adverseSelectionBps: string;
   edgeQuality: "EXPLOIT" | "WATCH" | "AVOID";
@@ -128,6 +132,43 @@ export interface LearningSummary {
   lastOutcome?: CounterfactualOutcome;
 }
 
+export interface SandboxVenueStatus {
+  exchange: "binance" | "okx";
+  configured: boolean;
+  environment: "spot-testnet" | "demo-trading";
+  lastError: string;
+  lastOrderId?: string;
+  lastLatencyMs?: number;
+}
+
+export interface SandboxExecutionReport {
+  id: string;
+  opportunityId: string;
+  route: string;
+  createdAt: number;
+  mode: SandboxOrderMode;
+  status: "SKIPPED" | "DRY_RUN" | "SUBMITTED" | "FAILED";
+  reason: string;
+  legs: Array<{
+    exchange: "binance" | "okx";
+    side: "BUY" | "SELL";
+    symbol: "BTCUSDT" | "BTC-USDT";
+    price: string;
+    quantity: string;
+    orderId?: string;
+    status: "PLANNED" | "SUBMITTED" | "FAILED";
+  }>;
+}
+
+export interface ExecutionRuntimeState {
+  mode: ExecutionRuntimeMode;
+  sandboxEnabled: boolean;
+  orderMode: SandboxOrderMode;
+  maxNotionalUsd: string;
+  venues: SandboxVenueStatus[];
+  lastReport?: SandboxExecutionReport;
+}
+
 export interface RecordedEvent {
   id: string;
   time: number;
@@ -200,6 +241,7 @@ export interface GatewaySnapshot {
   metrics: PerformanceMetrics;
   priceSeries: PricePoint[];
   learning: LearningSummary;
+  executionRuntime: ExecutionRuntimeState;
   exchangeStatuses?: ExchangeConnectionStatus[];
 }
 
@@ -210,6 +252,7 @@ export type GatewayMessage =
   | { type: "OPPORTUNITY"; opportunity: Opportunity; queue: Opportunity[] }
   | { type: "TRADE"; trade: Trade; wallets: WalletBalance[]; metrics: PerformanceMetrics; risk: RiskState }
   | { type: "LEARNING"; summary: LearningSummary; outcome: CounterfactualOutcome }
+  | { type: "EXECUTION_RUNTIME"; runtime: ExecutionRuntimeState; report?: SandboxExecutionReport }
   | { type: "REPLAY"; opportunities: Opportunity[]; trades: Trade[]; events: RecordedEvent[] }
   | { type: "RISK"; risk: RiskState }
   | { type: "METRICS"; metrics: PerformanceMetrics };

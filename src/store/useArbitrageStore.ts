@@ -7,6 +7,8 @@ import type {
   ExchangeId,
   GatewayMessage,
   ExchangeConnectionStatus,
+  ExecutionRuntimeMode,
+  ExecutionRuntimeState,
   NormalizedOrderBook,
   Opportunity,
   LearningSummary,
@@ -45,6 +47,7 @@ interface ArbitrageState {
   risk: RiskState;
   metrics: PerformanceMetrics;
   learning: LearningSummary;
+  executionRuntime: ExecutionRuntimeState;
   priceSeries: PricePoint[];
   init: () => void;
   setMode: (mode: Mode) => void;
@@ -52,6 +55,7 @@ interface ArbitrageState {
   applyWalletSeed: () => void;
   simulateMarketCrash: () => void;
   runScenario: (scenario: ScenarioKind) => void;
+  setExecutionRuntimeMode: (mode: ExecutionRuntimeMode) => void;
   resetRisk: () => void;
   replayHistory: () => void;
   exportSessionCsv: () => void;
@@ -102,6 +106,17 @@ const defaultLearning: LearningSummary = {
   hitRatePct: "0.00"
 };
 
+const defaultExecutionRuntime: ExecutionRuntimeState = {
+  mode: "PAPER",
+  sandboxEnabled: false,
+  orderMode: "DRY_RUN",
+  maxNotionalUsd: "25.00",
+  venues: [
+    { exchange: "binance", configured: false, environment: "spot-testnet", lastError: "" },
+    { exchange: "okx", configured: false, environment: "demo-trading", lastError: "" }
+  ]
+};
+
 let localKernel: ArbitrAIKernel | null = null;
 let gateway: WebSocket | null = null;
 
@@ -123,6 +138,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   risk: defaultRisk,
   metrics: defaultMetrics,
   learning: defaultLearning,
+  executionRuntime: defaultExecutionRuntime,
   priceSeries: [],
 
   init: () => {
@@ -169,6 +185,15 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
       return;
     }
     localKernel?.runScenario(scenario);
+  },
+
+  setExecutionRuntimeMode: (mode) => {
+    if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
+      gateway.send(`SET_EXECUTION_MODE:${mode}`);
+      return;
+    }
+    localKernel?.setExecutionMode(mode);
+    set({ executionRuntime: localKernel?.snapshot().executionRuntime ?? defaultExecutionRuntime });
   },
 
   resetRisk: () => {
@@ -285,7 +310,8 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
       risk: message.risk,
       metrics: message.metrics,
       priceSeries: message.priceSeries,
-      learning: message.learning
+      learning: message.learning,
+      executionRuntime: message.executionRuntime
     });
     return;
   }
@@ -337,6 +363,11 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
 
   if (message.type === "LEARNING") {
     set({ learning: message.summary });
+    return;
+  }
+
+  if (message.type === "EXECUTION_RUNTIME") {
+    set({ executionRuntime: message.runtime });
     return;
   }
 

@@ -194,6 +194,20 @@ Controls:
 - `REPLAY`: fetch the last five minutes from the backend recorder;
 - `EXPORT CSV`: download the audit trail.
 
+### Execution Bridge
+
+Purpose: show the path from paper trading to sandbox exchange orders without implying real-money execution.
+
+Must show:
+
+- current execution mode: `PAPER` or `SANDBOX`;
+- sandbox order mode: `DRY_RUN`, `TEST_ORDER`, or `LIVE_SANDBOX`;
+- configured sandbox venues;
+- max notional cap;
+- latest sandbox report status.
+
+Design rule: arming sandbox should feel deliberate and controlled, not like a game button.
+
 ## 6. Interaction Rules
 
 - `RESET RISK` should always be visible when risk state matters.
