@@ -89,6 +89,10 @@ export class SandboxExecutionService {
 
     const submitted: SandboxExecutionReport["legs"] = [];
     for (const leg of legs) {
+      if (this.config.orderMode === "TEST_ORDER" && leg.exchange === "okx") {
+        submitted.push({ ...leg, status: "PLANNED" });
+        continue;
+      }
       const startedAt = performanceNow();
       try {
         const orderId = leg.exchange === "binance" ? await this.submitBinance(leg) : await this.submitOkx(leg);
@@ -102,10 +106,15 @@ export class SandboxExecutionService {
     }
 
     const failed = submitted.some((leg) => leg.status === "FAILED");
+    const validatedOnly = this.config.orderMode === "TEST_ORDER" && !failed;
     this.lastReport = this.report(
       opportunity,
       failed ? "FAILED" : "SUBMITTED",
-      failed ? "At least one sandbox venue rejected the order." : "Sandbox order legs submitted.",
+      failed
+        ? "At least one sandbox venue rejected the order."
+        : validatedOnly
+          ? "Binance test order validated. OKX demo leg remained planned and was not submitted."
+          : "Sandbox order legs submitted.",
       submitted
     );
     return this.lastReport;
@@ -129,15 +138,15 @@ export class SandboxExecutionService {
         exchange: buy,
         side: "BUY",
         symbol: buy === "binance" ? "BTCUSDT" : "BTC-USDT",
-        price: buyPrice.toFixed(2),
-        quantity: quantity.toFixed(6)
+        price: normalizePrice(buy, buyPrice),
+        quantity: normalizeQuantity(buy, quantity)
       },
       {
         exchange: sell,
         side: "SELL",
         symbol: sell === "binance" ? "BTCUSDT" : "BTC-USDT",
-        price: sellPrice.toFixed(2),
-        quantity: quantity.toFixed(6)
+        price: normalizePrice(sell, sellPrice),
+        quantity: normalizeQuantity(sell, quantity)
       }
     ];
   }
@@ -252,6 +261,20 @@ function clientOrderId(prefix: string): string {
 
 function performanceNow(): number {
   return typeof performance === "undefined" ? Date.now() : performance.now();
+}
+
+function normalizeQuantity(exchange: "binance" | "okx", quantity: Decimal): string {
+  // BTCUSDT Spot Testnet LOT_SIZE currently uses a 0.00001000 step. OKX BTC-USDT
+  // uses BTC sizing and accepts the same conservative precision for this bridge.
+  const step = exchange === "binance" ? d("0.00001") : d("0.00001");
+  return quantity.div(step).floor().mul(step).toFixed(5);
+}
+
+function normalizePrice(exchange: "binance" | "okx", price: Decimal): string {
+  // Binance BTCUSDT testnet tickSize is 0.01000000. OKX BTC-USDT accepts two
+  // decimal places at current BTC price levels.
+  const tick = exchange === "binance" ? d("0.01") : d("0.01");
+  return price.div(tick).floor().mul(tick).toFixed(2);
 }
 
 async function hmacSha256Hex(secret: string, payload: string): Promise<string> {

@@ -305,7 +305,7 @@ Safety controls:
 
 - sandbox is disabled unless API keys are present;
 - default `DRY_RUN` plans payloads but submits nothing;
-- `TEST_ORDER` validates Binance payloads without a live testnet fill;
+- `TEST_ORDER` validates Binance payloads without a live testnet fill; the OKX demo leg remains planned and is not submitted;
 - `LIVE_SANDBOX` submits only to testnet/demo venues;
 - max sandbox notional defaults to `$25`;
 - only Binance <-> OKX cross-exchange routes are eligible first;
