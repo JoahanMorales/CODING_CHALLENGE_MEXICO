@@ -169,7 +169,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
     if (mode === get().mode) return;
     stopGateway();
     stopLocalKernel();
-    set({ mode, connected: false, connectionError: mode === "LIVE" ? "Conectando con el gateway de mercado..." : "", books: {}, opportunities: [], executionQueue: [], priceSeries: [], learning: defaultLearning });
+    set({ mode, connected: false, connectionError: mode === "LIVE" ? "Conectando con el gateway de mercado..." : "", books: {}, opportunities: [], executionQueue: [], trades: [], priceSeries: [], metrics: defaultMetrics, learning: defaultLearning });
     if (mode === "LIVE") startGateway(set, get().walletSeed);
     else startDemo(set, get().walletSeed);
   },

@@ -33,7 +33,7 @@ export class MarketDataService {
 
   startDemo(): void {
     this.stopDemo();
-    this.demoState.timer = setInterval(() => this.generateDemoTick(), 220);
+    this.demoState.timer = setInterval(() => this.stepDemo(), 220);
   }
 
   stopDemo(): void {
@@ -45,7 +45,7 @@ export class MarketDataService {
     return [...this.priceSeries];
   }
 
-  private generateDemoTick(): void {
+  stepDemo(): void {
     this.demoState.tick += 1;
     const volatility = 0.00065 * this.riskManager.getVolatilityMultiplier();
     this.demoState.btc = gbm(this.demoState.btc, 0.00001, volatility);
@@ -56,17 +56,21 @@ export class MarketDataService {
     const triPulse = this.demoState.tick % 43 === 0 ? 1 : 0;
     const spreadMultiplier = this.riskManager.getSpreadMultiplier();
     const liquidityMultiplier = this.riskManager.getLiquidityMultiplier();
+    const tickAt = Date.now();
 
     EXCHANGE_IDS.forEach((exchange, index) => {
       const exchangeBias = Math.sin((Date.now() / 900) + index) * 18;
-      const pulseBias = arbPulse && index === 0 ? -90 : arbPulse && index === 1 ? 95 : 0;
+      // Demo pulses model a brief fragmented-market dislocation between two
+      // liquid venues. They must still survive the production fee, slippage,
+      // freshness and impact model; only the market input is synthetic.
+      const pulseBias = arbPulse && index === 0 ? -175 : arbPulse && index === 4 ? 175 : 0;
       const btcMid = this.demoState.btc + exchangeBias + pulseBias;
       const ethMid = this.demoState.eth * (1 + (index - 1) * 0.00035);
       const ethBtcMid = this.demoState.ethBtc * (1 + (triPulse && index === 0 ? 0.0042 : 0));
 
-      this.ingest(makeBook(exchange, "BTC/USDT", btcMid, (11 + index * 2) * spreadMultiplier, (0.18 + index * 0.07) * liquidityMultiplier));
-      this.ingest(makeBook(exchange, "ETH/USDT", ethMid, (1.4 + index * 0.2) * spreadMultiplier, (8 + index * 2) * liquidityMultiplier));
-      this.ingest(makeBook(exchange, "ETH/BTC", ethBtcMid, 0.00005 * spreadMultiplier, (12 + index * 2) * liquidityMultiplier));
+      this.ingest(makeBook(exchange, "BTC/USDT", btcMid, (1.2 + index * 0.35) * spreadMultiplier, (0.72 + index * 0.11) * liquidityMultiplier, tickAt));
+      this.ingest(makeBook(exchange, "ETH/USDT", ethMid, (0.35 + index * 0.08) * spreadMultiplier, (8 + index * 2) * liquidityMultiplier, tickAt));
+      this.ingest(makeBook(exchange, "ETH/BTC", ethBtcMid, 0.000008 * spreadMultiplier, (12 + index * 2) * liquidityMultiplier, tickAt));
     });
   }
 
@@ -83,7 +87,7 @@ export class MarketDataService {
   }
 }
 
-function makeBook(exchange: ExchangeId, symbol: SymbolId, mid: number, spread: number, topSize: number): NormalizedOrderBook {
+function makeBook(exchange: ExchangeId, symbol: SymbolId, mid: number, spread: number, topSize: number, receivedAt: number): NormalizedOrderBook {
   const bids: OrderBookLevel[] = [];
   const asks: OrderBookLevel[] = [];
   for (let level = 0; level < 5; level += 1) {
@@ -98,8 +102,8 @@ function makeBook(exchange: ExchangeId, symbol: SymbolId, mid: number, spread: n
     symbol,
     bids,
     asks,
-    receivedAt: Date.now(),
-    exchangeTimestamp: Date.now() - Math.floor(Math.random() * 35),
+    receivedAt,
+    exchangeTimestamp: receivedAt - Math.floor(Math.random() * 35),
     processingLatencyMs: Number((Math.random() * 2.7 + 0.4).toFixed(2))
   };
 }

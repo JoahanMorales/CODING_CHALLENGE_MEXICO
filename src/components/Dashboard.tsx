@@ -168,7 +168,7 @@ export function Dashboard() {
           </section>
 
           <aside className="grid min-h-0 gap-3 pr-1 xl:grid-rows-[auto_auto_auto_auto] xl:overflow-y-auto">
-            <PerformancePanel metrics={metrics} pnlSeries={pnlSeries} risk={risk} />
+            <PerformancePanel metrics={metrics} mode={mode} pnlSeries={pnlSeries} risk={risk} />
             <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
                 <span className="font-mono text-[10px] font-black uppercase text-sky-700">Shadow Learning</span>
@@ -801,7 +801,7 @@ function SignalRow({ opportunity }: { opportunity: Opportunity }) {
   );
 }
 
-function PerformancePanel({ metrics, pnlSeries, risk }: { metrics: PerformanceMetrics; pnlSeries: Array<{ index: number; pnl: number }>; risk: RiskState }) {
+function PerformancePanel({ metrics, mode, pnlSeries, risk }: { metrics: PerformanceMetrics; mode: "LIVE" | "DEMO"; pnlSeries: Array<{ index: number; pnl: number }>; risk: RiskState }) {
   const positive = Number(metrics.netPnlUsd) >= 0;
   return (
     <Panel>
@@ -838,6 +838,13 @@ function PerformancePanel({ metrics, pnlSeries, risk }: { metrics: PerformanceMe
         <TinyMetric label="Comisiones" value={`$${metrics.totalFeesPaidUsd}`} tone="amber" />
         <TinyMetric label="Tasa de ejec." value={`${metrics.opportunityExecutionRatioPct}%`} tone="violet" />
         <TinyMetric label="Sharpe" value={metrics.sharpeLikeRatio} tone="zinc" />
+      </div>
+      <div className={`mt-3 rounded-xl border px-3 py-2 text-xs font-semibold leading-5 ${metrics.tradesExecuted ? "border-emerald-100 bg-emerald-50/60 text-emerald-800" : "border-sky-100 bg-sky-50/70 text-sky-800"}`}>
+        {metrics.tradesExecuted
+          ? `${metrics.tradesExecuted} fills paper registrados. El P&L refleja ejecución simulada después de costos.`
+          : mode === "LIVE"
+            ? "Live activo: todavía no existe un edge neto ejecutable. El motor sigue escaneando feeds reales sin inventar fills."
+            : "Demo activo: el siguiente pulso de fragmentación alimentará un edge controlado para demostrar queue, fill y P&L."}
       </div>
     </Panel>
   );

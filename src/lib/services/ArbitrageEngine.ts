@@ -17,9 +17,9 @@ export class ArbitrageEngine {
     this.edgeTensor.ingest(book);
     this.books.set(bookKey(book.exchange, book.symbol), book);
     const opportunities = [
-      ...this.detectCrossExchange(startedAt),
-      ...this.detectTriangular(startedAt),
-      ...this.detectStatistical(startedAt)
+      ...(book.symbol === "BTC/USDT" ? this.detectCrossExchange(startedAt, book.exchange) : []),
+      ...this.detectTriangular(startedAt, book.exchange),
+      ...(book.symbol === "BTC/USDT" ? this.detectStatistical(startedAt, book.exchange) : [])
     ];
     return opportunities.sort((a, b) => b.score - a.score);
   }
@@ -64,13 +64,14 @@ export class ArbitrageEngine {
     this.edgeTensor.importCalibration(calibration);
   }
 
-  private detectCrossExchange(startedAt: number): Opportunity[] {
+  private detectCrossExchange(startedAt: number, changedExchange: ExchangeId): Opportunity[] {
     const btcBooks = this.booksForSymbol("BTC/USDT");
     const opportunities: Opportunity[] = [];
 
     btcBooks.forEach((buyBook) => {
       btcBooks.forEach((sellBook) => {
         if (buyBook.exchange === sellBook.exchange) return;
+        if (buyBook.exchange !== changedExchange && sellBook.exchange !== changedExchange) return;
         const ask = topAsk(buyBook);
         const bid = topBid(sellBook);
         if (!ask || !bid || bid.price.lessThanOrEqualTo(ask.price)) return;
@@ -216,9 +217,9 @@ export class ArbitrageEngine {
     return opportunities;
   }
 
-  private detectTriangular(startedAt: number): Opportunity[] {
+  private detectTriangular(startedAt: number, changedExchange: ExchangeId): Opportunity[] {
     const opportunities: Opportunity[] = [];
-    EXCHANGE_IDS.forEach((exchange) => {
+    EXCHANGE_IDS.filter((exchange) => exchange === changedExchange).forEach((exchange) => {
       const btcUsdt = this.books.get(bookKey(exchange, "BTC/USDT"));
       const ethUsdt = this.books.get(bookKey(exchange, "ETH/USDT"));
       const ethBtc = this.books.get(bookKey(exchange, "ETH/BTC"));
@@ -278,7 +279,7 @@ export class ArbitrageEngine {
     return opportunities;
   }
 
-  private detectStatistical(startedAt: number): Opportunity[] {
+  private detectStatistical(startedAt: number, changedExchange: ExchangeId): Opportunity[] {
     const btcBooks = this.booksForSymbol("BTC/USDT", 1800);
     const opportunities: Opportunity[] = [];
     const now = Date.now();
@@ -287,6 +288,7 @@ export class ArbitrageEngine {
       for (let right = left + 1; right < btcBooks.length; right += 1) {
         const leftBook = btcBooks[left];
         const rightBook = btcBooks[right];
+        if (leftBook.exchange !== changedExchange && rightBook.exchange !== changedExchange) continue;
         if (Math.abs(leftBook.receivedAt - rightBook.receivedAt) > 1200) continue;
         const leftMid = midPrice(leftBook);
         const rightMid = midPrice(rightBook);

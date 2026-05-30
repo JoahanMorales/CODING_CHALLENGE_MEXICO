@@ -87,7 +87,7 @@ flowchart LR
     G --> U["Next.js terminal"]
 ```
 
-El backend procesa todos los eventos de mercado. La UI recibe `BOOK_BATCH` throttled para mantener React fluido sin reducir la frecuencia del motor.
+El backend procesa todos los eventos de mercado. El scanner incremental recalcula únicamente las rutas tocadas por el último `book update`; la UI recibe `BOOK_BATCH` throttled para mantener React fluido sin reducir la frecuencia del motor. En una medición Live posterior a esta optimización, la latencia media bajó de `4.88ms` a `1.41ms` con siete venues activos.
 
 ## Quick start
 
@@ -181,6 +181,8 @@ Adjuntar un Railway Volume en `/data` para journal y calibración.
 - Cont, Kukanov y Stoikov: [The Price Impact of Order Book Events](https://arxiv.org/abs/1011.6402)
 - Xu, Gould y Howison: [Multi-Level Order-Flow Imbalance in a Limit Order Book](https://arxiv.org/abs/1907.06230)
 - Lipton, Pesavento y Sotiropoulos: [Trade arrival dynamics and quote imbalance](https://arxiv.org/abs/1312.0514)
+- Bechler y Ludkovski: [Order Flows and Limit Order Book Resiliency on the Meso-Scale](https://arxiv.org/abs/1708.02715)
+- Lokin y Yu: [Fill Probabilities in a Limit Order Book with State-Dependent Stochastic Order Flows](https://arxiv.org/abs/2403.02572)
 - Makarov y Schoar: [Trading and Arbitrage in Cryptocurrency Markets](https://doi.org/10.1016/j.jfineco.2019.07.001)
 
 ## Límites honestos
