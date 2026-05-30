@@ -265,7 +265,10 @@ export interface Trade {
   latencyMs: number;
   sizeBtc: string;
   pnlUsd: string;
+  grossPnlUsd: string;
   feesUsd: string;
+  slippageUsd: string;
+  executionRiskUsd: string;
   fillRatio: number;
   status: "FILLED" | "PARTIAL" | "REJECTED";
   highImpact: boolean;
@@ -302,10 +305,13 @@ export interface PerformanceMetrics {
   rejectedOpportunities: number;
   tradesExecuted: number;
   netPnlUsd: string;
+  grossPnlUsd: string;
   winRatePct: string;
   averageProfitUsd: string;
   bestTradeUsd: string;
   totalFeesPaidUsd: string;
+  totalSlippageUsd: string;
+  totalExecutionRiskUsd: string;
   opportunityExecutionRatioPct: string;
   averageDetectionLatencyMs: string;
   sharpeLikeRatio: string;

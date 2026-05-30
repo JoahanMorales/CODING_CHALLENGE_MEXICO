@@ -111,7 +111,7 @@ export function Dashboard() {
   const missedOpportunities = useMemo(() => opportunities.filter((opportunity) => opportunity.status === "REJECTED").slice(0, 6), [opportunities]);
 
   return (
-    <main className="grid h-full grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-[#f7fbff] text-zinc-900">
+    <main className="grid h-full w-full min-w-0 max-w-full grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-[#f7fbff] text-zinc-900">
       <CommandBar
         connected={connected}
         dataActive={dataActive}
@@ -136,9 +136,9 @@ export function Dashboard() {
         visibleTypes={visibleTypes}
       />
 
-      <section className="min-h-0 overflow-y-auto px-3 py-3 xl:overflow-hidden xl:px-4">
-        <div className="grid min-h-0 gap-3 xl:h-full xl:grid-cols-[0.9fr_1.28fr_0.96fr]">
-          <aside className="grid min-h-0 gap-3 pr-1 xl:grid-rows-[auto_auto_auto_minmax(220px,0.82fr)] xl:overflow-y-auto">
+      <section className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-3 xl:overflow-hidden xl:px-4">
+        <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] gap-3 xl:h-full xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.28fr)_minmax(0,0.96fr)]">
+          <aside className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden pr-1 xl:grid-rows-[auto_auto_auto_minmax(220px,0.82fr)] xl:overflow-y-auto">
             <SystemHealth
               connectionError={connectionError}
               connected={connected}
@@ -153,7 +153,7 @@ export function Dashboard() {
             <PriceChartPanel marketDrift={marketDrift} priceSeries={priceSeries} />
           </aside>
 
-          <section className="grid min-h-0 gap-3 xl:grid-rows-[auto_minmax(0,1fr)_auto] xl:overflow-hidden">
+          <section className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden xl:grid-rows-[auto_minmax(0,1fr)_auto] xl:overflow-hidden">
             <ActiveEdgePanel latestExecutable={latestExecutable} latestSignal={latestSignal} latestTrade={trades[0]} metrics={metrics} risk={risk} />
             <SignalFeed opportunities={visibleOpportunities} replaying={replayOpportunities.length > 0} />
             <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
@@ -167,7 +167,7 @@ export function Dashboard() {
             </details>
           </section>
 
-          <aside className="grid min-h-0 gap-3 pr-1 xl:grid-rows-[auto_auto_auto_auto] xl:overflow-y-auto">
+          <aside className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden pr-1 xl:grid-rows-[auto_auto_auto_auto] xl:overflow-y-auto">
             <PerformancePanel metrics={metrics} mode={mode} pnlSeries={pnlSeries} risk={risk} />
             <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
@@ -224,7 +224,7 @@ function CommandBar({
 }) {
   const netPositive = Number(metrics.netPnlUsd) >= 0;
   return (
-    <header className="border-b border-sky-100 bg-white/92 px-4 py-3 shadow-sm shadow-sky-100/70 backdrop-blur">
+    <header className="min-w-0 overflow-x-hidden border-b border-sky-100 bg-white/92 px-4 py-3 shadow-sm shadow-sky-100/70 backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[10px] font-black uppercase text-sky-700">Terminal de arbitraje</span>
@@ -233,7 +233,7 @@ function CommandBar({
           <StatusPill label={`Riesgo ${risk.riskColor}`} tone={riskTone(risk.riskColor)} />
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2 md:w-auto md:justify-end">
           <SegmentedMode mode={mode} setMode={setMode} />
           <TopMetric label="Gateway" value={connected ? `${heartbeatMs}ms` : "OFF"} tone={connected ? "sky" : "rose"} />
           <TopMetric label="Señales" value={String(metrics.opportunitiesDetected)} tone="zinc" />
@@ -274,7 +274,7 @@ function TerminalToolbar({
   const [token, setToken] = useState("");
   const visibleFilterCount = visibleExchanges.length + visibleTypes.length;
   return (
-    <section className="border-b border-sky-100 bg-white px-4 py-2.5">
+    <section className="min-w-0 overflow-x-hidden border-b border-sky-100 bg-white px-4 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {(["ALL", "EXECUTABLE", "REJECTED"] as const).map((status) => (
@@ -806,7 +806,7 @@ function PerformancePanel({ metrics, mode, pnlSeries, risk }: { metrics: Perform
   return (
     <Panel>
       <div className="flex items-start justify-between gap-3">
-        <PanelTitle eyebrow="Rendimiento paper" title="P&L de la sesión" />
+        <PanelTitle eyebrow="Rendimiento paper" title="P&L neto después de costos" />
         <div className="text-right">
           <div className={`font-mono text-3xl font-black ${positive ? "text-emerald-600" : "text-rose-600"}`}>${metrics.netPnlUsd}</div>
           <div className="font-mono text-[10px] font-bold uppercase text-zinc-500">{risk.riskColor} risk</div>
@@ -831,6 +831,8 @@ function PerformancePanel({ metrics, mode, pnlSeries, risk }: { metrics: Perform
         </ResponsiveContainer>
       </div>
 
+      <CostWaterfall metrics={metrics} />
+
       <div className="mt-3 grid grid-cols-3 gap-2">
         <TinyMetric label="Win rate" value={`${metrics.winRatePct}%`} tone="emerald" />
         <TinyMetric label="Promedio" value={`$${metrics.averageProfitUsd}`} tone={Number(metrics.averageProfitUsd) >= 0 ? "emerald" : "rose"} />
@@ -848,6 +850,41 @@ function PerformancePanel({ metrics, mode, pnlSeries, risk }: { metrics: Perform
       </div>
     </Panel>
   );
+}
+
+function CostWaterfall({ metrics }: { metrics: PerformanceMetrics }) {
+  const stages = [
+    { label: "Gross edge", subtractive: false, tone: "sky" as const, value: metrics.grossPnlUsd },
+    { label: "Fees", subtractive: true, tone: "amber" as const, value: metrics.totalFeesPaidUsd },
+    { label: "Slippage", subtractive: true, tone: "rose" as const, value: metrics.totalSlippageUsd },
+    { label: "Execution risk", subtractive: true, tone: "violet" as const, value: metrics.totalExecutionRiskUsd },
+    { label: "Net P&L", subtractive: false, tone: Number(metrics.netPnlUsd) >= 0 ? "emerald" as const : "rose" as const, value: metrics.netPnlUsd }
+  ];
+  return (
+    <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/75 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <SectionKicker>Waterfall de ejecución</SectionKicker>
+        <span className="font-mono text-[9px] font-black uppercase text-zinc-400">Gross - costos = net</span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {stages.map((stage, index) => (
+          <div className={`relative rounded-lg border bg-white px-2 py-2 ${toneBorder(stage.tone)}`} key={stage.label}>
+            <span className="block font-mono text-[8px] font-black uppercase text-zinc-500">{stage.label}</span>
+            <strong className={`mt-1 block truncate font-mono text-xs ${toneText(stage.tone)}`}>
+              {waterfallValue(stage.value, stage.subtractive)}
+            </strong>
+            {index < stages.length - 1 && <span className="absolute -right-2.5 top-1/2 hidden -translate-y-1/2 font-mono text-xs font-black text-zinc-300 sm:block">→</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function waterfallValue(value: string, subtractive: boolean): string {
+  const amount = Number(value);
+  if (!subtractive) return `$${value}`;
+  return amount >= 0 ? `-$${value}` : `+$${Math.abs(amount).toFixed(2)}`;
 }
 
 function LearningPanel({ bare = false, learning }: { bare?: boolean; learning: LearningSummary }) {
@@ -1118,7 +1155,7 @@ function RiskDock({
   const scenarioLocked = mode === "LIVE";
   const adminLocked = mode === "LIVE" && !adminAuthenticated;
   return (
-    <footer className="border-t border-sky-100 bg-white/92 px-4 py-3 shadow-[0_-8px_24px_rgba(186,230,253,0.25)] backdrop-blur">
+    <footer className="min-w-0 overflow-x-hidden border-t border-sky-100 bg-white/92 px-4 py-3 shadow-[0_-8px_24px_rgba(186,230,253,0.25)] backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
           <span className="flex items-center gap-2 font-black text-zinc-800">

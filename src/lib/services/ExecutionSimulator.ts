@@ -99,12 +99,16 @@ export class ExecutionSimulator {
     const notional = execution.buyNotional.plus(execution.sellNotional).div(2);
     const adverseLatencyCost = notional.mul(realizedLatencyShockRate(latencyMs, opportunity.highImpact, opportunity.executionStyle));
     const survivalDecayCost = realizedSurvivalDecayCost(notional, opportunity);
-    const modeledCosts = d(opportunity.slippageUsd).plus(opportunity.networkCostUsd).mul(fillRatio);
-    const realizedPnl = sellCredit.minus(buyCost).minus(modeledCosts).minus(adverseLatencyCost).minus(survivalDecayCost);
+    const slippageCost = d(opportunity.slippageUsd).mul(fillRatio);
+    const executionRiskCost = d(opportunity.networkCostUsd).mul(fillRatio).plus(adverseLatencyCost).plus(survivalDecayCost);
+    const modeledCosts = slippageCost.plus(executionRiskCost);
+    const grossPnl = execution.sellNotional.minus(execution.buyNotional);
+    const fees = buyFee.plus(sellFee);
+    const realizedPnl = grossPnl.minus(fees).minus(modeledCosts);
     buyWallet.usdt = buyWallet.usdt.minus(buyCost);
     buyWallet.btc = buyWallet.btc.plus(filledSize);
     sellWallet.btc = sellWallet.btc.minus(filledSize);
-    sellWallet.usdt = sellWallet.usdt.plus(sellCredit).minus(modeledCosts).minus(adverseLatencyCost).minus(survivalDecayCost);
+    sellWallet.usdt = sellWallet.usdt.plus(sellCredit).minus(modeledCosts);
 
     return {
       id: cryptoId("trade"),
@@ -115,7 +119,10 @@ export class ExecutionSimulator {
       latencyMs,
       sizeBtc: filledSize.toFixed(8),
       pnlUsd: usd(realizedPnl),
-      feesUsd: usd(buyFee.plus(sellFee)),
+      grossPnlUsd: usd(grossPnl),
+      feesUsd: usd(fees),
+      slippageUsd: usd(slippageCost),
+      executionRiskUsd: usd(executionRiskCost),
       fillRatio: fillRatio.toNumber(),
       status: fillRatio.lessThan(1) ? "PARTIAL" : "FILLED",
       highImpact: opportunity.highImpact
@@ -126,10 +133,17 @@ export class ExecutionSimulator {
     const fillRatio = opportunity.highImpact ? d("0.75") : d(1);
     const notional = d(opportunity.tradeSizeBtc).mul(fillRatio).mul("70000");
     const survivalDecayCost = realizedSurvivalDecayCost(notional, opportunity);
+    const slippageCost = d(opportunity.slippageUsd).mul(fillRatio);
+    const adverseLatencyCost = notional.mul(
+      realizedLatencyShockRate(latencyMs, opportunity.highImpact, opportunity.executionStyle)
+    );
+    const executionRiskCost = d(opportunity.networkCostUsd).mul(fillRatio).plus(adverseLatencyCost).plus(survivalDecayCost);
+    const fees = d(opportunity.totalFeesUsd).mul(fillRatio);
     const realizedPnl = d(opportunity.expectedProfitUsd)
       .mul(fillRatio)
-      .minus(notional.mul(realizedLatencyShockRate(latencyMs, opportunity.highImpact, opportunity.executionStyle)))
+      .minus(adverseLatencyCost)
       .minus(survivalDecayCost);
+    const grossPnl = realizedPnl.plus(fees).plus(slippageCost).plus(executionRiskCost);
     return {
       id: cryptoId("trade"),
       opportunityId: opportunity.id,
@@ -139,7 +153,10 @@ export class ExecutionSimulator {
       latencyMs,
       sizeBtc: d(opportunity.tradeSizeBtc).mul(fillRatio).toFixed(8),
       pnlUsd: usd(realizedPnl),
-      feesUsd: usd(d(opportunity.totalFeesUsd).mul(fillRatio)),
+      grossPnlUsd: usd(grossPnl),
+      feesUsd: usd(fees),
+      slippageUsd: usd(slippageCost),
+      executionRiskUsd: usd(executionRiskCost),
       fillRatio: fillRatio.toNumber(),
       status: fillRatio.lessThan(1) ? "PARTIAL" : "FILLED",
       highImpact: opportunity.highImpact
@@ -156,7 +173,10 @@ export class ExecutionSimulator {
       latencyMs,
       sizeBtc,
       pnlUsd: "0.00",
+      grossPnlUsd: "0.00",
       feesUsd: "0.00",
+      slippageUsd: "0.00",
+      executionRiskUsd: "0.00",
       fillRatio: 0,
       status: "REJECTED",
       highImpact: opportunity.highImpact

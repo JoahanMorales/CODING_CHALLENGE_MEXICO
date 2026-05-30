@@ -91,10 +91,13 @@ const defaultMetrics: PerformanceMetrics = {
   rejectedOpportunities: 0,
   tradesExecuted: 0,
   netPnlUsd: "0.00",
+  grossPnlUsd: "0.00",
   winRatePct: "0.00",
   averageProfitUsd: "0.00",
   bestTradeUsd: "0.00",
   totalFeesPaidUsd: "0.00",
+  totalSlippageUsd: "0.00",
+  totalExecutionRiskUsd: "0.00",
   opportunityExecutionRatioPct: "0.00",
   averageDetectionLatencyMs: "0.00",
   sharpeLikeRatio: "0.000"
@@ -267,7 +270,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
 
   exportSessionCsv: () => {
     const rows = [
-      ["timestamp", "kind", "type", "route", "status", "size_btc", "pnl_usd", "fees_usd", "score", "net_spread_pct", "edge_survival", "edge_quality"],
+      ["timestamp", "kind", "type", "route", "status", "size_btc", "net_pnl_usd", "gross_pnl_usd", "fees_usd", "slippage_usd", "execution_risk_usd", "score", "net_spread_pct", "edge_survival", "edge_quality"],
       ...get().trades.map((trade) => [
         new Date(trade.executedAt).toISOString(),
         "trade",
@@ -276,7 +279,10 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
         trade.status,
         trade.sizeBtc,
         trade.pnlUsd,
+        trade.grossPnlUsd,
         trade.feesUsd,
+        trade.slippageUsd,
+        trade.executionRiskUsd,
         "",
         "",
         "",
@@ -290,7 +296,10 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
         opportunity.status,
         opportunity.tradeSizeBtc,
         opportunity.expectedProfitUsd,
+        opportunity.grossProfitUsd,
         opportunity.totalFeesUsd,
+        opportunity.slippageUsd,
+        opportunity.networkCostUsd,
         String(opportunity.score),
         opportunity.netSpreadPct,
         opportunity.edgeModel?.survivalProbability ?? "",

@@ -12,7 +12,10 @@ function trade(pnlUsd: string): Trade {
     latencyMs: 80,
     sizeBtc: "0.05",
     pnlUsd,
+    grossPnlUsd: pnlUsd,
     feesUsd: "1.00",
+    slippageUsd: "0.00",
+    executionRiskUsd: "0.00",
     fillRatio: 1,
     status: "FILLED",
     highImpact: false

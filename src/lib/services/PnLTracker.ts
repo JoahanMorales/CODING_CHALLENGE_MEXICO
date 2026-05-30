@@ -30,7 +30,10 @@ export class PnLTracker {
     const pnlValues = executed.map((trade) => d(trade.pnlUsd));
     const netPnl = pnlValues.reduce((sum, value) => sum.plus(value), ZERO);
     const wins = pnlValues.filter((value) => value.greaterThan(0)).length;
+    const grossPnl = executed.reduce((sum, trade) => sum.plus(trade.grossPnlUsd), ZERO);
     const totalFees = executed.reduce((sum, trade) => sum.plus(trade.feesUsd), ZERO);
+    const totalSlippage = executed.reduce((sum, trade) => sum.plus(trade.slippageUsd), ZERO);
+    const totalExecutionRisk = executed.reduce((sum, trade) => sum.plus(trade.executionRiskUsd), ZERO);
     const bestTrade = pnlValues.reduce((best, value) => Decimal.max(best, value), ZERO);
     const averageProfit = executed.length ? netPnl.div(executed.length) : ZERO;
     const mean = averageProfit;
@@ -47,10 +50,13 @@ export class PnLTracker {
       rejectedOpportunities: this.rejectedOpportunities,
       tradesExecuted: executed.length,
       netPnlUsd: usd(netPnl),
+      grossPnlUsd: usd(grossPnl),
       winRatePct: executed.length ? ((wins / executed.length) * 100).toFixed(2) : "0.00",
       averageProfitUsd: usd(averageProfit),
       bestTradeUsd: usd(bestTrade),
       totalFeesPaidUsd: usd(totalFees),
+      totalSlippageUsd: usd(totalSlippage),
+      totalExecutionRiskUsd: usd(totalExecutionRisk),
       opportunityExecutionRatioPct: this.opportunitiesDetected
         ? ((executed.length / this.opportunitiesDetected) * 100).toFixed(2)
         : "0.00",
