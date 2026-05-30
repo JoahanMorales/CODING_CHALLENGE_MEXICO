@@ -3,8 +3,11 @@ import type {
   ExecutionRuntimeMode,
   ExecutionRuntimeState,
   Opportunity,
+  SandboxAssetBalance,
   SandboxExecutionReport,
+  SandboxFill,
   SandboxOrderMode,
+  SandboxReconciliation,
   SandboxVenueStatus
 } from "../types";
 
@@ -31,6 +34,9 @@ export class SandboxExecutionService {
   private mode: ExecutionRuntimeMode = "PAPER";
   private readonly venues: SandboxVenueStatus[];
   private lastReport: SandboxExecutionReport | undefined;
+  private lastReconciliation: SandboxReconciliation | undefined;
+  private killSwitchActive = false;
+  private killSwitchReason = "";
 
   constructor(env: Record<string, string | undefined> = process.env) {
     this.config = {
@@ -47,13 +53,15 @@ export class SandboxExecutionService {
         exchange: "binance",
         configured: Boolean(this.config.binanceApiKey && this.config.binanceApiSecret),
         environment: "spot-testnet",
-        lastError: ""
+        lastError: "",
+        balances: emptyBalances()
       },
       {
         exchange: "okx",
         configured: Boolean(this.config.okxApiKey && this.config.okxApiSecret && this.config.okxPassphrase),
         environment: "demo-trading",
-        lastError: ""
+        lastError: "",
+        balances: emptyBalances()
       }
     ];
   }
@@ -69,13 +77,76 @@ export class SandboxExecutionService {
       sandboxEnabled: this.mode === "SANDBOX" && this.hasConfiguredVenue(),
       orderMode: this.config.orderMode,
       maxNotionalUsd: this.config.maxNotionalUsd.toFixed(2),
-      venues: this.venues.map((venue) => ({ ...venue })),
+      venues: this.venues.map((venue) => ({ ...venue, balances: venue.balances.map((balance) => ({ ...balance })) })),
+      killSwitchActive: this.killSwitchActive,
+      killSwitchReason: this.killSwitchReason,
+      lastReconciliation: this.lastReconciliation,
       lastReport: this.lastReport
     };
   }
 
+  setKillSwitch(active: boolean, reason = active ? "Manual sandbox kill switch engaged." : ""): ExecutionRuntimeState {
+    this.killSwitchActive = active;
+    this.killSwitchReason = reason;
+    return this.status();
+  }
+
+  async refreshBalances(): Promise<ExecutionRuntimeState> {
+    await Promise.all(
+      this.venues.map(async (venue) => {
+        if (!venue.configured) return;
+        const startedAt = performanceNow();
+        try {
+          venue.balances = venue.exchange === "binance" ? await this.fetchBinanceBalances() : await this.fetchOkxBalances();
+          venue.balanceFetchedAt = Date.now();
+          this.markVenue(venue.exchange, "", undefined, performanceNow() - startedAt);
+        } catch (error) {
+          this.markVenue(venue.exchange, errorMessage(error), undefined, performanceNow() - startedAt);
+        }
+      })
+    );
+    return this.status();
+  }
+
+  async reconcileLastReport(): Promise<ExecutionRuntimeState> {
+    if (!this.lastReport) {
+      this.lastReconciliation = reconciliation("IDLE", "No sandbox report is available yet.");
+      return this.status();
+    }
+    if (this.lastReport.mode !== "LIVE_SANDBOX") {
+      this.lastReconciliation = reconciliation("TEST_ONLY", "TEST_ORDER and DRY_RUN never create exchange fills.");
+      return this.status();
+    }
+    const submitted = this.lastReport.legs.filter((leg) => leg.status === "SUBMITTED" && leg.orderId);
+    if (submitted.length !== 2) {
+      this.lastReconciliation = reconciliation("FAILED", "Both sandbox legs were not submitted. Manual review required.", [], "0", "BLOCKED");
+      this.setKillSwitch(true, "Sandbox leg submission mismatch.");
+      return this.status();
+    }
+    try {
+      const fills = await Promise.all(submitted.map((leg) => this.fetchFill(leg)));
+      const buy = fills.find((fill) => this.lastReport?.legs.find((leg) => leg.orderId === fill.orderId)?.side === "BUY");
+      const sell = fills.find((fill) => this.lastReport?.legs.find((leg) => leg.orderId === fill.orderId)?.side === "SELL");
+      const residual = d(buy?.filledQuantity ?? "0").minus(sell?.filledQuantity ?? "0");
+      if (residual.abs().greaterThan("0.00001")) {
+        this.lastReconciliation = reconciliation("PARTIAL", "Leg fills diverged. Hedge is planned and sandbox execution is paused.", fills, residual.toFixed(8), "PLANNED");
+        this.setKillSwitch(true, "Residual BTC exposure requires hedge review.");
+      } else {
+        this.lastReconciliation = reconciliation("BALANCED", "Both sandbox legs reconcile within BTC tolerance.", fills, residual.toFixed(8));
+      }
+    } catch (error) {
+      this.lastReconciliation = reconciliation("FAILED", `Reconciliation failed: ${errorMessage(error)}`, [], "0", "BLOCKED");
+      this.setKillSwitch(true, "Sandbox reconciliation failed.");
+    }
+    return this.status();
+  }
+
   async execute(opportunity: Opportunity): Promise<SandboxExecutionReport | null> {
     if (this.mode !== "SANDBOX") return null;
+    if (this.killSwitchActive) {
+      this.lastReport = this.report(opportunity, "SKIPPED", `Sandbox kill switch active: ${this.killSwitchReason}`, []);
+      return this.lastReport;
+    }
     const legs = this.planLegs(opportunity);
     if (!legs.length) {
       this.lastReport = this.report(opportunity, "SKIPPED", "Sandbox execution supports Binance <-> OKX cross-exchange legs first.", []);
@@ -117,6 +188,10 @@ export class SandboxExecutionService {
           : "Sandbox order legs submitted.",
       submitted
     );
+    if (this.config.orderMode === "TEST_ORDER") {
+      this.lastReconciliation = reconciliation("TEST_ONLY", "Binance payload validated only. No order or fill was created.");
+    }
+    if (this.config.orderMode === "LIVE_SANDBOX" && !failed) await this.reconcileLastReport();
     return this.lastReport;
   }
 
@@ -210,6 +285,85 @@ export class SandboxExecutionService {
     return String(data?.ordId ?? data?.clOrdId ?? "okx-demo-ok");
   }
 
+  private async fetchBinanceBalances(): Promise<SandboxAssetBalance[]> {
+    const payload = await this.binanceSignedGet("/api/v3/account");
+    const balances = Array.isArray(payload.balances) ? payload.balances : [];
+    return assetBalances(
+      balances.filter(isRecord).map((balance) => ({
+        asset: String(balance.asset ?? ""),
+        available: String(balance.free ?? "0"),
+        locked: String(balance.locked ?? "0")
+      }))
+    );
+  }
+
+  private async fetchOkxBalances(): Promise<SandboxAssetBalance[]> {
+    const payload = await this.okxSignedGet("/api/v5/account/balance?ccy=BTC,USDT");
+    const accounts = Array.isArray(payload.data) ? payload.data : [];
+    const account = accounts.find(isRecord);
+    const details = account && Array.isArray(account.details) ? account.details : [];
+    return assetBalances(
+      details.filter(isRecord).map((balance) => ({
+        asset: String(balance.ccy ?? ""),
+        available: String(balance.availBal ?? balance.availEq ?? "0"),
+        locked: String(balance.frozenBal ?? "0")
+      }))
+    );
+  }
+
+  private async fetchFill(leg: SandboxExecutionReport["legs"][number]): Promise<SandboxFill> {
+    if (!leg.orderId) throw new Error(`${leg.exchange} order id missing`);
+    if (leg.exchange === "binance") {
+      const payload = await this.binanceSignedGet("/api/v3/order", { symbol: "BTCUSDT", orderId: leg.orderId });
+      const quantity = String(payload.executedQty ?? "0");
+      const quote = String(payload.cummulativeQuoteQty ?? "0");
+      return fill("binance", leg.orderId, String(payload.status ?? "UNKNOWN"), quantity, quote);
+    }
+    const payload = await this.okxSignedGet(`/api/v5/trade/order?instId=BTC-USDT&ordId=${encodeURIComponent(leg.orderId)}`);
+    const data = Array.isArray(payload.data) ? payload.data.find(isRecord) : undefined;
+    const quantity = String(data?.accFillSz ?? "0");
+    const average = String(data?.avgPx ?? "0");
+    return {
+      exchange: "okx",
+      orderId: leg.orderId,
+      status: String(data?.state ?? "UNKNOWN"),
+      filledQuantity: quantity,
+      quoteQuantity: d(quantity).mul(average || "0").toFixed(8),
+      averagePrice: average,
+      fetchedAt: Date.now()
+    };
+  }
+
+  private async binanceSignedGet(path: string, extra: Record<string, string> = {}): Promise<Record<string, unknown>> {
+    if (!this.config.binanceApiKey || !this.config.binanceApiSecret) throw new Error("Binance testnet API key missing");
+    const params = new URLSearchParams({ ...extra, recvWindow: "5000", timestamp: String(Date.now()) });
+    params.set("signature", await hmacSha256Hex(this.config.binanceApiSecret, params.toString()));
+    const response = await fetch(`https://testnet.binance.vision${path}?${params.toString()}`, {
+      headers: { "X-MBX-APIKEY": this.config.binanceApiKey }
+    });
+    const payload = await jsonRecord(response);
+    if (!response.ok) throw new Error(String(payload.msg ?? `Binance ${response.status}`));
+    return payload;
+  }
+
+  private async okxSignedGet(path: string): Promise<Record<string, unknown>> {
+    if (!this.config.okxApiKey || !this.config.okxApiSecret || !this.config.okxPassphrase) throw new Error("OKX demo API key missing");
+    const timestamp = new Date().toISOString();
+    const signature = await hmacSha256Base64(this.config.okxApiSecret, `${timestamp}GET${path}`);
+    const response = await fetch(`https://www.okx.com${path}`, {
+      headers: {
+        "OK-ACCESS-KEY": this.config.okxApiKey,
+        "OK-ACCESS-SIGN": signature,
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": this.config.okxPassphrase,
+        "x-simulated-trading": "1"
+      }
+    });
+    const payload = await jsonRecord(response);
+    if (!response.ok || payload.code !== "0") throw new Error(String(payload.msg ?? `OKX ${response.status}`));
+    return payload;
+  }
+
   private report(
     opportunity: Opportunity,
     status: SandboxExecutionReport["status"],
@@ -242,6 +396,52 @@ export class SandboxExecutionService {
   private hasConfiguredVenue(): boolean {
     return this.venues.some((venue) => venue.configured);
   }
+}
+
+function emptyBalances(): SandboxAssetBalance[] {
+  return assetBalances([]);
+}
+
+function assetBalances(input: Array<{ asset: string; available: string; locked: string }>): SandboxAssetBalance[] {
+  return (["BTC", "USDT"] as const).map((asset) => {
+    const source = input.find((balance) => balance.asset === asset);
+    return { asset, available: source?.available ?? "0", locked: source?.locked ?? "0" };
+  });
+}
+
+function fill(exchange: "binance" | "okx", orderId: string, status: string, quantity: string, quote: string): SandboxFill {
+  return {
+    exchange,
+    orderId,
+    status,
+    filledQuantity: quantity,
+    quoteQuantity: quote,
+    averagePrice: d(quantity).greaterThan(0) ? d(quote).div(quantity).toFixed(8) : "0",
+    fetchedAt: Date.now()
+  };
+}
+
+function reconciliation(
+  status: SandboxReconciliation["status"],
+  reason: string,
+  fills: SandboxFill[] = [],
+  residualBtc = "0",
+  hedgeAction: SandboxReconciliation["hedgeAction"] = "NONE"
+): SandboxReconciliation {
+  return { checkedAt: Date.now(), status, reason, residualBtc, hedgeAction, fills };
+}
+
+async function jsonRecord(response: Response): Promise<Record<string, unknown>> {
+  const payload = (await response.json().catch(() => ({}))) as unknown;
+  return isRecord(payload) ? payload : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown sandbox error";
 }
 
 function normalizeSandboxExchange(exchange: string): "binance" | "okx" | null {

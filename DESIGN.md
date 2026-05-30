@@ -205,8 +205,17 @@ Must show:
 - configured sandbox venues;
 - max notional cap;
 - latest sandbox report status.
+- authenticated BTC/USDT balances per sandbox venue;
+- sandbox kill switch state;
+- latest reconciliation state, residual BTC, and hedge action.
 
 Design rule: arming sandbox should feel deliberate and controlled, not like a game button.
+
+Operational controls:
+
+- `REFRESH FUNDS`: fetch authenticated balances from Binance Spot Testnet and OKX Demo.
+- `RECONCILE`: label validation-only runs or compare both demo fills after `LIVE_SANDBOX`.
+- `KILL SWITCH`: stop sandbox submission independently from the quantitative circuit breaker.
 
 ## 6. Interaction Rules
 

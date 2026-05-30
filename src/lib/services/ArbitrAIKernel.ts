@@ -66,6 +66,18 @@ export class ArbitrAIKernel {
     this.publish({ type: "EXECUTION_RUNTIME", runtime });
   }
 
+  async refreshSandboxBalances(): Promise<void> {
+    this.publish({ type: "EXECUTION_RUNTIME", runtime: await this.sandboxExecution.refreshBalances() });
+  }
+
+  async reconcileSandbox(): Promise<void> {
+    this.publish({ type: "EXECUTION_RUNTIME", runtime: await this.sandboxExecution.reconcileLastReport() });
+  }
+
+  setSandboxKillSwitch(active: boolean): void {
+    this.publish({ type: "EXECUTION_RUNTIME", runtime: this.sandboxExecution.setKillSwitch(active) });
+  }
+
   snapshot(): GatewaySnapshot {
     return {
       type: "SNAPSHOT",

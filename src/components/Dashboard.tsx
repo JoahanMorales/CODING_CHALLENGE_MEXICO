@@ -50,6 +50,9 @@ export function Dashboard() {
     replayHistory,
     exportSessionCsv,
     setExecutionRuntimeMode,
+    refreshSandboxBalances,
+    reconcileSandbox,
+    setSandboxKillSwitch,
     mode,
     connected,
     connectionError,
@@ -129,7 +132,15 @@ export function Dashboard() {
           <aside className="grid min-h-0 gap-3 overflow-y-auto pr-1 xl:grid-rows-[auto_auto_auto_minmax(250px,0.8fr)]">
             <PerformancePanel metrics={metrics} pnlSeries={pnlSeries} risk={risk} />
             <LearningPanel learning={learning} />
-            <ExecutionPanel executionQueue={executionQueue} runtime={executionRuntime} setExecutionRuntimeMode={setExecutionRuntimeMode} trades={trades} />
+            <ExecutionPanel
+              executionQueue={executionQueue}
+              reconcileSandbox={reconcileSandbox}
+              refreshSandboxBalances={refreshSandboxBalances}
+              runtime={executionRuntime}
+              setExecutionRuntimeMode={setExecutionRuntimeMode}
+              setSandboxKillSwitch={setSandboxKillSwitch}
+              trades={trades}
+            />
             <WalletPanel
               applyWalletSeed={applyWalletSeed}
               mode={mode}
@@ -634,13 +645,19 @@ function LearningPanel({ learning }: { learning: LearningSummary }) {
 
 function ExecutionPanel({
   executionQueue,
+  reconcileSandbox,
+  refreshSandboxBalances,
   runtime,
   setExecutionRuntimeMode,
+  setSandboxKillSwitch,
   trades
 }: {
   executionQueue: Opportunity[];
+  reconcileSandbox: () => void;
+  refreshSandboxBalances: () => void;
   runtime: ExecutionRuntimeState;
   setExecutionRuntimeMode: (mode: ExecutionRuntimeMode) => void;
+  setSandboxKillSwitch: (active: boolean) => void;
   trades: Trade[];
 }) {
   const configured = runtime.venues.filter((venue) => venue.configured).length;
@@ -676,6 +693,47 @@ function ExecutionPanel({
             <span className={runtime.lastReport.status === "FAILED" ? "text-rose-700" : runtime.lastReport.status === "SUBMITTED" ? "text-emerald-700" : "text-sky-700"}>
               {runtime.lastReport.status}
             </span>
+          </div>
+        )}
+        <div className="mt-2 grid gap-2 border-t border-sky-100 pt-2 sm:grid-cols-2">
+          {runtime.venues.map((venue) => {
+            const btc = venue.balances.find((balance) => balance.asset === "BTC");
+            const usdt = venue.balances.find((balance) => balance.asset === "USDT");
+            return (
+              <div className="rounded-lg border border-white bg-white/80 px-2 py-2" key={venue.exchange}>
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="text-[10px] font-black uppercase text-zinc-700">{venue.exchange}</strong>
+                  <span className={`font-mono text-[9px] font-black ${venue.lastError ? "text-rose-700" : venue.configured ? "text-emerald-700" : "text-zinc-400"}`}>
+                    {venue.lastError ? "CHECK" : venue.configured ? "READY" : "NO KEY"}
+                  </span>
+                </div>
+                <div className="mt-1 flex justify-between gap-2 font-mono text-[9px] font-bold text-zinc-500">
+                  <span>{Number(btc?.available ?? 0).toFixed(5)} BTC</span>
+                  <span>${Number(usdt?.available ?? 0).toFixed(2)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button className="rounded-lg border border-sky-200 bg-white px-2 py-1 font-mono text-[9px] font-black text-sky-700 hover:bg-sky-50" onClick={refreshSandboxBalances} type="button">
+            REFRESH FUNDS
+          </button>
+          <button className="rounded-lg border border-violet-200 bg-white px-2 py-1 font-mono text-[9px] font-black text-violet-700 hover:bg-violet-50" onClick={reconcileSandbox} type="button">
+            RECONCILE
+          </button>
+          <button
+            className={`rounded-lg border px-2 py-1 font-mono text-[9px] font-black ${runtime.killSwitchActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}
+            onClick={() => setSandboxKillSwitch(!runtime.killSwitchActive)}
+            type="button"
+          >
+            {runtime.killSwitchActive ? "CLEAR KILL" : "KILL SWITCH"}
+          </button>
+          <StatusPill label={runtime.killSwitchActive ? "Sandbox blocked" : "Sandbox clear"} tone={runtime.killSwitchActive ? "rose" : "emerald"} />
+        </div>
+        {runtime.lastReconciliation && (
+          <div className="mt-2 truncate font-mono text-[9px] font-bold text-zinc-500">
+            REC {runtime.lastReconciliation.status} / residual {runtime.lastReconciliation.residualBtc} BTC / hedge {runtime.lastReconciliation.hedgeAction}
           </div>
         )}
       </div>

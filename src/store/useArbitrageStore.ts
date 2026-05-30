@@ -56,6 +56,9 @@ interface ArbitrageState {
   simulateMarketCrash: () => void;
   runScenario: (scenario: ScenarioKind) => void;
   setExecutionRuntimeMode: (mode: ExecutionRuntimeMode) => void;
+  refreshSandboxBalances: () => void;
+  reconcileSandbox: () => void;
+  setSandboxKillSwitch: (active: boolean) => void;
   resetRisk: () => void;
   replayHistory: () => void;
   exportSessionCsv: () => void;
@@ -111,9 +114,11 @@ const defaultExecutionRuntime: ExecutionRuntimeState = {
   sandboxEnabled: false,
   orderMode: "DRY_RUN",
   maxNotionalUsd: "25.00",
+  killSwitchActive: false,
+  killSwitchReason: "",
   venues: [
-    { exchange: "binance", configured: false, environment: "spot-testnet", lastError: "" },
-    { exchange: "okx", configured: false, environment: "demo-trading", lastError: "" }
+    { exchange: "binance", configured: false, environment: "spot-testnet", lastError: "", balances: [{ asset: "BTC", available: "0", locked: "0" }, { asset: "USDT", available: "0", locked: "0" }] },
+    { exchange: "okx", configured: false, environment: "demo-trading", lastError: "", balances: [{ asset: "BTC", available: "0", locked: "0" }, { asset: "USDT", available: "0", locked: "0" }] }
   ]
 };
 
@@ -194,6 +199,30 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
     }
     localKernel?.setExecutionMode(mode);
     set({ executionRuntime: localKernel?.snapshot().executionRuntime ?? defaultExecutionRuntime });
+  },
+
+  refreshSandboxBalances: () => {
+    if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
+      gateway.send("REFRESH_SANDBOX_BALANCES");
+      return;
+    }
+    void localKernel?.refreshSandboxBalances();
+  },
+
+  reconcileSandbox: () => {
+    if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
+      gateway.send("RECONCILE_SANDBOX");
+      return;
+    }
+    void localKernel?.reconcileSandbox();
+  },
+
+  setSandboxKillSwitch: (active) => {
+    if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
+      gateway.send(`SET_SANDBOX_KILL_SWITCH:${active ? "ON" : "OFF"}`);
+      return;
+    }
+    localKernel?.setSandboxKillSwitch(active);
   },
 
   resetRisk: () => {

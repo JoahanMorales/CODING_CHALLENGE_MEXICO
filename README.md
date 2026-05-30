@@ -79,7 +79,7 @@ The local WebSocket gateway loads `.env` on startup without overriding environme
 | `LIVE` | Real public order books from exchange WebSockets and REST fallback | Simulated paper fills only | Demonstrate real market scanning and risk-aware paper trading |
 | `DEMO` | Built-in geometric Brownian motion simulator | Simulated paper fills | Guarantee a reliable presentation when public APIs are quiet or unstable |
 
-ArbitrAI never sends real exchange orders. All trades, P&L, fees, and wallet changes are simulated.
+ArbitrAI never sends real-money exchange orders. The default experience is paper trading. An explicitly armed sandbox bridge can validate Binance Spot Testnet payloads and, only when deliberately configured, send orders to testnet/demo venues.
 
 Live mode is intentionally conservative: if a visible spread does not survive fees, slippage, queue risk, adverse selection, and liquidity impact, it is rejected and explained instead of forced into a fake trade. Demo mode can generate controlled dislocations so the full execution/P&L loop is visible during judging.
 
@@ -309,6 +309,10 @@ Safety controls:
 - `LIVE_SANDBOX` submits only to testnet/demo venues;
 - max sandbox notional defaults to `$25`;
 - only Binance <-> OKX cross-exchange routes are eligible first;
+- authenticated sandbox balances can be refreshed from both venues without exposing keys to the browser;
+- a separate sandbox kill switch blocks order submission independently from the paper-trading circuit breaker;
+- `RECONCILE` labels validation-only runs and, in `LIVE_SANDBOX`, compares both exchange fills;
+- fill divergence pauses sandbox execution and produces a hedge plan for manual review instead of firing an uncontrolled follow-up order;
 - real withdrawal permission is never required and should never be granted.
 
 Environment variables:
@@ -377,6 +381,7 @@ flowchart LR
     Q["Score Queue"]
     RM["RiskManager"]
     X["ExecutionSimulator"]
+    S["SandboxExecutionService"]
     P["PnLTracker"]
     ER["EventRecorder"]
     G["WebSocketGateway"]
@@ -399,6 +404,9 @@ flowchart LR
   Q --> RM
   RM --> X
   X --> P
+  RM --> S
+  S --> B
+  S --> O
   X --> A
   G --> ER
   ER --> G
@@ -575,12 +583,14 @@ Current test focus:
 - fee and slippage math
 - `EdgeTensor` survival scoring
 - `RiskManager.shouldHalt()`
+- sandbox kill switch, balance parsing, and validation-only reconciliation
 
 ## Known Limitations
 
-- ArbitrAI is a paper-trading simulator; it does not place real orders.
+- ArbitrAI defaults to paper trading. Its optional authenticated bridge is intentionally limited to Binance Spot Testnet and OKX Demo Trading.
 - Live mode currently streams BTC/USDT or BTC/USD books from Binance, Kraken, Coinbase, OKX, and Bybit. Binance also streams ETH legs for live triangular checks; demo mode provides full synthetic triangular coverage across all venues.
-- Production trading would require authenticated exchange adapters, nonce handling, reconciliation, persistence, alerting, custody controls, and exchange-specific rate-limit management.
+- Sandbox credentials are environment-specific: Binance Spot Testnet and OKX Demo Trading keys must be created in their matching simulated environments.
+- Real-money production trading would still require persistence, alerts, custody controls, rate-limit management, a reviewed hedge policy, and a staged capital rollout.
 - Reported P&L is simulated and should not be interpreted as real trading profit.
 - The replay store is in-memory for hackathon speed. A production version would persist event logs to a database or object store.
 

@@ -52,6 +52,10 @@ wss.on("connection", (socket) => {
     if (command === "REPLAY_HISTORY") kernel.replayHistory();
     if (command === "SET_EXECUTION_MODE:PAPER") kernel.setExecutionMode("PAPER");
     if (command === "SET_EXECUTION_MODE:SANDBOX") kernel.setExecutionMode("SANDBOX");
+    if (command === "REFRESH_SANDBOX_BALANCES") void kernel.refreshSandboxBalances();
+    if (command === "RECONCILE_SANDBOX") void kernel.reconcileSandbox();
+    if (command === "SET_SANDBOX_KILL_SWITCH:ON") kernel.setSandboxKillSwitch(true);
+    if (command === "SET_SANDBOX_KILL_SWITCH:OFF") kernel.setSandboxKillSwitch(false);
     if (command.startsWith("RUN_SCENARIO:")) {
       const scenario = command.replace("RUN_SCENARIO:", "");
       if (scenario === "MARKET_CRASH" || scenario === "LIQUIDITY_DRAIN" || scenario === "LATENCY_SPIKE") {

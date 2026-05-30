@@ -39,7 +39,68 @@ describe("SandboxExecutionService", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("blocks execution when the sandbox kill switch is active", async () => {
+    const service = configuredService();
+    service.setMode("SANDBOX");
+    service.setKillSwitch(true);
+
+    const report = await service.execute(crossOpportunity());
+
+    expect(report?.status).toBe("SKIPPED");
+    expect(report?.reason).toContain("kill switch active");
+  });
+
+  it("loads authenticated sandbox balances without leaking credentials", async () => {
+    const service = configuredService();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      if (String(input).includes("testnet.binance.vision")) {
+        return jsonResponse({ balances: [{ asset: "BTC", free: "1.25", locked: "0.10" }, { asset: "USDT", free: "5000", locked: "25" }] });
+      }
+      return jsonResponse({ code: "0", data: [{ details: [{ ccy: "BTC", availBal: "0.75", frozenBal: "0" }, { ccy: "USDT", availBal: "4200", frozenBal: "10" }] }] });
+    };
+
+    try {
+      const runtime = await service.refreshBalances();
+      expect(runtime.venues.find((venue) => venue.exchange === "binance")?.balances[0].available).toBe("1.25");
+      expect(runtime.venues.find((venue) => venue.exchange === "okx")?.balances[1].available).toBe("4200");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("marks TEST_ORDER reconciliation as validation-only", async () => {
+    const service = configuredService();
+    service.setMode("SANDBOX");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => jsonResponse({});
+
+    try {
+      await service.execute(crossOpportunity());
+      const runtime = await service.reconcileLastReport();
+      expect(runtime.lastReconciliation?.status).toBe("TEST_ONLY");
+      expect(runtime.lastReconciliation?.fills).toHaveLength(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
+
+function configuredService() {
+  return new SandboxExecutionService({
+    BINANCE_TESTNET_API_KEY: "present",
+    BINANCE_TESTNET_API_SECRET: "present",
+    OKX_DEMO_API_KEY: "present",
+    OKX_DEMO_API_SECRET: "present",
+    OKX_DEMO_API_PASSPHRASE: "present",
+    SANDBOX_ORDER_MODE: "TEST_ORDER"
+  });
+}
+
+function jsonResponse(payload: unknown) {
+  return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+}
 
 function crossOpportunity() {
   return {

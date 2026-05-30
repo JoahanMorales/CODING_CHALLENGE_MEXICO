@@ -139,6 +139,33 @@ export interface SandboxVenueStatus {
   lastError: string;
   lastOrderId?: string;
   lastLatencyMs?: number;
+  balanceFetchedAt?: number;
+  balances: SandboxAssetBalance[];
+}
+
+export interface SandboxAssetBalance {
+  asset: "BTC" | "USDT";
+  available: string;
+  locked: string;
+}
+
+export interface SandboxFill {
+  exchange: "binance" | "okx";
+  orderId: string;
+  status: string;
+  filledQuantity: string;
+  quoteQuantity: string;
+  averagePrice: string;
+  fetchedAt: number;
+}
+
+export interface SandboxReconciliation {
+  checkedAt: number;
+  status: "IDLE" | "TEST_ONLY" | "BALANCED" | "PARTIAL" | "FAILED";
+  reason: string;
+  residualBtc: string;
+  hedgeAction: "NONE" | "PLANNED" | "BLOCKED";
+  fills: SandboxFill[];
 }
 
 export interface SandboxExecutionReport {
@@ -166,6 +193,9 @@ export interface ExecutionRuntimeState {
   orderMode: SandboxOrderMode;
   maxNotionalUsd: string;
   venues: SandboxVenueStatus[];
+  killSwitchActive: boolean;
+  killSwitchReason: string;
+  lastReconciliation?: SandboxReconciliation;
   lastReport?: SandboxExecutionReport;
 }
 
