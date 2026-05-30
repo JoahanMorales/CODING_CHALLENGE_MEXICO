@@ -327,6 +327,33 @@ OKX_DEMO_API_SECRET=
 OKX_DEMO_API_PASSPHRASE=
 ```
 
+Controlled operational probes:
+
+```bash
+# Sends one capped Binance Testnet -> OKX Demo IOC round trip and reconciles fills.
+npm run sandbox:probe
+
+# Manual OKX Demo recovery hedge. Requires a deliberate one-command confirmation.
+CONFIRM_SANDBOX_HEDGE=YES npm run sandbox:hedge -- 0.00033
+
+# PowerShell equivalent:
+$env:CONFIRM_SANDBOX_HEDGE="YES"; npm run sandbox:hedge -- 0.00033
+```
+
+The probe refuses to run unless `SANDBOX_ORDER_MODE=LIVE_SANDBOX`. It never targets real-money endpoints. The hedge script is capped at `0.001 BTC` and exists only for deliberate sandbox recovery.
+
+Latest controlled sandbox benchmark:
+
+| Check | Result |
+|---|---|
+| Route | Binance Spot Testnet -> OKX Demo Trading |
+| Cap | `$25` |
+| Binance fill | `0.00033000 BTC` |
+| OKX fill | `0.00033 BTC` |
+| Reconciliation | `BALANCED` |
+| Residual exposure | `0.00000000 BTC` |
+| Hedge action | `NONE` |
+
 ### 17. Risk Controls That Judges Can Test
 
 | Risk Control | Implementation |

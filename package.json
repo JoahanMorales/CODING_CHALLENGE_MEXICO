@@ -12,7 +12,9 @@
     "start:ws": "tsx backend/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test"
+    "check": "npm run typecheck && npm run test",
+    "sandbox:probe": "tsx scripts/sandboxProbe.ts",
+    "sandbox:hedge": "tsx scripts/okxDemoHedge.ts"
   },
   "dependencies": {
     "decimal.js": "^10.4.3",

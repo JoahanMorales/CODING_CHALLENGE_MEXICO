@@ -85,6 +85,34 @@ describe("SandboxExecutionService", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("engages the kill switch when a live sandbox leg is rejected", async () => {
+    const service = new SandboxExecutionService({
+      BINANCE_TESTNET_API_KEY: "present",
+      BINANCE_TESTNET_API_SECRET: "present",
+      OKX_DEMO_API_KEY: "present",
+      OKX_DEMO_API_SECRET: "present",
+      OKX_DEMO_API_PASSPHRASE: "present",
+      SANDBOX_ORDER_MODE: "LIVE_SANDBOX"
+    });
+    service.setMode("SANDBOX");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      if (String(input).includes("testnet.binance.vision")) return jsonResponse({ orderId: "binance-filled" });
+      return jsonResponse({ code: "1", msg: "OKX demo rejected probe" });
+    };
+
+    try {
+      const report = await service.execute(crossOpportunity());
+      const runtime = service.status();
+      expect(report?.status).toBe("FAILED");
+      expect(report?.reason).toContain("OKX demo rejected probe");
+      expect(runtime.killSwitchActive).toBe(true);
+      expect(runtime.lastReconciliation?.status).toBe("FAILED");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 function configuredService() {

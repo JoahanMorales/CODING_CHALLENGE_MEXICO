@@ -99,9 +99,10 @@ export class SandboxExecutionService {
         try {
           venue.balances = venue.exchange === "binance" ? await this.fetchBinanceBalances() : await this.fetchOkxBalances();
           venue.balanceFetchedAt = Date.now();
-          this.markVenue(venue.exchange, "", undefined, performanceNow() - startedAt);
+          if (venue.lastError.startsWith("Balance refresh:")) venue.lastError = "";
+          venue.lastLatencyMs = performanceNow() - startedAt;
         } catch (error) {
-          this.markVenue(venue.exchange, errorMessage(error), undefined, performanceNow() - startedAt);
+          this.markVenue(venue.exchange, `Balance refresh: ${errorMessage(error)}`, undefined, performanceNow() - startedAt);
         }
       })
     );
@@ -159,6 +160,7 @@ export class SandboxExecutionService {
     }
 
     const submitted: SandboxExecutionReport["legs"] = [];
+    const failures: string[] = [];
     for (const leg of legs) {
       if (this.config.orderMode === "TEST_ORDER" && leg.exchange === "okx") {
         submitted.push({ ...leg, status: "PLANNED" });
@@ -173,6 +175,8 @@ export class SandboxExecutionService {
         const message = error instanceof Error ? error.message : "unknown sandbox error";
         this.markVenue(leg.exchange, message, undefined, performanceNow() - startedAt);
         submitted.push({ ...leg, status: "FAILED" });
+        failures.push(`${leg.exchange}: ${message}`);
+        break;
       }
     }
 
@@ -182,7 +186,7 @@ export class SandboxExecutionService {
       opportunity,
       failed ? "FAILED" : "SUBMITTED",
       failed
-        ? "At least one sandbox venue rejected the order."
+        ? `Sandbox venue rejected order: ${failures.join("; ")}`
         : validatedOnly
           ? "Binance test order validated. OKX demo leg remained planned and was not submitted."
           : "Sandbox order legs submitted.",
@@ -191,7 +195,7 @@ export class SandboxExecutionService {
     if (this.config.orderMode === "TEST_ORDER") {
       this.lastReconciliation = reconciliation("TEST_ONLY", "Binance payload validated only. No order or fill was created.");
     }
-    if (this.config.orderMode === "LIVE_SANDBOX" && !failed) await this.reconcileLastReport();
+    if (this.config.orderMode === "LIVE_SANDBOX") await this.reconcileLastReport();
     return this.lastReport;
   }
 
@@ -260,9 +264,9 @@ export class SandboxExecutionService {
     const body = JSON.stringify({
       instId: "BTC-USDT",
       tdMode: "cash",
-      clOrdId: clientOrderId("arbaiokx").slice(0, 32),
+      clOrdId: clientOrderId("arbaiokx").replace(/[^a-zA-Z0-9]/g, "").slice(0, 32),
       side: leg.side.toLowerCase(),
-      ordType: "limit",
+      ordType: "ioc",
       px: leg.price,
       sz: leg.quantity
     });
