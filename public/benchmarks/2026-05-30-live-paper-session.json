@@ -1,0 +1,31 @@
+{
+  "capturedAt": "2026-05-30T15:00:00.000Z",
+  "durationMinutes": 10,
+  "venueCount": 7,
+  "routeCount": 21,
+  "signalsScored": 723,
+  "executableSignals": 13,
+  "paperTrades": 13,
+  "paperPnlUsd": "1.60",
+  "averageDetectionLatencyMs": "3.37",
+  "p95DetectionLatencyMs": "4.82",
+  "rejectedByCause": {
+    "fees": 381,
+    "liquidity": 174,
+    "adverseSelection": 122,
+    "threshold": 33
+  },
+  "shadowLearning": {
+    "evaluatedSignals": 674,
+    "avoidedLosses": 521,
+    "avoidedLossUsd": "1592.45",
+    "hitRatePct": "77.30"
+  },
+  "testOrderValidation": {
+    "status": "VALIDATED",
+    "venue": "Binance Spot Testnet",
+    "fundsMoved": false,
+    "note": "Signed /api/v3/order/test payload accepted. No fill and no balance movement."
+  }
+}
+

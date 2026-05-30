@@ -26,6 +26,19 @@ This is not a toy crypto dashboard. It is a real-time paper-trading system built
 
 > Status: active hackathon build. We are still iterating, but this README preserves the key differentiators so they do not get lost.
 
+## Public Showcase
+
+The browser experience is intentionally split into four focused routes:
+
+| Route | Purpose |
+|---|---|
+| `/` | Lightweight white/pastel landing page with a deterministic AET flow visualization and sanitized gateway health. |
+| `/terminal` | Live trading terminal. This is the only route that opens the real-time WebSocket stream. |
+| `/inteligencia` | Editorial, animated explanation of AET, MLOFI, microprice, costs, survival probability, and Shadow Learning. |
+| `/resultados` | Immutable paper benchmark, live sanitized health, and separate signed `TEST_ORDER` proof. |
+
+The split is deliberate: judges can understand the thesis before entering the dense operator surface, and public pages do not pay the rendering cost of a market-data socket.
+
 ## What Judges See First
 
 | Capability | Why It Matters |
@@ -36,7 +49,7 @@ This is not a toy crypto dashboard. It is a real-time paper-trading system built
 | ArbitrAI Edge Tensor | Proprietary explainable alpha layer estimating edge survival, adverse selection, risk-adjusted P&L, and route calibration. |
 | Risk-first simulator | Circuit breaker, daily loss limit, max size, latency, slippage, market impact, edge decay, and partial fills. |
 | Missed opportunity desk | Rejected signals are explained by fees, adverse selection, liquidity impact, or risk controls. |
-| Scenario Lab + replay | Judges can trigger crash/liquidity/latency drills and replay the last five minutes of signals. |
+| Scenario Lab + replay | Judges can trigger crash/liquidity/latency drills in Demo and replay the last five minutes of signals. Live market data is never falsified. |
 | Shadow Learning | Rejected and accepted signals are labeled after 0.5s/2s/5s markouts so the model learns from real live data even when it executes zero trades. |
 | Sandbox Execution Bridge | Optional Binance Spot Testnet + OKX Demo order bridge, protected by env keys and safe defaults. |
 | Realized sandbox ledger | Authenticated demo fills, venue fees, residual exposure, and realized sandbox P&L stay separate from paper estimates. |
@@ -270,7 +283,7 @@ The bottom dock includes three controlled drills:
 
 | Drill | Effect |
 |---|---|
-| `CRASH x3` | In demo, volatility rises 3x and spreads widen; in live, risk state records a crash drill without falsifying market data. |
+| `CRASH x3` | In demo, volatility rises 3x and spreads widen. The control is disabled in Live so real market state remains unambiguous. |
 | `LIQUIDITY` | Demo liquidity drops and spreads widen, increasing high-impact rejections. |
 | `LATENCY` | Execution latency is multiplied, increasing markout and edge-decay risk. |
 
@@ -414,6 +427,38 @@ normalized by visible weighted depth
 
 This follows the practical direction of order-book research: short-horizon impact is better explained by order-flow imbalance than raw volume, and additional depth levels can improve out-of-sample fit. ArbitrAI uses the signal as an adverse-selection filter, not as a promise of directional profit.
 
+### 22. Public Read Plane and Admin Control Plane
+
+Railway exposes two intentionally different surfaces:
+
+```text
+GET /public/summary       sanitized health, metrics, risk, recent signals
+WebSocket read stream     books, opportunities, trades, learning summaries
+WebSocket admin commands  token-gated operational controls
+```
+
+Sensitive commands use typed JSON rather than free-form strings:
+
+```ts
+{ type: "ADMIN_AUTH", token }
+{ type: "SET_SCANNER_UNIVERSE", exchanges }
+{ type: "SET_EXECUTION_MODE", mode: "SANDBOX" }
+{ type: "SET_SANDBOX_KILL_SWITCH", active: true }
+```
+
+The token is entered in the Terminal control-plane panel, retained only in `sessionStorage`, sent over WSS, compared in constant time, and rate-limited. Public visitors remain read-only. Scanner-universe changes require at least two active venues.
+
+### 23. Bounded Railway Journal
+
+The append-only JSONL journal now rotates at `ARBITRAI_JOURNAL_MAX_BYTES` so a small Railway Volume cannot fill indefinitely. Mount the persistent Railway Volume at `/data` and set:
+
+```bash
+ARBITRAI_DATA_DIR=/data
+ARBITRAI_JOURNAL_MAX_BYTES=8000000
+```
+
+Calibration remains compact and recoverable across gateway restarts.
+
 ## Architecture
 
 ```mermaid
@@ -445,7 +490,7 @@ flowchart LR
 
   subgraph "Browser"
     Z["Zustand Store"]
-    UI["Next.js Trading Dashboard"]
+    UI["Next.js Showcase + Trading Terminal"]
   end
 
   B --> M
@@ -510,9 +555,11 @@ sequenceDiagram
 |- backend/
 |  `- server.ts                 # WebSocket gateway + exchange connectors
 |- src/
-|  |- app/                      # Next.js App Router
+|  |- app/                      # Next.js App Router: /, /terminal, /inteligencia, /resultados
 |  |- components/
-|  |  `- Dashboard.tsx          # Single-page trading command center
+|  |  |- Dashboard.tsx          # Live trading terminal
+|  |  |- AetFlowCanvas.tsx      # Deterministic AET visualization
+|  |  `- ResultsDashboard.tsx   # Immutable benchmark + live sanitized health
 |  |- lib/
 |  |  |- config/exchanges.ts    # Fees, reliability, wallet seeds
 |  |  |- math/decimal.ts        # Decimal.js financial helpers
@@ -632,12 +679,42 @@ Included:
 - `railway.json`
 - `.env.example`
 
+Vercel receives only public endpoints:
+
+```bash
+NEXT_PUBLIC_WS_URL=wss://<railway-domain>
+NEXT_PUBLIC_API_URL=https://<railway-domain>
+```
+
+Railway receives every secret and persistent-path setting:
+
+```bash
+SANDBOX_ORDER_MODE=TEST_ORDER
+BINANCE_TESTNET_API_KEY=...
+BINANCE_TESTNET_API_SECRET=...
+ADMIN_CONTROL_TOKEN=<at-least-16-random-characters>
+ALLOWED_WEB_ORIGINS=https://<vercel-domain>,http://localhost:3000
+ARBITRAI_DATA_DIR=/data
+ARBITRAI_JOURNAL_MAX_BYTES=8000000
+```
+
+Attach a Railway Volume at `/data`. Never prefix API keys, secrets, or the admin token with `NEXT_PUBLIC_`.
+
 ## Environment Variables
 
 ```bash
 NEXT_PUBLIC_WS_URL=ws://localhost:8080
+NEXT_PUBLIC_API_URL=http://localhost:8080
 WS_PORT=8080
 ```
+
+The public results page labels evidence honestly:
+
+| Label | Meaning |
+|---|---|
+| `Paper benchmark` | Real market data, simulated fills, conservative costs. |
+| `Signed TEST_ORDER validation` | Authenticated Binance Spot Testnet payload accepted without a fill. |
+| `No real-money execution` | No production order route is exposed by the public deployment. |
 
 ## Testing
 

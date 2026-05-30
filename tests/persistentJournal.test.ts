@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { PersistentJournal } from "../backend/PersistentJournal";
 import type { GatewayMessage, SandboxLedgerEntry } from "../src/lib/types";
@@ -27,6 +27,22 @@ describe("PersistentJournal", () => {
       const restored = new PersistentJournal(directory);
       expect(restored.loadCalibration()["Binance -> OKX"].bias).toBe(0.04);
       expect(restored.loadSandboxLedger()).toEqual([entry]);
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("rotates an oversized journal during bootstrap before recovery", () => {
+    const directory = `.test-journal-rotation-${Date.now()}`;
+
+    try {
+      new PersistentJournal(directory);
+      writeFileSync(`${directory}/session-events.jsonl`, "x".repeat(300_000), "utf8");
+
+      const restored = new PersistentJournal(directory, 256_000);
+
+      expect(existsSync(`${directory}/session-events.jsonl.1`)).toBe(true);
+      expect(restored.summary().persistedEvents).toBe(0);
     } finally {
       rmSync(directory, { force: true, recursive: true });
     }

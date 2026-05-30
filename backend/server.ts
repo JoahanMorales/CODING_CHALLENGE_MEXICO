@@ -1,4 +1,5 @@
 import http from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import WebSocket, { WebSocketServer } from "ws";
 import { ArbitrAIKernel } from "../src/lib/services/ArbitrAIKernel";
@@ -7,21 +8,38 @@ import { PersistentJournal } from "./PersistentJournal";
 import type {
   ExchangeConnectionStatus,
   ExchangeId,
+  GatewayCommand,
   GatewayMessage,
   GatewaySnapshot,
   NormalizedOrderBook,
   OrderBookLevel,
+  PublicGatewaySummary,
+  ScenarioKind,
   SymbolId
 } from "../src/lib/types";
 
 loadLocalEnv();
 
 const port = Number(process.env.WS_PORT ?? process.env.PORT ?? 8080);
+const adminControlToken = process.env.ADMIN_CONTROL_TOKEN ?? "";
+const allowedOrigins = new Set(
+  (process.env.ALLOWED_WEB_ORIGINS ?? "http://localhost:3000,http://localhost:4173")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
 const kernel = new ArbitrAIKernel();
 const journal = new PersistentJournal();
 kernel.engine.importCalibration(journal.loadCalibration());
 kernel.sandboxExecution.restoreLedger(journal.loadSandboxLedger());
-const clients = new Set<WebSocket>();
+interface SocketContext {
+  socket: WebSocket;
+  adminAuthenticated: boolean;
+  authAttempts: number[];
+}
+
+const clients = new Map<WebSocket, SocketContext>();
+const scannerUniverse = new Set<ExchangeId>(EXCHANGE_IDS);
 let connector: ExchangeConnector | null = null;
 const pendingBookBroadcasts = new Map<string, Extract<GatewayMessage, { type: "BOOK" }>>();
 const pendingRejectedSignals = new Map<string, Extract<GatewayMessage, { type: "OPPORTUNITY" }>>();
@@ -32,6 +50,18 @@ let learningFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let calibrationFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
 const server = http.createServer((req, res) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   if (req.url === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
@@ -45,32 +75,26 @@ const server = http.createServer((req, res) => {
     );
     return;
   }
+  if (req.url === "/public/summary") {
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(publicSummary()));
+    return;
+  }
   res.writeHead(404);
   res.end();
 });
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+  server,
+  verifyClient: ({ origin }, done) => done(!origin || allowedOrigins.has(origin), 403, "Origin not allowed")
+});
 
 wss.on("connection", (socket) => {
-  clients.add(socket);
-  socket.send(JSON.stringify(snapshotWithStatuses()));
+  const context: SocketContext = { socket, adminAuthenticated: false, authAttempts: [] };
+  clients.set(socket, context);
+  socket.send(JSON.stringify(snapshotWithStatuses(false)));
   socket.on("message", (message) => {
-    const command = message.toString();
-    if (command === "SIMULATE_MARKET_CRASH") kernel.simulateMarketCrash();
-    if (command === "RESET_RISK") kernel.resetRisk();
-    if (command === "REPLAY_HISTORY") kernel.replayHistory();
-    if (command === "SET_EXECUTION_MODE:PAPER") kernel.setExecutionMode("PAPER");
-    if (command === "SET_EXECUTION_MODE:SANDBOX") kernel.setExecutionMode("SANDBOX");
-    if (command === "REFRESH_SANDBOX_BALANCES") void kernel.refreshSandboxBalances();
-    if (command === "RECONCILE_SANDBOX") void kernel.reconcileSandbox();
-    if (command === "SET_SANDBOX_KILL_SWITCH:ON") kernel.setSandboxKillSwitch(true);
-    if (command === "SET_SANDBOX_KILL_SWITCH:OFF") kernel.setSandboxKillSwitch(false);
-    if (command.startsWith("RUN_SCENARIO:")) {
-      const scenario = command.replace("RUN_SCENARIO:", "");
-      if (scenario === "MARKET_CRASH" || scenario === "LIQUIDITY_DRAIN" || scenario === "LATENCY_SPIKE") {
-        kernel.runScenario(scenario);
-      }
-    }
+    handleSocketCommand(context, message.toString());
   });
   socket.on("close", () => clients.delete(socket));
 });
@@ -146,9 +170,121 @@ function queueRejectedSignal(message: Extract<GatewayMessage, { type: "OPPORTUNI
 
 function broadcast(message: GatewayMessage): void {
   const payload = JSON.stringify(message);
-  clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) client.send(payload);
+  clients.forEach(({ socket }) => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(payload);
   });
+}
+
+function handleSocketCommand(context: SocketContext, raw: string): void {
+  const parsed = safeParse(raw);
+  if (!isRecord(parsed) || typeof parsed.type !== "string") {
+    sendTo(context.socket, { type: "COMMAND_ERROR", command: "UNKNOWN", reason: "Expected a typed JSON command." });
+    return;
+  }
+
+  if (parsed.type === "ADMIN_AUTH") {
+    authenticateSocket(context, typeof parsed.token === "string" ? parsed.token : "");
+    return;
+  }
+
+  if (parsed.type === "REPLAY_HISTORY") {
+    kernel.replayHistory();
+    return;
+  }
+
+  if (!context.adminAuthenticated) {
+    sendTo(context.socket, { type: "COMMAND_ERROR", command: knownCommandType(parsed.type), reason: "Admin unlock required." });
+    return;
+  }
+
+  if (parsed.type === "SET_SCANNER_UNIVERSE") {
+    const exchanges = Array.isArray(parsed.exchanges)
+      ? parsed.exchanges.filter((exchange): exchange is ExchangeId => typeof exchange === "string" && EXCHANGE_IDS.includes(exchange as ExchangeId))
+      : [];
+    const unique = [...new Set(exchanges)];
+    if (unique.length < 2) {
+      sendTo(context.socket, { type: "COMMAND_ERROR", command: "SET_SCANNER_UNIVERSE", reason: "Scanner universe requires at least two venues." });
+      return;
+    }
+    scannerUniverse.clear();
+    unique.forEach((exchange) => scannerUniverse.add(exchange));
+    broadcast({ type: "SCANNER_UNIVERSE", exchanges: [...scannerUniverse] });
+    return;
+  }
+
+  if (parsed.type === "RUN_SCENARIO" && isScenario(parsed.scenario)) {
+    kernel.runScenario(parsed.scenario);
+    return;
+  }
+  if (parsed.type === "SET_EXECUTION_MODE" && (parsed.mode === "PAPER" || parsed.mode === "SANDBOX")) {
+    kernel.setExecutionMode(parsed.mode);
+    return;
+  }
+  if (parsed.type === "REFRESH_SANDBOX_BALANCES") {
+    void kernel.refreshSandboxBalances();
+    return;
+  }
+  if (parsed.type === "RECONCILE_SANDBOX") {
+    void kernel.reconcileSandbox();
+    return;
+  }
+  if (parsed.type === "SET_SANDBOX_KILL_SWITCH" && typeof parsed.active === "boolean") {
+    kernel.setSandboxKillSwitch(parsed.active);
+    return;
+  }
+  if (parsed.type === "RESET_RISK") {
+    kernel.resetRisk();
+    return;
+  }
+
+  sendTo(context.socket, { type: "COMMAND_ERROR", command: knownCommandType(parsed.type), reason: "Invalid command payload." });
+}
+
+function authenticateSocket(context: SocketContext, token: string): void {
+  const now = Date.now();
+  context.authAttempts = context.authAttempts.filter((attemptAt) => now - attemptAt < 60_000);
+  if (context.authAttempts.length >= 5) {
+    sendTo(context.socket, { type: "ADMIN_STATE", authenticated: false, reason: "Too many attempts. Wait one minute." });
+    return;
+  }
+  context.authAttempts.push(now);
+  const authenticated = adminControlToken.length >= 16 && constantTimeEquals(token, adminControlToken);
+  context.adminAuthenticated = authenticated;
+  sendTo(context.socket, {
+    type: "ADMIN_STATE",
+    authenticated,
+    reason: authenticated ? "Administrative controls unlocked for this socket." : "Invalid admin token."
+  });
+}
+
+function constantTimeEquals(candidate: string, expected: string): boolean {
+  const candidateBuffer = Buffer.from(candidate);
+  const expectedBuffer = Buffer.from(expected);
+  if (candidateBuffer.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(candidateBuffer, expectedBuffer);
+}
+
+function sendTo(socket: WebSocket, message: GatewayMessage): void {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+}
+
+function knownCommandType(type: string): GatewayCommand["type"] | "UNKNOWN" {
+  const known: GatewayCommand["type"][] = [
+    "ADMIN_AUTH",
+    "SET_SCANNER_UNIVERSE",
+    "RUN_SCENARIO",
+    "SET_EXECUTION_MODE",
+    "REFRESH_SANDBOX_BALANCES",
+    "RECONCILE_SANDBOX",
+    "SET_SANDBOX_KILL_SWITCH",
+    "RESET_RISK",
+    "REPLAY_HISTORY"
+  ];
+  return known.includes(type as GatewayCommand["type"]) ? type as GatewayCommand["type"] : "UNKNOWN";
+}
+
+function isScenario(value: unknown): value is ScenarioKind {
+  return value === "MARKET_CRASH" || value === "LIQUIDITY_DRAIN" || value === "LATENCY_SPIKE";
 }
 
 class ExchangeConnector {
@@ -189,6 +325,10 @@ class ExchangeConnector {
     return [...this.connectionStatuses.values()];
   }
 
+  private ingest(book: NormalizedOrderBook): void {
+    if (scannerUniverse.has(book.exchange)) this.appKernel.ingest(book);
+  }
+
   private connectBinance(): void {
     this.mark("binance", "websocket", "connecting");
     const url =
@@ -203,7 +343,7 @@ class ExchangeConnector {
       if (!symbol) return;
       const bids = levelsFromUnknown(data.bids);
       const asks = levelsFromUnknown(data.asks);
-      this.appKernel.ingest(makeBook("binance", symbol, bids, asks, Date.now()));
+      this.ingest(makeBook("binance", symbol, bids, asks, Date.now()));
       this.mark("binance", "websocket", "live");
     });
     this.attachReconnect("binance", socket, () => this.connectBinance());
@@ -236,7 +376,7 @@ class ExchangeConnector {
       const bidQty = readStringOrNumber(ticker, "bid_qty") ?? "0.15";
       const askQty = readStringOrNumber(ticker, "ask_qty") ?? "0.15";
       if (!bid || !ask) return;
-      this.appKernel.ingest(
+      this.ingest(
         makeBook("kraken", "BTC/USDT", [[bid, bidQty]], [[ask, askQty]], Date.parse(readString(ticker, "timestamp") ?? "") || Date.now())
       );
       this.mark("kraken", "websocket", "live");
@@ -262,7 +402,7 @@ class ExchangeConnector {
       const bidQty = readStringOrNumber(ticker, "best_bid_quantity") ?? "0.12";
       const askQty = readStringOrNumber(ticker, "best_ask_quantity") ?? "0.12";
       if (!bid || !ask) return;
-      this.appKernel.ingest(makeBook("coinbase", "BTC/USDT", [[bid, bidQty]], [[ask, askQty]], Date.now()));
+      this.ingest(makeBook("coinbase", "BTC/USDT", [[bid, bidQty]], [[ask, askQty]], Date.now()));
       this.mark("coinbase", "websocket", "live");
     });
     this.attachReconnect("coinbase", socket, () => this.connectCoinbase());
@@ -283,7 +423,7 @@ class ExchangeConnector {
       const asks = levelsFromUnknown(book.asks);
       const ts = Number(readStringOrNumber(book, "ts") ?? Date.now());
       if (bids.length && asks.length) {
-        this.appKernel.ingest(makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+        this.ingest(makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
         this.mark("okx", "websocket", "live");
       }
     });
@@ -308,7 +448,7 @@ class ExchangeConnector {
       const asks = sortedLevelsFromMap(this.bybitAsks, "ask");
       const ts = Number(readStringOrNumber(parsed, "ts") ?? Date.now());
       if (bids.length && asks.length) {
-        this.appKernel.ingest(makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+        this.ingest(makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
         this.mark("bybit", "websocket", "live");
       }
     });
@@ -334,7 +474,7 @@ class ExchangeConnector {
       const bids = sortedLevelsFromMap(this.bitfinexBids, "bid");
       const asks = sortedLevelsFromMap(this.bitfinexAsks, "ask");
       if (bids.length && asks.length) {
-        this.appKernel.ingest(makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now()));
+        this.ingest(makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now()));
         this.mark("bitfinex", "websocket", "live");
       }
     });
@@ -356,7 +496,7 @@ class ExchangeConnector {
       const asks = levelsFromUnknown(result.asks);
       const ts = Number(readStringOrNumber(result, "t") ?? Date.now());
       if (bids.length && asks.length) {
-        this.appKernel.ingest(makeBook("gate", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+        this.ingest(makeBook("gate", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
         this.mark("gate", "websocket", "live");
       }
     });
@@ -417,7 +557,7 @@ class ExchangeConnector {
         const bids = levelsFromUnknown(data.bids);
         const asks = levelsFromUnknown(data.asks);
         if (bids.length && asks.length) {
-          this.appKernel.ingest(makeBook("binance", symbol, bids, asks, Date.now()));
+          this.ingest(makeBook("binance", symbol, bids, asks, Date.now()));
           this.mark("binance", "rest-polling", "polling");
         }
       })
@@ -434,7 +574,7 @@ class ExchangeConnector {
     const bids = levelsFromUnknown(first.bids);
     const asks = levelsFromUnknown(first.asks);
     if (bids.length && asks.length) {
-      this.appKernel.ingest(makeBook("kraken", "BTC/USDT", bids, asks, Date.now()));
+      this.ingest(makeBook("kraken", "BTC/USDT", bids, asks, Date.now()));
       this.mark("kraken", "rest-polling", "polling");
     }
   }
@@ -448,7 +588,7 @@ class ExchangeConnector {
     const bids = levelsFromUnknown(data.bids);
     const asks = levelsFromUnknown(data.asks);
     if (bids.length && asks.length) {
-      this.appKernel.ingest(makeBook("coinbase", "BTC/USDT", bids, asks, Date.now()));
+      this.ingest(makeBook("coinbase", "BTC/USDT", bids, asks, Date.now()));
       this.mark("coinbase", "rest-polling", "polling");
     }
   }
@@ -463,7 +603,7 @@ class ExchangeConnector {
     const asks = levelsFromUnknown(book.asks);
     const ts = Number(readStringOrNumber(book, "ts") ?? Date.now());
     if (bids.length && asks.length) {
-      this.appKernel.ingest(makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+      this.ingest(makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
       this.mark("okx", "rest-polling", "polling");
     }
   }
@@ -477,7 +617,7 @@ class ExchangeConnector {
     const asks = levelsFromUnknown(result.a);
     const ts = Number(readStringOrNumber(result, "ts") ?? Date.now());
     if (bids.length && asks.length) {
-      this.appKernel.ingest(makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+      this.ingest(makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
       this.mark("bybit", "rest-polling", "polling");
     }
   }
@@ -490,7 +630,7 @@ class ExchangeConnector {
     const bids = sortedLevelsFromMap(this.bitfinexBids, "bid");
     const asks = sortedLevelsFromMap(this.bitfinexAsks, "ask");
     if (bids.length && asks.length) {
-      this.appKernel.ingest(makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now()));
+      this.ingest(makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now()));
       this.mark("bitfinex", "rest-polling", "polling");
     }
   }
@@ -502,7 +642,7 @@ class ExchangeConnector {
     const bids = levelsFromUnknown(payload.bids);
     const asks = levelsFromUnknown(payload.asks);
     if (bids.length && asks.length) {
-      this.appKernel.ingest(makeBook("gate", "BTC/USDT", bids, asks, Date.now()));
+      this.ingest(makeBook("gate", "BTC/USDT", bids, asks, Date.now()));
       this.mark("gate", "rest-polling", "polling");
     }
   }
@@ -521,10 +661,49 @@ class ExchangeConnector {
   }
 }
 
-function snapshotWithStatuses(): GatewaySnapshot {
+function snapshotWithStatuses(adminAuthenticated = false): GatewaySnapshot {
   return {
     ...kernel.snapshot(),
-    exchangeStatuses: connector?.statuses() ?? []
+    exchangeStatuses: connector?.statuses() ?? [],
+    scannerUniverse: [...scannerUniverse],
+    adminAuthenticated
+  };
+}
+
+function publicSummary(): PublicGatewaySummary {
+  const snapshot = snapshotWithStatuses(false);
+  const runtime = snapshot.executionRuntime;
+  const validationStatus = runtime.lastReport?.mode === "TEST_ORDER" && runtime.lastReport.status === "SUBMITTED"
+    ? "VALIDATED"
+    : runtime.venues.some((venue) => venue.configured)
+      ? "READY"
+      : "NOT_CONFIGURED";
+  return {
+    ok: true,
+    service: "arbitrai-gateway",
+    time: new Date().toISOString(),
+    operationalMode: runtime.orderMode,
+    scannerUniverse: [...scannerUniverse],
+    exchanges: connector?.statuses() ?? [],
+    metrics: snapshot.metrics,
+    learning: snapshot.learning,
+    risk: snapshot.risk,
+    executionProof: {
+      mode: runtime.mode,
+      orderMode: runtime.orderMode,
+      configuredVenues: runtime.venues.filter((venue) => venue.configured).length,
+      validationStatus,
+      fundsMoved: false
+    },
+    recentSignals: snapshot.opportunities.slice(0, 8).map((opportunity) => ({
+      createdAt: opportunity.createdAt,
+      expectedProfitUsd: opportunity.expectedProfitUsd,
+      netSpreadPct: opportunity.netSpreadPct,
+      route: opportunity.route,
+      score: opportunity.score,
+      status: opportunity.status,
+      type: opportunity.type
+    }))
   };
 }
 

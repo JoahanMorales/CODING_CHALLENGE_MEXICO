@@ -16,6 +16,17 @@ export type ExecutionRuntimeMode = "PAPER" | "SANDBOX";
 
 export type SandboxOrderMode = "DRY_RUN" | "TEST_ORDER" | "LIVE_SANDBOX";
 
+export type GatewayCommand =
+  | { type: "ADMIN_AUTH"; token: string }
+  | { type: "SET_SCANNER_UNIVERSE"; exchanges: ExchangeId[] }
+  | { type: "RUN_SCENARIO"; scenario: ScenarioKind }
+  | { type: "SET_EXECUTION_MODE"; mode: ExecutionRuntimeMode }
+  | { type: "REFRESH_SANDBOX_BALANCES" }
+  | { type: "RECONCILE_SANDBOX" }
+  | { type: "SET_SANDBOX_KILL_SWITCH"; active: boolean }
+  | { type: "RESET_RISK" }
+  | { type: "REPLAY_HISTORY" };
+
 export interface EdgeModelSignal {
   adverseSelectionBps: string;
   edgeQuality: "EXPLOIT" | "WATCH" | "AVOID";
@@ -297,6 +308,52 @@ export interface PerformanceMetrics {
   sharpeLikeRatio: string;
 }
 
+export interface BenchmarkSummary {
+  capturedAt: string;
+  durationMinutes: number;
+  venueCount: number;
+  routeCount: number;
+  signalsScored: number;
+  executableSignals: number;
+  paperTrades: number;
+  paperPnlUsd: string;
+  averageDetectionLatencyMs: string;
+  p95DetectionLatencyMs: string;
+  rejectedByCause: Record<string, number>;
+  shadowLearning: {
+    evaluatedSignals: number;
+    avoidedLosses: number;
+    avoidedLossUsd: string;
+    hitRatePct: string;
+  };
+  testOrderValidation: {
+    status: "VALIDATED" | "NOT_RUN";
+    venue: string;
+    fundsMoved: false;
+    note: string;
+  };
+}
+
+export interface PublicGatewaySummary {
+  ok: boolean;
+  service: "arbitrai-gateway";
+  time: string;
+  operationalMode: SandboxOrderMode;
+  scannerUniverse: ExchangeId[];
+  exchanges: ExchangeConnectionStatus[];
+  metrics: PerformanceMetrics;
+  learning: LearningSummary;
+  risk: RiskState;
+  executionProof: {
+    mode: ExecutionRuntimeMode;
+    orderMode: SandboxOrderMode;
+    configuredVenues: number;
+    validationStatus: "VALIDATED" | "READY" | "NOT_CONFIGURED";
+    fundsMoved: false;
+  };
+  recentSignals: Array<Pick<Opportunity, "createdAt" | "expectedProfitUsd" | "netSpreadPct" | "route" | "score" | "status" | "type">>;
+}
+
 export interface GatewaySnapshot {
   type: "SNAPSHOT";
   books: NormalizedOrderBook[];
@@ -310,6 +367,8 @@ export interface GatewaySnapshot {
   learning: LearningSummary;
   executionRuntime: ExecutionRuntimeState;
   exchangeStatuses?: ExchangeConnectionStatus[];
+  scannerUniverse?: ExchangeId[];
+  adminAuthenticated?: boolean;
 }
 
 export type GatewayMessage =
@@ -322,4 +381,7 @@ export type GatewayMessage =
   | { type: "EXECUTION_RUNTIME"; runtime: ExecutionRuntimeState; report?: SandboxExecutionReport }
   | { type: "REPLAY"; opportunities: Opportunity[]; trades: Trade[]; events: RecordedEvent[] }
   | { type: "RISK"; risk: RiskState }
-  | { type: "METRICS"; metrics: PerformanceMetrics };
+  | { type: "METRICS"; metrics: PerformanceMetrics }
+  | { type: "ADMIN_STATE"; authenticated: boolean; reason: string }
+  | { type: "SCANNER_UNIVERSE"; exchanges: ExchangeId[] }
+  | { type: "COMMAND_ERROR"; command: GatewayCommand["type"] | "UNKNOWN"; reason: string };

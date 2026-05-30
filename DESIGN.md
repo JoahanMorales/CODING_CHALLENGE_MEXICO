@@ -12,7 +12,7 @@ ArbitrAI should feel like a modern institutional trading cockpit:
 - clear enough for judges to understand in 10 seconds;
 - rich enough for traders to inspect signal quality.
 
-The UI is not a marketing landing page. The first screen is the product.
+The showcase now has a restrained public landing page, but it must expose the real product quickly. The terminal remains the deepest operator surface.
 
 ## 2. Color Palette
 
@@ -55,6 +55,8 @@ Rules:
 
 ## 4. Layout Principles
 
+- Public navigation uses four routes: `Inicio`, `Terminal`, `Inteligencia`, and `Resultados`.
+- Landing and intelligence pages stay editorial and calm; only `/terminal` opens the market WebSocket.
 - One-screen command center with three vertical work areas:
   - left: system and market data;
   - center: signal intelligence;
@@ -188,7 +190,7 @@ Purpose: let judges stress the system without fake live prices.
 
 Controls:
 
-- `CRASH x3`: volatility/spread stress in demo, risk drill in live;
+- `CRASH x3`: volatility/spread stress in demo; disabled in live;
 - `LIQUIDITY`: lower demo depth and increase impact rejections;
 - `LATENCY`: multiply simulated execution latency;
 - `REPLAY`: fetch the last five minutes from the backend recorder;
@@ -228,6 +230,18 @@ The default viewport should answer three questions quickly:
 3. Did authenticated sandbox execution realize P&L?
 
 Keep secondary depth ladders and wallet allocations behind native disclosure controls. Traders can inspect them without forcing judges to parse every row at once.
+
+### Public Evidence
+
+The results page must keep three claims visually separate:
+
+- `Paper benchmark`: live data with simulated fills;
+- `Signed TEST_ORDER validation`: authenticated payload accepted without fills;
+- `No real-money execution`: the public deployment does not expose a production order route.
+
+### Admin Control Plane
+
+Operational controls require an explicit unlock in `/terminal`. The token lives only in Railway and `sessionStorage`; never show or persist it in public UI state. Local visual filters remain public because they do not alter the scanner.
 
 ## 6. Interaction Rules
 

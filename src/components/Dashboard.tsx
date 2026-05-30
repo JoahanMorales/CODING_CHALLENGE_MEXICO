@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -72,12 +73,29 @@ export function Dashboard() {
     metrics,
     learning,
     executionRuntime,
-    priceSeries
+    priceSeries,
+    adminAuthenticated,
+    adminMessage,
+    authenticateAdmin,
+    scannerUniverse,
+    setScannerUniverse
   } = useArbitrageStore();
+  const [visibleExchanges, setVisibleExchanges] = useState<ExchangeId[]>(exchanges);
+  const [visibleTypes, setVisibleTypes] = useState<OpportunityType[]>(opportunityTypes);
+  const [visibleStatus, setVisibleStatus] = useState<"ALL" | "EXECUTABLE" | "REJECTED">("ALL");
 
   useEffect(() => init(), [init]);
 
-  const visibleOpportunities = replayOpportunities.length ? replayOpportunities : opportunities;
+  const visibleOpportunities = useMemo(
+    () => (replayOpportunities.length ? replayOpportunities : opportunities).filter((opportunity) =>
+      visibleTypes.includes(opportunity.type)
+      && opportunityTouchesExchange(opportunity, visibleExchanges)
+      && (visibleStatus === "ALL"
+        || (visibleStatus === "EXECUTABLE" && (opportunity.status === "DETECTED" || opportunity.status === "EVALUATING" || opportunity.status === "EXECUTED"))
+        || (visibleStatus === "REJECTED" && opportunity.status === "REJECTED"))
+    ),
+    [opportunities, replayOpportunities, visibleExchanges, visibleStatus, visibleTypes]
+  );
   const latestExecutable = opportunities.find((item) => item.status === "DETECTED" || item.status === "EVALUATING");
   const latestSignal = opportunities[0];
   const hasFreshBooks = useMemo(() => Object.values(books).some((book) => Date.now() - book.receivedAt < 6000), [books]);
@@ -94,7 +112,7 @@ export function Dashboard() {
   const missedOpportunities = useMemo(() => opportunities.filter((opportunity) => opportunity.status === "REJECTED").slice(0, 6), [opportunities]);
 
   return (
-    <main className="grid h-screen grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#f7fbff] text-zinc-900">
+    <main className="grid h-screen grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-[#f7fbff] text-zinc-900">
       <CommandBar
         connected={connected}
         dataActive={dataActive}
@@ -103,6 +121,20 @@ export function Dashboard() {
         mode={mode}
         risk={risk}
         setMode={setMode}
+      />
+
+      <TerminalToolbar
+        adminAuthenticated={adminAuthenticated}
+        adminMessage={adminMessage}
+        authenticateAdmin={authenticateAdmin}
+        scannerUniverse={scannerUniverse}
+        setScannerUniverse={setScannerUniverse}
+        setVisibleExchanges={setVisibleExchanges}
+        setVisibleStatus={setVisibleStatus}
+        setVisibleTypes={setVisibleTypes}
+        visibleExchanges={visibleExchanges}
+        visibleStatus={visibleStatus}
+        visibleTypes={visibleTypes}
       />
 
       <section className="min-h-0 overflow-hidden px-4 py-3">
@@ -118,7 +150,7 @@ export function Dashboard() {
               statuses={exchangeStatuses}
             />
             <MicrostructurePanel intel={marketIntel} />
-            <MarketStack books={books} flashes={flashes} statuses={exchangeStatuses} />
+            <MarketStack books={books} exchangesShown={visibleExchanges} flashes={flashes} statuses={exchangeStatuses} />
             <PriceChartPanel marketDrift={marketDrift} priceSeries={priceSeries} />
           </aside>
 
@@ -140,6 +172,7 @@ export function Dashboard() {
               setExecutionRuntimeMode={setExecutionRuntimeMode}
               setSandboxKillSwitch={setSandboxKillSwitch}
               trades={trades}
+              controlsLocked={mode === "LIVE" && !adminAuthenticated}
             />
             <WalletPanel
               applyWalletSeed={applyWalletSeed}
@@ -153,7 +186,7 @@ export function Dashboard() {
         </div>
       </section>
 
-      <RiskDock exportSessionCsv={exportSessionCsv} mode={mode} replayHistory={replayHistory} resetRisk={resetRisk} risk={risk} runScenario={runScenario} />
+      <RiskDock adminAuthenticated={adminAuthenticated} exportSessionCsv={exportSessionCsv} mode={mode} replayHistory={replayHistory} resetRisk={resetRisk} risk={risk} runScenario={runScenario} />
     </main>
   );
 }
@@ -180,9 +213,9 @@ function CommandBar({
     <header className="border-b border-sky-100 bg-white/92 px-4 py-3 shadow-sm shadow-sky-100/70 backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="grid h-11 w-11 place-items-center rounded-xl border border-sky-200 bg-sky-50 font-mono text-sm font-black text-sky-700">
+          <Link className="grid h-11 w-11 place-items-center rounded-xl border border-sky-200 bg-sky-50 font-mono text-sm font-black text-sky-700 transition hover:bg-sky-100" href="/">
             AI
-          </div>
+          </Link>
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-black tracking-normal text-zinc-950">ArbitrAI</h1>
@@ -198,11 +231,125 @@ function CommandBar({
           <TopMetric label="Gateway" value={connected ? `${heartbeatMs}ms` : "OFF"} tone={connected ? "sky" : "rose"} />
           <TopMetric label="Signals" value={String(metrics.opportunitiesDetected)} tone="zinc" />
           <TopMetric label="Exec" value={`${metrics.tradesExecuted}/${metrics.executableOpportunities}`} tone="emerald" />
-          <TopMetric label="Net P&L" value={`$${metrics.netPnlUsd}`} tone={netPositive ? "emerald" : "rose"} />
+          <TopMetric label="Paper P&L" value={`$${metrics.netPnlUsd}`} tone={netPositive ? "emerald" : "rose"} />
           <TopMetric label="Latency" value={`${metrics.averageDetectionLatencyMs}ms`} tone="sky" />
         </div>
       </div>
     </header>
+  );
+}
+
+function TerminalToolbar({
+  adminAuthenticated,
+  adminMessage,
+  authenticateAdmin,
+  scannerUniverse,
+  setScannerUniverse,
+  setVisibleExchanges,
+  setVisibleStatus,
+  setVisibleTypes,
+  visibleExchanges,
+  visibleStatus,
+  visibleTypes
+}: {
+  adminAuthenticated: boolean;
+  adminMessage: string;
+  authenticateAdmin: (token: string) => void;
+  scannerUniverse: ExchangeId[];
+  setScannerUniverse: (exchanges: ExchangeId[]) => void;
+  setVisibleExchanges: React.Dispatch<React.SetStateAction<ExchangeId[]>>;
+  setVisibleStatus: React.Dispatch<React.SetStateAction<"ALL" | "EXECUTABLE" | "REJECTED">>;
+  setVisibleTypes: React.Dispatch<React.SetStateAction<OpportunityType[]>>;
+  visibleExchanges: ExchangeId[];
+  visibleStatus: "ALL" | "EXECUTABLE" | "REJECTED";
+  visibleTypes: OpportunityType[];
+}) {
+  const [token, setToken] = useState("");
+  return (
+    <section className="border-b border-sky-100 bg-white px-4 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="font-mono text-[9px] font-black uppercase text-sky-700">Vista</span>
+          {exchanges.map((exchange) => (
+            <FilterChip
+              active={visibleExchanges.includes(exchange)}
+              key={exchange}
+              label={EXCHANGE_LABELS[exchange]}
+              onClick={() => setVisibleExchanges((current) => toggleAtLeastOne(current, exchange))}
+            />
+          ))}
+          <span className="ml-2 font-mono text-[9px] font-black uppercase text-sky-700">Estrategia</span>
+          {opportunityTypes.map((type) => (
+            <FilterChip
+              active={visibleTypes.includes(type)}
+              key={type}
+              label={strategyLabel[type]}
+              onClick={() => setVisibleTypes((current) => toggleAtLeastOne(current, type))}
+            />
+          ))}
+          {(["ALL", "EXECUTABLE", "REJECTED"] as const).map((status) => (
+            <FilterChip active={visibleStatus === status} key={status} label={status} onClick={() => setVisibleStatus(status)} />
+          ))}
+        </div>
+
+        <details className="relative">
+          <summary className={`cursor-pointer list-none rounded-lg border px-3 py-2 font-mono text-[10px] font-black uppercase ${adminAuthenticated ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-600"}`}>
+            {adminAuthenticated ? "Admin unlocked" : "Admin unlock"}
+          </summary>
+          <div className="absolute right-0 top-11 z-30 w-[min(92vw,440px)] rounded-2xl border border-sky-100 bg-white p-4 shadow-xl shadow-sky-100">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <SectionKicker>Control Plane</SectionKicker>
+                <h2 className="mt-1 text-lg font-black text-zinc-950">Scanner Universe</h2>
+              </div>
+              <StatusPill label={adminAuthenticated ? "Unlocked" : "Read only"} tone={adminAuthenticated ? "emerald" : "zinc"} />
+            </div>
+            {!adminAuthenticated && (
+              <div className="mt-3 flex gap-2">
+                <input
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-200 px-3 py-2 font-mono text-xs outline-none focus:border-sky-300"
+                  onChange={(event) => setToken(event.target.value)}
+                  placeholder="ADMIN_CONTROL_TOKEN"
+                  type="password"
+                  value={token}
+                />
+                <button className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 font-mono text-[10px] font-black text-sky-700" onClick={() => authenticateAdmin(token)} type="button">
+                  UNLOCK
+                </button>
+              </div>
+            )}
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {exchanges.map((exchange) => (
+                <label className="flex items-center gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-2 py-2 text-xs font-black text-zinc-700" key={exchange}>
+                  <input
+                    checked={scannerUniverse.includes(exchange)}
+                    disabled={!adminAuthenticated}
+                    onChange={() => setScannerUniverse(toggleAtLeastTwo(scannerUniverse, exchange))}
+                    type="checkbox"
+                  />
+                  {EXCHANGE_LABELS[exchange]}
+                </label>
+              ))}
+            </div>
+            <p className="mt-3 font-mono text-[10px] font-semibold leading-5 text-zinc-500">
+              {adminMessage || "La vista local filtra paneles. Este control cambia el universo real evaluado por el motor sin desconectar feeds."}
+            </p>
+          </div>
+        </details>
+      </div>
+    </section>
+  );
+}
+
+function FilterChip({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      className={`rounded-lg border px-2 py-1 font-mono text-[9px] font-black uppercase transition ${active ? "border-sky-200 bg-sky-50 text-sky-700" : "border-zinc-200 bg-white text-zinc-400 hover:text-zinc-700"}`}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -298,10 +445,12 @@ function MicrostructurePanel({ intel }: { intel: MarketIntel }) {
 
 function MarketStack({
   books,
+  exchangesShown,
   flashes,
   statuses
 }: {
   books: Record<string, NormalizedOrderBook>;
+  exchangesShown: ExchangeId[];
   flashes: Record<string, { bid: string; ask: string; until: number }>;
   statuses: ExchangeConnectionStatus[];
 }) {
@@ -309,7 +458,7 @@ function MarketStack({
     <Panel>
       <PanelTitle eyebrow="Order Books" title="BTC/USDT Market" />
       <div className="mt-3 grid gap-2">
-        {exchanges.map((exchange) => (
+        {exchangesShown.map((exchange) => (
           <MarketCard
             key={exchange}
             book={books[btcBookKey(exchange)]}
@@ -572,7 +721,7 @@ function PerformancePanel({ metrics, pnlSeries, risk }: { metrics: PerformanceMe
   return (
     <Panel>
       <div className="flex items-start justify-between gap-3">
-        <PanelTitle eyebrow="Performance" title="Session P&L" />
+        <PanelTitle eyebrow="Paper Performance" title="Paper Session P&L" />
         <div className="text-right">
           <div className={`font-mono text-3xl font-black ${positive ? "text-emerald-600" : "text-rose-600"}`}>${metrics.netPnlUsd}</div>
           <div className="font-mono text-[10px] font-bold uppercase text-zinc-500">{risk.riskColor} risk</div>
@@ -649,6 +798,7 @@ function LearningPanel({ learning }: { learning: LearningSummary }) {
 }
 
 function ExecutionPanel({
+  controlsLocked,
   executionQueue,
   reconcileSandbox,
   refreshSandboxBalances,
@@ -657,6 +807,7 @@ function ExecutionPanel({
   setSandboxKillSwitch,
   trades
 }: {
+  controlsLocked: boolean;
   executionQueue: Opportunity[];
   reconcileSandbox: () => void;
   refreshSandboxBalances: () => void;
@@ -671,7 +822,7 @@ function ExecutionPanel({
       <div className="mb-3 rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <SectionKicker>Execution Bridge</SectionKicker>
+            <SectionKicker>Signed Validation Bridge</SectionKicker>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <StatusPill label={runtime.mode} tone={runtime.mode === "SANDBOX" ? "violet" : "zinc"} />
               <StatusPill label={runtime.orderMode.replace(/_/g, " ")} tone={runtime.orderMode === "LIVE_SANDBOX" ? "amber" : "sky"} />
@@ -687,9 +838,10 @@ function ExecutionPanel({
                 : "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
             }`}
             onClick={() => setExecutionRuntimeMode(runtime.mode === "SANDBOX" ? "PAPER" : "SANDBOX")}
+            disabled={controlsLocked}
             type="button"
           >
-            {runtime.mode === "SANDBOX" ? "PAPER ONLY" : "ARM SANDBOX"}
+            {controlsLocked ? "ADMIN REQUIRED" : runtime.mode === "SANDBOX" ? "PAPER ONLY" : "ARM TEST_ORDER"}
           </button>
         </div>
         {runtime.lastReport && (
@@ -702,8 +854,8 @@ function ExecutionPanel({
         )}
         <div className="mt-2 grid grid-cols-3 gap-2 border-t border-sky-100 pt-2">
           <TinyMetric label="Sandbox Realized" value={`$${Number(runtime.ledger.realizedPnlUsd).toFixed(4)}`} tone={Number(runtime.ledger.realizedPnlUsd) >= 0 ? "emerald" : "rose"} />
-          <TinyMetric label="Demo Fills" value={String(runtime.ledger.executions)} tone="sky" />
-          <TinyMetric label="Demo Fees" value={`$${Number(runtime.ledger.feesUsd).toFixed(4)}`} tone="amber" />
+          <TinyMetric label="Validated Runs" value={String(runtime.ledger.executions)} tone="sky" />
+          <TinyMetric label="Sandbox Fees" value={`$${Number(runtime.ledger.feesUsd).toFixed(4)}`} tone="amber" />
         </div>
         <div className="mt-2 grid gap-2 border-t border-sky-100 pt-2 sm:grid-cols-2">
           {runtime.venues.map((venue) => {
@@ -726,14 +878,15 @@ function ExecutionPanel({
           })}
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
-          <button className="rounded-lg border border-sky-200 bg-white px-2 py-1 font-mono text-[9px] font-black text-sky-700 hover:bg-sky-50" onClick={refreshSandboxBalances} type="button">
+          <button className="rounded-lg border border-sky-200 bg-white px-2 py-1 font-mono text-[9px] font-black text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={controlsLocked} onClick={refreshSandboxBalances} type="button">
             REFRESH FUNDS
           </button>
-          <button className="rounded-lg border border-violet-200 bg-white px-2 py-1 font-mono text-[9px] font-black text-violet-700 hover:bg-violet-50" onClick={reconcileSandbox} type="button">
+          <button className="rounded-lg border border-violet-200 bg-white px-2 py-1 font-mono text-[9px] font-black text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={controlsLocked} onClick={reconcileSandbox} type="button">
             RECONCILE
           </button>
           <button
             className={`rounded-lg border px-2 py-1 font-mono text-[9px] font-black ${runtime.killSwitchActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}
+            disabled={controlsLocked}
             onClick={() => setSandboxKillSwitch(!runtime.killSwitchActive)}
             type="button"
           >
@@ -841,6 +994,7 @@ function WalletPanel({
 }
 
 function RiskDock({
+  adminAuthenticated,
   exportSessionCsv,
   mode,
   replayHistory,
@@ -848,6 +1002,7 @@ function RiskDock({
   risk,
   runScenario
 }: {
+  adminAuthenticated: boolean;
   exportSessionCsv: () => void;
   mode: "LIVE" | "DEMO";
   replayHistory: () => void;
@@ -856,6 +1011,8 @@ function RiskDock({
   runScenario: (scenario: ScenarioKind) => void;
 }) {
   const scenarioSeconds = Math.ceil(risk.scenarioRemainingMs / 1000);
+  const scenarioLocked = mode === "LIVE";
+  const adminLocked = mode === "LIVE" && !adminAuthenticated;
   return (
     <footer className="border-t border-sky-100 bg-white/92 px-4 py-3 shadow-[0_-8px_24px_rgba(186,230,253,0.25)] backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -873,7 +1030,7 @@ function RiskDock({
           </span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 font-mono text-xs font-black text-emerald-700 transition hover:bg-emerald-100" onClick={resetRisk} type="button">
+          <button className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 font-mono text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-45" disabled={adminLocked} onClick={resetRisk} type="button">
             RESET RISK
           </button>
           <button className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 font-mono text-xs font-black text-sky-700 transition hover:bg-sky-100" onClick={replayHistory} type="button">
@@ -882,13 +1039,14 @@ function RiskDock({
           <button className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 font-mono text-xs font-black text-violet-700 transition hover:bg-violet-100" onClick={exportSessionCsv} type="button">
             EXPORT CSV
           </button>
-          <button className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-100" onClick={() => runScenario("MARKET_CRASH")} type="button">
-            {mode === "LIVE" ? "CRASH DRILL" : "CRASH x3"}
+          <span className="self-center font-mono text-[9px] font-black uppercase text-amber-700">{scenarioLocked ? "Scenario Lab: switch to Demo" : "Scenario Lab"}</span>
+          <button className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-45" disabled={scenarioLocked} onClick={() => runScenario("MARKET_CRASH")} type="button">
+            CRASH x3
           </button>
-          <button className="rounded-xl border border-amber-200 bg-white px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-50" onClick={() => runScenario("LIQUIDITY_DRAIN")} type="button">
+          <button className="rounded-xl border border-amber-200 bg-white px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={scenarioLocked} onClick={() => runScenario("LIQUIDITY_DRAIN")} type="button">
             LIQUIDITY
           </button>
-          <button className="rounded-xl border border-sky-200 bg-white px-4 py-2 font-mono text-xs font-black text-sky-700 transition hover:bg-sky-50" onClick={() => runScenario("LATENCY_SPIKE")} type="button">
+          <button className="rounded-xl border border-sky-200 bg-white px-4 py-2 font-mono text-xs font-black text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={scenarioLocked} onClick={() => runScenario("LATENCY_SPIKE")} type="button">
             LATENCY
           </button>
         </div>
@@ -1228,6 +1386,23 @@ function microSkewBps(book: NormalizedOrderBook): number {
 
 function sumSize(levels: NormalizedOrderBook["bids"]): number {
   return levels.slice(0, 5).reduce((sum, level) => sum + Number(level.size), 0);
+}
+
+function opportunityTouchesExchange(opportunity: Opportunity, visibleExchanges: ExchangeId[]): boolean {
+  if (opportunity.buyExchange && !visibleExchanges.includes(opportunity.buyExchange)) return false;
+  if (opportunity.sellExchange && !visibleExchanges.includes(opportunity.sellExchange)) return false;
+  if (opportunity.exchange && !visibleExchanges.includes(opportunity.exchange)) return false;
+  return true;
+}
+
+function toggleAtLeastOne<T>(items: T[], item: T): T[] {
+  if (!items.includes(item)) return [...items, item];
+  return items.length > 1 ? items.filter((candidate) => candidate !== item) : items;
+}
+
+function toggleAtLeastTwo(items: ExchangeId[], item: ExchangeId): ExchangeId[] {
+  if (!items.includes(item)) return [...items, item];
+  return items.length > 2 ? items.filter((candidate) => candidate !== item) : items;
 }
 
 function bestAskBook(books: NormalizedOrderBook[]): { exchange: ExchangeId; price: number } | null {

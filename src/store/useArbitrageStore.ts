@@ -5,6 +5,7 @@ import { EXCHANGE_IDS, INITIAL_WALLETS } from "@/lib/config/exchanges";
 import { ArbitrAIKernel } from "@/lib/services/ArbitrAIKernel";
 import type {
   ExchangeId,
+  GatewayCommand,
   GatewayMessage,
   ExchangeConnectionStatus,
   ExecutionRuntimeMode,
@@ -35,6 +36,9 @@ interface ArbitrageState {
   connectionError: string;
   lastGatewayMessageAt: number;
   initialized: boolean;
+  adminAuthenticated: boolean;
+  adminMessage: string;
+  scannerUniverse: ExchangeId[];
   books: Record<string, NormalizedOrderBook>;
   exchangeStatuses: ExchangeConnectionStatus[];
   flashes: Record<string, FlashState>;
@@ -55,6 +59,8 @@ interface ArbitrageState {
   applyWalletSeed: () => void;
   simulateMarketCrash: () => void;
   runScenario: (scenario: ScenarioKind) => void;
+  authenticateAdmin: (token: string) => void;
+  setScannerUniverse: (exchanges: ExchangeId[]) => void;
   setExecutionRuntimeMode: (mode: ExecutionRuntimeMode) => void;
   refreshSandboxBalances: () => void;
   reconcileSandbox: () => void;
@@ -132,6 +138,9 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   connectionError: "",
   lastGatewayMessageAt: 0,
   initialized: false,
+  adminAuthenticated: false,
+  adminMessage: "",
+  scannerUniverse: EXCHANGE_IDS,
   books: {},
   exchangeStatuses: [],
   flashes: {},
@@ -187,15 +196,24 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
 
   runScenario: (scenario) => {
     if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
-      gateway.send(`RUN_SCENARIO:${scenario}`);
+      set({ connectionError: "Scenario Lab is intentionally disabled on real market data. Switch to Demo to run controlled drills." });
       return;
     }
     localKernel?.runScenario(scenario);
   },
 
+  authenticateAdmin: (token) => {
+    if (typeof window !== "undefined") window.sessionStorage.setItem("arbitrai-admin-token", token);
+    sendGatewayCommand({ type: "ADMIN_AUTH", token });
+  },
+
+  setScannerUniverse: (exchanges) => {
+    sendGatewayCommand({ type: "SET_SCANNER_UNIVERSE", exchanges });
+  },
+
   setExecutionRuntimeMode: (mode) => {
     if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
-      gateway.send(`SET_EXECUTION_MODE:${mode}`);
+      sendGatewayCommand({ type: "SET_EXECUTION_MODE", mode });
       return;
     }
     localKernel?.setExecutionMode(mode);
@@ -204,7 +222,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
 
   refreshSandboxBalances: () => {
     if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
-      gateway.send("REFRESH_SANDBOX_BALANCES");
+      sendGatewayCommand({ type: "REFRESH_SANDBOX_BALANCES" });
       return;
     }
     void localKernel?.refreshSandboxBalances();
@@ -212,7 +230,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
 
   reconcileSandbox: () => {
     if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
-      gateway.send("RECONCILE_SANDBOX");
+      sendGatewayCommand({ type: "RECONCILE_SANDBOX" });
       return;
     }
     void localKernel?.reconcileSandbox();
@@ -220,7 +238,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
 
   setSandboxKillSwitch: (active) => {
     if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
-      gateway.send(`SET_SANDBOX_KILL_SWITCH:${active ? "ON" : "OFF"}`);
+      sendGatewayCommand({ type: "SET_SANDBOX_KILL_SWITCH", active });
       return;
     }
     localKernel?.setSandboxKillSwitch(active);
@@ -228,7 +246,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
 
   resetRisk: () => {
     if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
-      gateway.send("RESET_RISK");
+      sendGatewayCommand({ type: "RESET_RISK" });
       return;
     }
     localKernel?.resetRisk();
@@ -236,7 +254,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
 
   replayHistory: () => {
     if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
-      gateway.send("REPLAY_HISTORY");
+      sendGatewayCommand({ type: "REPLAY_HISTORY" });
       return;
     }
     const history = get().opportunities.filter((opportunity) => Date.now() - opportunity.createdAt <= 5 * 60 * 1000);
@@ -297,7 +315,11 @@ function startDemo(set: StoreSet, walletSeed: WalletSeed): void {
 function startGateway(set: StoreSet, walletSeed: WalletSeed): void {
   const url = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
   gateway = new WebSocket(url);
-  gateway.addEventListener("open", () => set({ connected: true, connectionError: "" }));
+  gateway.addEventListener("open", () => {
+    set({ connected: true, connectionError: "" });
+    const token = window.sessionStorage.getItem("arbitrai-admin-token");
+    if (token) sendGatewayCommand({ type: "ADMIN_AUTH", token });
+  });
   gateway.addEventListener("message", (event) => {
     set({ connected: true, connectionError: "", lastGatewayMessageAt: Date.now() });
     applyGatewayMessage(set, JSON.parse(event.data as string) as GatewayMessage);
@@ -324,6 +346,10 @@ function stopLocalKernel(): void {
   localKernel = null;
 }
 
+function sendGatewayCommand(command: GatewayCommand): void {
+  if (gateway?.readyState === WebSocket.OPEN) gateway.send(JSON.stringify(command));
+}
+
 type StoreSet = Parameters<typeof useArbitrageStore.setState>[0] extends never
   ? never
   : (partial: Partial<ArbitrageState> | ((state: ArbitrageState) => Partial<ArbitrageState>)) => void;
@@ -341,7 +367,9 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
       metrics: message.metrics,
       priceSeries: message.priceSeries,
       learning: message.learning,
-      executionRuntime: message.executionRuntime
+      executionRuntime: message.executionRuntime,
+      scannerUniverse: message.scannerUniverse ?? EXCHANGE_IDS,
+      adminAuthenticated: message.adminAuthenticated ?? useArbitrageStore.getState().adminAuthenticated
     });
     return;
   }
@@ -398,6 +426,22 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
 
   if (message.type === "EXECUTION_RUNTIME") {
     set({ executionRuntime: message.runtime });
+    return;
+  }
+
+  if (message.type === "ADMIN_STATE") {
+    if (!message.authenticated && typeof window !== "undefined") window.sessionStorage.removeItem("arbitrai-admin-token");
+    set({ adminAuthenticated: message.authenticated, adminMessage: message.reason });
+    return;
+  }
+
+  if (message.type === "SCANNER_UNIVERSE") {
+    set({ scannerUniverse: message.exchanges });
+    return;
+  }
+
+  if (message.type === "COMMAND_ERROR") {
+    set({ adminMessage: message.reason });
     return;
   }
 
