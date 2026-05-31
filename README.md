@@ -48,7 +48,7 @@ AET estima si un edge visible sobrevivirá el tiempo suficiente para ejecutarse.
 - `quote age` y `quote skew` entre venues;
 - calibración por ruta usando `markouts`.
 
-El resultado incluye `survival probability`, `adverse selection`, `risk-adjusted P&L`, `suggested size` y un score explicable de `0-100`.
+El resultado incluye `survival probability`, `fill probability`, `leg risk`, `adverse selection`, `Expected Value`, `suggested size` y un score explicable de `0-100`. La queue usa `Expected Value`, no el spread bruto.
 
 ### 2. Tres estrategias
 
@@ -61,23 +61,30 @@ El resultado incluye `survival probability`, `adverse selection`, `risk-adjusted
 ### 3. Motor realista y auditable
 
 - `Decimal.js` para evitar errores de floating point.
-- Trading fees, withdrawal amortization, slippage, latency y market impact.
+- Normalización real `USD/USDT`: los feeds conservan su `source price`, pero el scanner compara una referencia común en USD usando el basis `USDT/USD`.
+- Reconstrucción de `order books` con `sequence gaps`; Kraken valida `CRC32` sobre su profundidad suscrita.
+- Trading fees, quote basis, slippage, latency y market impact como `execution cost`.
+- `Withdrawal amortization` separado como `rebalance cost`: `Execution Net P&L` y `Rebalance-adjusted P&L` nunca se mezclan.
 - Fills parciales, wallets prefunded y alerta de rebalancing.
+- `Execution state machine`: `DETECTED -> PREFLIGHT -> VALIDATED -> RESERVED -> LEG_A -> LEG_B -> RECONCILED`.
+- `Preflight` real de ambas piernas antes de admitir una señal a la queue.
 - `Circuit breaker` tras tres pérdidas materiales.
 - Límite diario de pérdida y máximo `0.1 BTC` por trade.
 - `Shadow Learning`: aprende también de señales descartadas.
-- CSV de sesión, journal persistente y calibración recuperable.
+- CSV de sesión, journal persistente y calibración recuperable con schema versionado para no reutilizar observaciones incompatibles tras cambiar el modelo.
 
 ## Arquitectura
 
 ```mermaid
 flowchart LR
     V["7 venues live"] --> M["MarketDataService"]
-    M --> N["Normalized order books"]
+    M --> I["Sequence gaps + CRC32"]
+    I --> N["USD-normalized order books"]
     N --> A["ArbitrageEngine"]
     A --> E["ArbitrAI Edge Tensor"]
     E --> R["RiskManager"]
-    R --> Q["Execution queue"]
+    R --> F["Two-leg preflight"]
+    F --> Q["Expected Value queue"]
     Q --> P["Paper simulator"]
     Q --> T["Signed TEST_ORDER bridge"]
     P --> L["PnLTracker"]
@@ -87,7 +94,7 @@ flowchart LR
     G --> U["Next.js terminal"]
 ```
 
-El backend procesa todos los eventos de mercado. El scanner incremental recalcula únicamente las rutas tocadas por el último `book update`; la UI recibe `BOOK_BATCH` throttled para mantener React fluido sin reducir la frecuencia del motor. En una medición Live posterior a esta optimización, la latencia media bajó de `4.88ms` a `1.41ms` con siete venues activos.
+El backend reconstruye feeds live y coalesce actualizaciones por símbolo antes de recalcular las rutas tocadas. La UI recibe `BOOK_BATCH` throttled, desactiva animaciones costosas en charts y memoiza paneles independientes para mantener React fluido sin convertir el navegador en el cuello de botella.
 
 ## Quick start
 
@@ -170,8 +177,8 @@ Adjuntar un Railway Volume en `/data` para journal y calibración.
 | Criterio | Evidencia |
 |---|---|
 | Velocidad | Feeds live, procesamiento event-driven, `BOOK_BATCH` visual y latency visible. |
-| Precisión | `Decimal.js`, fees por venue, slippage, latency, quote freshness e impacto. |
-| Robustez | Fills parciales, wallets, `preflight`, reconciliation y `circuit breaker`. |
+| Precisión | `Decimal.js`, normalización `USD/USDT`, fees por venue, waterfall de costos, quote freshness e impacto. |
+| Robustez | Libros reconstruidos, `CRC32`, sequence gaps, fills parciales, two-leg `preflight`, reconciliation y `circuit breaker`. |
 | Estrategia | Cross-exchange, triangular, stat arb, AET y Shadow Learning. |
 | Arquitectura | Servicios separados, protocolo WebSocket tipado, tests y health checks. |
 | UX | Cuatro rutas enfocadas, filtros locales, explicaciones de rechazo y replay. |
@@ -184,6 +191,7 @@ Adjuntar un Railway Volume en `/data` para journal y calibración.
 - Bechler y Ludkovski: [Order Flows and Limit Order Book Resiliency on the Meso-Scale](https://arxiv.org/abs/1708.02715)
 - Lokin y Yu: [Fill Probabilities in a Limit Order Book with State-Dependent Stochastic Order Flows](https://arxiv.org/abs/2403.02572)
 - Makarov y Schoar: [Trading and Arbitrage in Cryptocurrency Markets](https://doi.org/10.1016/j.jfineco.2019.07.001)
+- Kraken API Center: [Spot WebSockets v2 Book Checksum](https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/)
 
 ## Límites honestos
 

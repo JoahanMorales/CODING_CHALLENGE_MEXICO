@@ -1,12 +1,14 @@
 const stages = [
-  { code: "01", title: "Feeds públicos", text: "Siete exchanges envían libros BTC/USDT por WebSocket. REST cubre desconexiones temporales.", tone: "sky" },
-  { code: "02", title: "Normalización", text: "Cada mensaje se convierte al mismo esquema: top 5 bid/ask, volumen visible, timestamp y latencia.", tone: "sky" },
-  { code: "03", title: "Microestructura", text: "MLOFI, microprice y volatilidad estiman presión inmediata y selección adversa.", tone: "emerald" },
-  { code: "04", title: "Economía real", text: "Se descuentan fees, retiro amortizado, slippage, impacto y costo esperado de latencia.", tone: "amber" },
-  { code: "05", title: "Edge Tensor", text: "AET combina supervivencia, liquidez, confiabilidad histórica y beneficio ajustado por riesgo.", tone: "emerald" },
-  { code: "06", title: "Gestor de riesgo", text: "Limita tamaño, evita impacto alto y pausa la ejecución ante pérdidas consecutivas o caída acumulada.", tone: "rose" },
-  { code: "07", title: "Cola priorizada", text: "Las oportunidades aprobadas se ordenan por score antes de simular ambas piernas.", tone: "violet" },
-  { code: "08", title: "Shadow Learning", text: "Resultados posteriores a 500 ms, 2 s y 5 s recalibran cada ruta, incluso cuando una señal se descarta.", tone: "sky" }
+  { code: "01", title: "Feeds públicos", text: "Siete venues envían order books por WebSocket. REST entra únicamente si un feed pierde frescura.", tone: "sky" },
+  { code: "02", title: "Integridad", text: "Los libros reconstruidos vigilan sequence gaps. Kraken valida CRC32 antes de admitir precios al scanner.", tone: "sky" },
+  { code: "03", title: "Quote normalization", text: "BTC/USD y BTC/USDT se convierten a USD comparable usando el basis USDT/USD sin perder el source price.", tone: "sky" },
+  { code: "04", title: "Microestructura", text: "MLOFI top-5, microprice y volatilidad estiman presión inmediata y adverse selection.", tone: "emerald" },
+  { code: "05", title: "Economía real", text: "Execution cost y rebalance cost se calculan por separado: fees, slippage, quote basis, latencia y retiro amortizado.", tone: "amber" },
+  { code: "06", title: "Expected Value", text: "AET pondera fill probability de ambas piernas y penaliza el costo de unwind cuando una sola pierna sobrevive.", tone: "emerald" },
+  { code: "07", title: "Preflight", text: "Antes de entrar a la queue valida frescura, integridad e inventario prefunded disponible para ambas piernas.", tone: "rose" },
+  { code: "08", title: "State machine", text: "Cada señal conserva una traza: detected, validated, reserved, leg A, leg B y reconciled.", tone: "violet" },
+  { code: "09", title: "Shadow Learning", text: "Markouts a 100 ms, 500 ms y 2 s recalibran survival probability por ruta, incluso si la señal se descarta.", tone: "sky" },
+  { code: "10", title: "Circuit breaker", text: "El motor detiene nuevas ejecuciones tras tres pérdidas materiales o al romper el daily loss limit.", tone: "rose" }
 ];
 
 export function AetPipelineDiagram() {

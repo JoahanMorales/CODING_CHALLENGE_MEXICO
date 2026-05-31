@@ -14,10 +14,13 @@ describe("PnLTracker cost waterfall", () => {
       latencyMs: 80,
       sizeBtc: "0.05",
       pnlUsd: "4.25",
+      rebalanceAdjustedPnlUsd: "3.75",
       grossPnlUsd: "10.00",
       feesUsd: "3.00",
       slippageUsd: "1.25",
       executionRiskUsd: "1.50",
+      quoteConversionCostUsd: "0.00",
+      rebalanceCostUsd: "0.50",
       fillRatio: 1,
       status: "FILLED",
       highImpact: false
@@ -29,5 +32,6 @@ describe("PnLTracker cost waterfall", () => {
     expect(metrics.totalSlippageUsd).toBe("1.25");
     expect(metrics.totalExecutionRiskUsd).toBe("1.50");
     expect(metrics.netPnlUsd).toBe("4.25");
+    expect(metrics.rebalanceAdjustedPnlUsd).toBe("3.75");
   });
 });

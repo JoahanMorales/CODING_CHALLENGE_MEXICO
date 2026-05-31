@@ -64,6 +64,10 @@ export class ArbitrageEngine {
     this.edgeTensor.importCalibration(calibration);
   }
 
+  calibrationSummary(): ReturnType<EdgeTensor["calibrationSummary"]> {
+    return this.edgeTensor.calibrationSummary();
+  }
+
   private detectCrossExchange(startedAt: number, changedExchange: ExchangeId): Opportunity[] {
     const btcBooks = this.booksForSymbol("BTC/USDT");
     const opportunities: Opportunity[] = [];
@@ -93,7 +97,11 @@ export class ArbitrageEngine {
           availableAskQty: ask.size,
           availableBidQty: bid.size,
           includeWithdrawal: true,
-          withdrawalAmortization: d("0.02")
+          withdrawalAmortization: d("0.02"),
+          buyQuoteAsset: buyBook.quoteAsset,
+          sellQuoteAsset: sellBook.quoteAsset,
+          buyQuoteToUsdRate: d(buyBook.quoteToUsdRate),
+          sellQuoteToUsdRate: d(sellBook.quoteToUsdRate)
         });
         const buyTopBid = topBid(buyBook);
         const sellTopAsk = topAsk(sellBook);
@@ -114,7 +122,11 @@ export class ArbitrageEngine {
           includeWithdrawal: true,
           withdrawalAmortization: d("0.01"),
           buyLiquidityRole: "maker",
-          sellLiquidityRole: "maker"
+          sellLiquidityRole: "maker",
+          buyQuoteAsset: buyBook.quoteAsset,
+          sellQuoteAsset: sellBook.quoteAsset,
+          buyQuoteToUsdRate: d(buyBook.quoteToUsdRate),
+          sellQuoteToUsdRate: d(sellBook.quoteToUsdRate)
         });
         const makerFillProbability = this.estimateMakerFillProbability(buyBook, sellBook, desiredQty);
         const microstructureAlignment = this.microstructureAlignment(buyBook, sellBook);
@@ -123,7 +135,7 @@ export class ArbitrageEngine {
           .mul(desiredQty)
           .mul(d("0.00012").plus(d(1).minus(makerFillProbability).mul("0.00018")))
           .mul(makerRiskMultiplier);
-        const makerExpectedProfit = makerNetRaw.netProfitUsd.mul(makerFillProbability).minus(makerRiskCost);
+        const makerExpectedProfit = makerNetRaw.rebalanceAdjustedProfitUsd.mul(makerFillProbability).minus(makerRiskCost);
         const makerNetSpreadPct = makerBuyPrice.mul(desiredQty).greaterThan(0)
           ? makerExpectedProfit.div(makerBuyPrice.mul(desiredQty))
           : d(0);
@@ -135,7 +147,7 @@ export class ArbitrageEngine {
           buyBook,
           sellBook,
           executionStyle: "INSTANT_TAKER",
-          expectedProfitUsd: takerNet.netProfitUsd,
+          expectedProfitUsd: takerNet.rebalanceAdjustedProfitUsd,
           netSpreadPct: takerNet.netSpreadPct,
           quantityBtc: desiredQty
         });
@@ -148,8 +160,9 @@ export class ArbitrageEngine {
           netSpreadPct: makerNetSpreadPct,
           quantityBtc: desiredQty
         });
-        const takerExecutable = quotesSynchronized && takerEdge.riskAdjustedProfitUsd.greaterThan(threshold) && takerEdge.survivalProbability > 0.5;
-        const makerExecutable = quotesSynchronized && !takerExecutable && makerEdge.riskAdjustedProfitUsd.greaterThan("0.25") && makerNetSpreadPct.greaterThan("0.000025") && makerEdge.survivalProbability > 0.54;
+        const booksHealthy = buyBook.integrity.status !== "DEGRADED" && sellBook.integrity.status !== "DEGRADED";
+        const takerExecutable = quotesSynchronized && booksHealthy && takerEdge.expectedValueUsd.greaterThan(threshold) && takerEdge.survivalProbability > 0.5;
+        const makerExecutable = quotesSynchronized && booksHealthy && !takerExecutable && makerEdge.expectedValueUsd.greaterThan("0.25") && makerNetSpreadPct.greaterThan("0.000025") && makerEdge.survivalProbability > 0.54;
         const status = takerExecutable || makerExecutable ? "DETECTED" : "REJECTED";
         const executionStyle = takerExecutable ? "INSTANT_TAKER" : makerExecutable ? "MAKER_ASSISTED" : "INSTANT_TAKER";
         const selectedNet = makerExecutable ? makerNetRaw : takerNet;
@@ -172,16 +185,22 @@ export class ArbitrageEngine {
           netSpreadPct: pct(selectedNetSpreadPct),
           tradeSizeBtc: desiredQty.toFixed(8),
           expectedProfitUsd: usd(selectedProfit),
+          expectedValueUsd: usd(selectedEdge.expectedValueUsd),
+          executionNetProfitUsd: usd(selectedNet.netProfitUsd),
+          rebalanceAdjustedProfitUsd: usd(selectedNet.rebalanceAdjustedProfitUsd),
           grossProfitUsd: usd(selectedNet.grossProfitUsd),
           totalFeesUsd: usd(selectedNet.buyFeeUsd.plus(selectedNet.sellFeeUsd)),
           slippageUsd: usd(selectedNet.slippageUsd),
           networkCostUsd: usd(selectedNet.networkCostUsd.plus(makerExecutable ? makerRiskCost : 0)),
+          quoteConversionCostUsd: usd(selectedNet.quoteConversionCostUsd),
+          rebalanceCostUsd: usd(selectedNet.rebalanceCostUsd),
           score: this.scoreOpportunity({
             route,
             netSpreadPct: selectedNetSpreadPct,
             quantity: desiredQty,
             availableDepth: Decimal.min(ask.size, bid.size),
             exchanges: [buyBook.exchange, sellBook.exchange],
+            expectedValueUsd: selectedEdge.expectedValueUsd,
             confidenceBoost: makerExecutable
               ? makerFillProbability.toNumber() * 0.42 + microstructureAlignment * 0.18 + selectedEdge.modelScore / 100 * 0.4
               : microstructureAlignment * 0.24 + selectedEdge.modelScore / 100 * 0.48
@@ -196,6 +215,8 @@ export class ArbitrageEngine {
           reason:
             !quotesSynchronized
               ? `Rejected: quote skew ${quoteSkewMs}ms exceeds the 1800ms synchronization budget.`
+              : !booksHealthy
+                ? "Rejected: at least one order book is degraded or awaiting sequence recovery."
               : status === "DETECTED"
               ? takerExecutable
                 ? `Executable instant taker edge. Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, adverse-selection ${selectedEdge.adverseSelectionBps.toFixed(2)}bps.`
@@ -208,7 +229,9 @@ export class ArbitrageEngine {
             buyLiquidityRole: makerExecutable ? "maker" : "taker",
             sellLiquidityRole: makerExecutable ? "maker" : "taker",
             referenceBuyPrice: (makerExecutable ? makerBuyPrice : ask.price).toFixed(8),
-            referenceSellPrice: (makerExecutable ? makerSellPrice : bid.price).toFixed(8)
+            referenceSellPrice: (makerExecutable ? makerSellPrice : bid.price).toFixed(8),
+            referenceBuySourcePrice: sourceLevelPrice(buyBook, makerExecutable ? makerBuyPrice : ask.price, "ask"),
+            referenceSellSourcePrice: sourceLevelPrice(sellBook, makerExecutable ? makerSellPrice : bid.price, "bid")
           }
         });
       });
@@ -259,10 +282,15 @@ export class ArbitrageEngine {
         netSpreadPct: pct(netSpreadPct),
         tradeSizeBtc: startingBtc.toFixed(8),
         expectedProfitUsd: usd(profitUsd),
+        expectedValueUsd: usd(profitUsd),
+        executionNetProfitUsd: usd(profitUsd),
+        rebalanceAdjustedProfitUsd: usd(profitUsd),
         grossProfitUsd: usd(profitUsd),
         totalFeesUsd: usd(startingBtc.mul(btcBid.price).mul(EXCHANGE_FEES[exchange].taker).mul(3)),
         slippageUsd: usd(slippageUsd),
         networkCostUsd: "0.00",
+        quoteConversionCostUsd: "0.00",
+        rebalanceCostUsd: "0.00",
         score: this.scoreOpportunity({
           route,
           netSpreadPct,
@@ -342,7 +370,7 @@ export class ArbitrageEngine {
         });
         const status =
           conservativeProfit.greaterThan("0.10") &&
-          tensor.riskAdjustedProfitUsd.greaterThan("0.05") &&
+          tensor.expectedValueUsd.greaterThan("0.05") &&
           tensor.survivalProbability > 0.56 &&
           reversion.quality > 0.14 &&
           Math.abs(zScore) > 1.6
@@ -364,16 +392,22 @@ export class ArbitrageEngine {
           netSpreadPct: pct(netSpreadPct),
           tradeSizeBtc: size.toFixed(8),
           expectedProfitUsd: usd(tensor.riskAdjustedProfitUsd),
+          expectedValueUsd: usd(tensor.expectedValueUsd),
+          executionNetProfitUsd: usd(conservativeProfit),
+          rebalanceAdjustedProfitUsd: usd(conservativeProfit),
           grossProfitUsd: usd(expectedMoveUsd.mul(size)),
           totalFeesUsd: usd(referenceMid.mul(size).mul(roundTripFeeRate)),
           slippageUsd: usd(referenceMid.mul(size).mul(slippageRate)),
           networkCostUsd: usd(referenceMid.mul(size).mul(latencyRiskRate)),
+          quoteConversionCostUsd: "0.00",
+          rebalanceCostUsd: "0.00",
           score: this.scoreOpportunity({
             route,
             netSpreadPct,
             quantity: size,
             availableDepth: d("0.4"),
             exchanges: [longExchange, shortExchange],
+            expectedValueUsd: tensor.expectedValueUsd,
             confidenceBoost: Math.min(1, Math.abs(zScore) / 4 * 0.52 + reversion.quality * 0.24 + tensor.modelScore / 100 * 0.24)
           }),
           confidence: Math.min(99, Math.round(28 + Math.abs(zScore) * 10 + reversion.quality * 24 + tensor.survivalProbability * 28)),
@@ -438,15 +472,17 @@ export class ArbitrageEngine {
     quantity: Decimal;
     availableDepth: Decimal;
     exchanges: ExchangeId[];
+    expectedValueUsd?: Decimal;
     confidenceBoost?: number;
   }): number {
-    const profitability = Decimal.max(0, input.netSpreadPct.div(CROSS_EXCHANGE_THRESHOLD_PCT)).mul(40);
+    const profitability = Decimal.max(0, input.netSpreadPct.div(CROSS_EXCHANGE_THRESHOLD_PCT)).mul(32);
+    const expectedValue = Decimal.max(0, input.expectedValueUsd ?? 0).div(Decimal.max("0.25", input.quantity.mul(70000).mul(CROSS_EXCHANGE_THRESHOLD_PCT))).mul(8);
     const liquidity = Decimal.min(1, input.availableDepth.div(Decimal.max(input.quantity, d("0.00000001")))).mul(30);
     const reliability =
       input.exchanges.reduce((sum, exchange) => sum + EXCHANGE_FEES[exchange].reliability, 0) / input.exchanges.length * 20;
     const historical = (this.historicalSuccess.get(input.route) ?? 0.68) * 10;
     const boost = (input.confidenceBoost ?? 0) * 6;
-    return Math.round(Math.max(0, Math.min(100, profitability.plus(liquidity).plus(reliability).plus(historical).plus(boost).toNumber())));
+    return Math.round(Math.max(0, Math.min(100, profitability.plus(expectedValue).plus(liquidity).plus(reliability).plus(historical).plus(boost).toNumber())));
   }
 
   private booksForSymbol(symbol: SymbolId, maxAgeMs = 2800): NormalizedOrderBook[] {
@@ -461,6 +497,12 @@ function bookKey(exchange: ExchangeId, symbol: SymbolId): string {
 
 function label(exchange: ExchangeId): string {
   return exchange[0].toUpperCase() + exchange.slice(1);
+}
+
+function sourceLevelPrice(book: NormalizedOrderBook, normalizedPrice: Decimal, side: "bid" | "ask"): string {
+  const top = side === "bid" ? book.bids[0] : book.asks[0];
+  if (top?.sourcePrice && d(top.price).equals(normalizedPrice)) return top.sourcePrice;
+  return book.quoteAsset === "BTC" ? normalizedPrice.toFixed(8) : normalizedPrice.div(book.quoteToUsdRate).toFixed(8);
 }
 
 function performanceNow(): number {

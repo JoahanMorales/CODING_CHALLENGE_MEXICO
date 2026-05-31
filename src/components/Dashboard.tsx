@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -18,6 +18,7 @@ import type {
   ExchangeId,
   ExecutionRuntimeMode,
   ExecutionRuntimeState,
+  ExecutionTransition,
   LearningSummary,
   NormalizedOrderBook,
   Opportunity,
@@ -63,6 +64,7 @@ export function Dashboard() {
     opportunities,
     replayOpportunities,
     executionQueue,
+    executionTransitions,
     trades,
     wallets,
     walletSeed,
@@ -122,7 +124,7 @@ export function Dashboard() {
         setMode={setMode}
       />
 
-      <TerminalToolbar
+      <MemoTerminalToolbar
         adminAuthenticated={adminAuthenticated}
         adminMessage={adminMessage}
         authenticateAdmin={authenticateAdmin}
@@ -136,10 +138,10 @@ export function Dashboard() {
         visibleTypes={visibleTypes}
       />
 
-      <section className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-3 xl:overflow-hidden xl:px-4">
+      <section className="relative z-0 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-3 xl:overflow-hidden xl:px-4">
         <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] gap-3 xl:h-full xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.28fr)_minmax(0,0.96fr)]">
           <aside className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden pr-1 xl:grid-rows-[auto_auto_auto_minmax(220px,0.82fr)] xl:overflow-y-auto">
-            <SystemHealth
+            <MemoSystemHealth
               connectionError={connectionError}
               connected={connected}
               dataActive={dataActive}
@@ -148,14 +150,14 @@ export function Dashboard() {
               risk={risk}
               statuses={exchangeStatuses}
             />
-            <MicrostructurePanel intel={marketIntel} />
-            <MarketStack books={books} exchangesShown={visibleExchanges} flashes={flashes} statuses={exchangeStatuses} />
-            <PriceChartPanel marketDrift={marketDrift} priceSeries={priceSeries} />
+            <MemoMicrostructurePanel intel={marketIntel} />
+            <MemoMarketStack books={books} exchangesShown={visibleExchanges} flashes={flashes} statuses={exchangeStatuses} />
+            <MemoPriceChartPanel marketDrift={marketDrift} priceSeries={priceSeries} />
           </aside>
 
           <section className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden xl:grid-rows-[auto_minmax(0,1fr)_auto] xl:overflow-hidden">
-            <ActiveEdgePanel latestExecutable={latestExecutable} latestSignal={latestSignal} latestTrade={trades[0]} metrics={metrics} risk={risk} />
-            <SignalFeed opportunities={visibleOpportunities} replaying={replayOpportunities.length > 0} />
+            <MemoActiveEdgePanel latestExecutable={latestExecutable} latestSignal={latestSignal} latestTrade={trades[0]} metrics={metrics} risk={risk} />
+            <MemoSignalFeed opportunities={visibleOpportunities} replaying={replayOpportunities.length > 0} />
             <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
               <summary className="cursor-pointer list-none font-mono text-[10px] font-black uppercase text-sky-700">
                 Abrir análisis avanzado
@@ -168,18 +170,19 @@ export function Dashboard() {
           </section>
 
           <aside className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden pr-1 xl:grid-rows-[auto_auto_auto_auto] xl:overflow-y-auto">
-            <PerformancePanel metrics={metrics} mode={mode} pnlSeries={pnlSeries} risk={risk} />
+            <MemoPerformancePanel metrics={metrics} mode={mode} pnlSeries={pnlSeries} risk={risk} />
             <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
                 <span className="font-mono text-[10px] font-black uppercase text-sky-700">Shadow Learning</span>
                 <StatusPill label={`${learning.evaluatedSignals} markouts`} tone={learning.evaluatedSignals ? "sky" : "zinc"} />
               </summary>
               <div className="mt-3">
-                <LearningPanel learning={learning} bare />
+                <MemoLearningPanel learning={learning} bare />
               </div>
             </details>
-            <ExecutionPanel
+            <MemoExecutionPanel
               executionQueue={executionQueue}
+              executionTransitions={executionTransitions}
               reconcileSandbox={reconcileSandbox}
               refreshSandboxBalances={refreshSandboxBalances}
               runtime={executionRuntime}
@@ -188,7 +191,7 @@ export function Dashboard() {
               trades={trades}
               controlsLocked={mode === "LIVE" && !adminAuthenticated}
             />
-            <WalletPanel
+            <MemoWalletPanel
               applyWalletSeed={applyWalletSeed}
               mode={mode}
               seed={walletSeed}
@@ -274,7 +277,7 @@ function TerminalToolbar({
   const [token, setToken] = useState("");
   const visibleFilterCount = visibleExchanges.length + visibleTypes.length;
   return (
-    <section className="min-w-0 overflow-x-hidden border-b border-sky-100 bg-white px-4 py-2.5">
+    <section className="relative z-[60] min-w-0 border-b border-sky-100 bg-white px-4 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {(["ALL", "EXECUTABLE", "REJECTED"] as const).map((status) => (
@@ -284,7 +287,7 @@ function TerminalToolbar({
             <summary className="cursor-pointer list-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 font-mono text-[9px] font-black uppercase text-zinc-600 transition hover:border-sky-200 hover:text-sky-700">
               Filtros · {visibleFilterCount}
             </summary>
-            <div className="absolute left-0 top-9 z-30 w-[min(92vw,520px)] rounded-2xl border border-sky-100 bg-white p-4 shadow-xl shadow-sky-100">
+            <div className="fixed inset-x-3 top-36 z-[90] max-h-[calc(100vh-10rem)] overflow-y-auto rounded-2xl border border-sky-100 bg-white p-4 shadow-xl shadow-sky-100 sm:absolute sm:inset-x-auto sm:left-0 sm:top-9 sm:w-[min(92vw,520px)]">
               <SectionKicker>Filtros visuales</SectionKicker>
               <p className="mt-1 text-xs font-semibold leading-5 text-zinc-500">Cambian lo que ves en esta pantalla. No modifican las decisiones del motor.</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -315,7 +318,7 @@ function TerminalToolbar({
           <summary className={`cursor-pointer list-none rounded-lg border px-3 py-2 font-mono text-[10px] font-black uppercase ${adminAuthenticated ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-600"}`}>
             {adminAuthenticated ? "Control admin activo" : "Desbloquear admin"}
           </summary>
-          <div className="absolute right-0 top-11 z-30 w-[min(92vw,440px)] rounded-2xl border border-sky-100 bg-white p-4 shadow-xl shadow-sky-100">
+          <div className="fixed inset-x-3 top-36 z-[90] max-h-[calc(100vh-10rem)] overflow-y-auto rounded-2xl border border-sky-100 bg-white p-4 shadow-xl shadow-sky-100 sm:absolute sm:inset-x-auto sm:right-0 sm:top-11 sm:w-[min(92vw,440px)]">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <SectionKicker>Configuración protegida</SectionKicker>
@@ -391,6 +394,8 @@ function SystemHealth({
   statuses: ExchangeConnectionStatus[];
 }) {
   const liveCount = statuses.filter((status) => status.status === "live" || status.status === "polling").length;
+  const verifiedBooks = statuses.filter((status) => status.bookIntegrity === "VERIFIED" || status.bookIntegrity === "SEQUENCED").length;
+  const integrityGaps = statuses.reduce((sum, status) => sum + (status.gapCount ?? 0), 0);
   const title = dataActive ? "Datos de mercado estables" : connected ? "Sincronizando mercados" : "Gateway desconectado";
   return (
     <Panel className="bg-gradient-to-br from-white via-sky-50/60 to-emerald-50/50">
@@ -405,10 +410,11 @@ function SystemHealth({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <HealthStat label="Mercados" value={`${liveCount}/${exchanges.length}`} tone={liveCount === exchanges.length ? "emerald" : "amber"} />
+        <HealthStat label="Books íntegros" value={`${verifiedBooks}/${exchanges.length}`} tone={verifiedBooks >= 4 ? "emerald" : "amber"} />
         <HealthStat label="Heartbeat" value={connected ? `${heartbeatMs}ms` : "--"} tone={connected ? "sky" : "rose"} />
-        <HealthStat label="Pérdidas" value={`${risk.consecutiveLosses}/3`} tone={risk.consecutiveLosses ? "amber" : "emerald"} />
+        <HealthStat label="Gaps" value={String(integrityGaps)} tone={integrityGaps ? "amber" : "emerald"} />
       </div>
 
       <details className="mt-3 rounded-xl border border-white/80 bg-white/65 px-3 py-2">
@@ -426,7 +432,7 @@ function SystemHealth({
                   <span className="text-xs font-black uppercase text-zinc-700">{EXCHANGE_LABELS[exchange]}</span>
                 </div>
                 <span className="font-mono text-[9px] font-semibold text-zinc-500">
-                  R{status?.reliabilityScore ?? 55} / {status?.lastMessageAt ? formatAge(age) : "--"}
+                  {status?.bookIntegrity ?? "--"} / {status?.quoteAsset ?? "--"} / {status?.lastMessageAt ? formatAge(age) : "--"}
                 </span>
               </div>
             );
@@ -482,7 +488,7 @@ function MarketStack({
   return (
     <Panel>
       <div className="flex items-center justify-between gap-3">
-        <PanelTitle eyebrow="Top of book" title="Mercado BTC/USDT" />
+        <PanelTitle eyebrow="Top of book" title="BTC / USD normalizado" />
         <StatusPill label={`${exchangesShown.length} venues`} tone="sky" />
       </div>
       <div className="mt-3 overflow-x-auto">
@@ -592,13 +598,13 @@ function PriceChartPanel({ marketDrift, priceSeries }: { marketDrift: number; pr
             <XAxis dataKey="time" hide />
             <YAxis domain={["dataMin - 25", "dataMax + 25"]} hide />
             <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #dbeafe", borderRadius: 12, color: "#27272a" }} />
-            <Line type="monotone" dataKey="binance" stroke="#0ea5e9" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="kraken" stroke="#10b981" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="coinbase" stroke="#f59e0b" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="okx" stroke="#8b5cf6" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="bybit" stroke="#ec4899" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="bitfinex" stroke="#64748b" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="gate" stroke="#14b8a6" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="binance" stroke="#0ea5e9" dot={false} isAnimationActive={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="kraken" stroke="#10b981" dot={false} isAnimationActive={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="coinbase" stroke="#f59e0b" dot={false} isAnimationActive={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="okx" stroke="#8b5cf6" dot={false} isAnimationActive={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="bybit" stroke="#ec4899" dot={false} isAnimationActive={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="bitfinex" stroke="#64748b" dot={false} isAnimationActive={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="gate" stroke="#14b8a6" dot={false} isAnimationActive={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -621,7 +627,7 @@ function ActiveEdgePanel({
 }) {
   const freshExecutable = latestExecutable && Date.now() - latestExecutable.createdAt < 2500 ? latestExecutable : undefined;
   const featured = freshExecutable ?? latestSignal;
-  const positive = freshExecutable ? Number(freshExecutable.expectedProfitUsd) >= 0 : latestTrade ? Number(latestTrade.pnlUsd) >= 0 : featured ? Number(featured.expectedProfitUsd) >= 0 : true;
+  const positive = freshExecutable ? Number(freshExecutable.expectedValueUsd) >= 0 : latestTrade ? Number(latestTrade.pnlUsd) >= 0 : featured ? Number(featured.expectedValueUsd) >= 0 : true;
   const status = risk.circuitBreakerActive ? "Ejecución pausada" : freshExecutable ? "Oportunidad ejecutable" : metrics.tradesExecuted ? "Sesión activa" : "Buscando oportunidades";
   const primaryRoute = risk.circuitBreakerActive
     ? "Los controles de riesgo detuvieron la ejecución tras tres pérdidas consecutivas. Los datos siguen activos."
@@ -657,7 +663,7 @@ function ActiveEdgePanel({
         <div className="grid grid-cols-5 gap-2 font-mono sm:min-w-[540px]">
           <SignalNumber label="Score" value={freshExecutable ? String(freshExecutable.score) : featured ? String(featured.score) : "--"} tone="sky" />
           <SignalNumber label="Net" value={freshExecutable ? `${freshExecutable.netSpreadPct}%` : featured ? `${featured.netSpreadPct}%` : "--"} tone={positive ? "emerald" : "rose"} />
-          <SignalNumber label="P&L" value={freshExecutable ? `$${freshExecutable.expectedProfitUsd}` : latestTrade ? `$${latestTrade.pnlUsd}` : featured ? `$${featured.expectedProfitUsd}` : "$0.00"} tone={positive ? "emerald" : "rose"} />
+          <SignalNumber label="EV" value={freshExecutable ? `$${freshExecutable.expectedValueUsd}` : latestTrade ? `$${latestTrade.pnlUsd}` : featured ? `$${featured.expectedValueUsd}` : "$0.00"} tone={positive ? "emerald" : "rose"} />
           <SignalNumber label="Superv." value={featured?.edgeModel ? `${(Number(featured.edgeModel.survivalProbability) * 100).toFixed(0)}%` : "--"} tone={featured?.edgeModel && Number(featured.edgeModel.survivalProbability) >= 0.55 ? "emerald" : "amber"} />
           <SignalNumber label="Ejec." value={String(metrics.tradesExecuted)} tone="zinc" />
         </div>
@@ -793,7 +799,7 @@ function SignalRow({ opportunity }: { opportunity: Opportunity }) {
         <div className="grid grid-cols-4 gap-2 font-mono md:w-[360px]">
           <SignalNumber compact label="Score" value={String(opportunity.score)} tone="sky" />
           <SignalNumber compact label="Net" value={`${opportunity.netSpreadPct}%`} tone={positive ? "emerald" : "rose"} />
-          <SignalNumber compact label="P&L" value={`$${opportunity.expectedProfitUsd}`} tone={positive ? "emerald" : "rose"} />
+          <SignalNumber compact label="EV" value={`$${opportunity.expectedValueUsd}`} tone={Number(opportunity.expectedValueUsd) >= 0 ? "emerald" : "rose"} />
           <SignalNumber compact label={opportunity.edgeModel ? "Surv" : "Size"} value={opportunity.edgeModel ? `${(Number(opportunity.edgeModel.survivalProbability) * 100).toFixed(0)}%` : Number(opportunity.tradeSizeBtc).toFixed(4)} tone={opportunity.edgeModel && Number(opportunity.edgeModel.survivalProbability) >= 0.55 ? "emerald" : "zinc"} />
         </div>
       </div>
@@ -806,7 +812,7 @@ function PerformancePanel({ metrics, mode, pnlSeries, risk }: { metrics: Perform
   return (
     <Panel>
       <div className="flex items-start justify-between gap-3">
-        <PanelTitle eyebrow="Rendimiento paper" title="P&L neto después de costos" />
+        <PanelTitle eyebrow="Rendimiento paper" title="Execution Net P&L" />
         <div className="text-right">
           <div className={`font-mono text-3xl font-black ${positive ? "text-emerald-600" : "text-rose-600"}`}>${metrics.netPnlUsd}</div>
           <div className="font-mono text-[10px] font-bold uppercase text-zinc-500">{risk.riskColor} risk</div>
@@ -826,7 +832,7 @@ function PerformancePanel({ metrics, mode, pnlSeries, risk }: { metrics: Perform
             <XAxis dataKey="index" hide />
             <YAxis hide />
             <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #bbf7d0", borderRadius: 12, color: "#27272a" }} />
-            <Area type="monotone" dataKey="pnl" stroke="#10b981" fill="url(#pnlGradient)" strokeWidth={2.4} />
+            <Area type="monotone" dataKey="pnl" stroke="#10b981" fill="url(#pnlGradient)" isAnimationActive={false} strokeWidth={2.4} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -857,8 +863,9 @@ function CostWaterfall({ metrics }: { metrics: PerformanceMetrics }) {
     { label: "Gross edge", subtractive: false, tone: "sky" as const, value: metrics.grossPnlUsd },
     { label: "Fees", subtractive: true, tone: "amber" as const, value: metrics.totalFeesPaidUsd },
     { label: "Slippage", subtractive: true, tone: "rose" as const, value: metrics.totalSlippageUsd },
+    { label: "Quote basis", subtractive: true, tone: "amber" as const, value: metrics.totalQuoteConversionCostUsd },
     { label: "Execution risk", subtractive: true, tone: "violet" as const, value: metrics.totalExecutionRiskUsd },
-    { label: "Net P&L", subtractive: false, tone: Number(metrics.netPnlUsd) >= 0 ? "emerald" as const : "rose" as const, value: metrics.netPnlUsd }
+    { label: "Execution net", subtractive: false, tone: Number(metrics.netPnlUsd) >= 0 ? "emerald" as const : "rose" as const, value: metrics.netPnlUsd }
   ];
   return (
     <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/75 p-3">
@@ -866,7 +873,7 @@ function CostWaterfall({ metrics }: { metrics: PerformanceMetrics }) {
         <SectionKicker>Waterfall de ejecución</SectionKicker>
         <span className="font-mono text-[9px] font-black uppercase text-zinc-400">Gross - costos = net</span>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-6">
         {stages.map((stage, index) => (
           <div className={`relative rounded-lg border bg-white px-2 py-2 ${toneBorder(stage.tone)}`} key={stage.label}>
             <span className="block font-mono text-[8px] font-black uppercase text-zinc-500">{stage.label}</span>
@@ -876,6 +883,12 @@ function CostWaterfall({ metrics }: { metrics: PerformanceMetrics }) {
             {index < stages.length - 1 && <span className="absolute -right-2.5 top-1/2 hidden -translate-y-1/2 font-mono text-xs font-black text-zinc-300 sm:block">→</span>}
           </div>
         ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-100 bg-amber-50/65 px-2 py-2 font-mono text-[10px] font-black">
+        <span className="text-amber-700">Rebalance amortizado -${metrics.totalRebalanceCostUsd}</span>
+        <span className={Number(metrics.rebalanceAdjustedPnlUsd) >= 0 ? "text-emerald-700" : "text-rose-700"}>
+          Rebalance-adjusted P&L ${metrics.rebalanceAdjustedPnlUsd}
+        </span>
       </div>
     </div>
   );
@@ -904,6 +917,8 @@ function LearningPanel({ bare = false, learning }: { bare?: boolean; learning: L
         <TinyMetric label="Ganancia perdida" value={`$${learning.missedProfitUsd}`} tone={Number(learning.missedProfitUsd) > 0 ? "amber" : "zinc"} />
         <TinyMetric label="Evitadas" value={String(learning.avoidedLosses)} tone="emerald" />
         <TinyMetric label="Falsos +" value={String(learning.falsePositives)} tone={learning.falsePositives ? "rose" : "zinc"} />
+        <TinyMetric label="Calibración" value={String(learning.calibrationObservations)} tone="sky" />
+        <TinyMetric label="Brier score" value={learning.brierScore} tone={Number(learning.brierScore) <= 0.25 ? "emerald" : "amber"} />
       </div>
 
       <div className="mt-3 rounded-xl border border-sky-100 bg-white/80 px-3 py-2">
@@ -930,6 +945,7 @@ function LearningPanel({ bare = false, learning }: { bare?: boolean; learning: L
 function ExecutionPanel({
   controlsLocked,
   executionQueue,
+  executionTransitions,
   reconcileSandbox,
   refreshSandboxBalances,
   runtime,
@@ -939,6 +955,7 @@ function ExecutionPanel({
 }: {
   controlsLocked: boolean;
   executionQueue: Opportunity[];
+  executionTransitions: ExecutionTransition[];
   reconcileSandbox: () => void;
   refreshSandboxBalances: () => void;
   runtime: ExecutionRuntimeState;
@@ -1079,6 +1096,19 @@ function ExecutionPanel({
           </div>
         </div>
       </div>
+      <details className="mt-3 border-t border-zinc-100 pt-3">
+        <summary className="cursor-pointer font-mono text-[10px] font-black uppercase text-sky-700">
+          Ver state machine · {executionTransitions.length} eventos
+        </summary>
+        <div className="mt-2 grid max-h-40 gap-1 overflow-y-auto">
+          {executionTransitions.length ? executionTransitions.slice(0, 14).map((transition) => (
+            <div className="grid grid-cols-[92px_1fr] gap-2 rounded-lg bg-zinc-50 px-2 py-1.5 font-mono text-[9px]" key={`${transition.opportunityId}:${transition.state}:${transition.at}`}>
+              <strong className="text-sky-700">{transition.state}</strong>
+              <span className="truncate text-zinc-500">{transition.route} · {transition.detail}</span>
+            </div>
+          )) : <EmptyState compact text="Esperando una ejecución admitida por EV." />}
+        </div>
+      </details>
     </Panel>
   );
 }
@@ -1104,7 +1134,7 @@ function WalletPanel({
         <PanelTitle eyebrow="Capital simulado" title="Balances por mercado" />
         <div className="grid grid-cols-2 gap-2 font-mono">
           <TinyMetric label="BTC" value={totals.btc.toFixed(4)} tone="zinc" />
-          <TinyMetric label="USDT" value={`$${totals.usdt.toLocaleString("en-US", { maximumFractionDigits: 0 })}`} tone="emerald" />
+          <TinyMetric label="USD eq." value={`$${totals.usdt.toLocaleString("en-US", { maximumFractionDigits: 0 })}`} tone="emerald" />
         </div>
       </div>
 
@@ -1155,7 +1185,7 @@ function RiskDock({
   const scenarioLocked = mode === "LIVE";
   const adminLocked = mode === "LIVE" && !adminAuthenticated;
   return (
-    <footer className="min-w-0 overflow-x-hidden border-t border-sky-100 bg-white/92 px-4 py-3 shadow-[0_-8px_24px_rgba(186,230,253,0.25)] backdrop-blur">
+    <footer className="relative z-50 min-w-0 overflow-x-hidden border-t border-sky-100 bg-white/92 px-4 py-3 shadow-[0_-8px_24px_rgba(186,230,253,0.25)] backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
           <span className="flex items-center gap-2 font-black text-zinc-800">
@@ -1224,7 +1254,7 @@ function WalletRow({ wallet }: { wallet: WalletBalance }) {
       </div>
       <div className="grid grid-cols-3 gap-2">
         <TinyMetric label="BTC" value={Number(wallet.btc).toFixed(4)} tone="zinc" />
-        <TinyMetric label="USDT" value={`$${wallet.usdt}`} tone="emerald" />
+        <TinyMetric label="USD eq." value={`$${wallet.usdt}`} tone="emerald" />
         <TinyMetric label="Move Cost" value={`$${wallet.rebalancingCostUsd}`} tone="amber" />
       </div>
     </div>
@@ -1275,7 +1305,7 @@ function TradeRow({ trade }: { trade: Trade }) {
       </div>
       <div className="mt-1 flex items-center justify-between font-mono text-[10px] font-semibold text-zinc-500">
         <span>{trade.type}</span>
-        <span>{trade.status} / {(trade.fillRatio * 100).toFixed(0)}%</span>
+        <span>{trade.status} / rebalance ${trade.rebalanceAdjustedPnlUsd}</span>
       </div>
     </div>
   );
@@ -1498,6 +1528,20 @@ function buildMarketIntel(books: Record<string, NormalizedOrderBook>, opportunit
     survival
   };
 }
+
+// Live book batches repaint only the panels that actually consume changing data.
+// This keeps charts, journals and controls from rerendering on every websocket pulse.
+const MemoTerminalToolbar = memo(TerminalToolbar);
+const MemoSystemHealth = memo(SystemHealth);
+const MemoMicrostructurePanel = memo(MicrostructurePanel);
+const MemoMarketStack = memo(MarketStack);
+const MemoPriceChartPanel = memo(PriceChartPanel);
+const MemoActiveEdgePanel = memo(ActiveEdgePanel);
+const MemoSignalFeed = memo(SignalFeed);
+const MemoPerformancePanel = memo(PerformancePanel);
+const MemoLearningPanel = memo(LearningPanel);
+const MemoExecutionPanel = memo(ExecutionPanel);
+const MemoWalletPanel = memo(WalletPanel);
 
 function makePnlSeries(trades: Trade[]): Array<{ index: number; pnl: number }> {
   return trades

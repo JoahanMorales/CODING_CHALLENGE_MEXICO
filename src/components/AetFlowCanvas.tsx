@@ -14,6 +14,7 @@ export function AetFlowCanvas({ detailed = false }: { detailed?: boolean }) {
     if (!context) return;
     let frame = 0;
     let animationFrame = 0;
+    let visible = true;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const draw = () => {
@@ -27,11 +28,25 @@ export function AetFlowCanvas({ detailed = false }: { detailed?: boolean }) {
       context.clearRect(0, 0, rect.width, rect.height);
       drawFlow(context, rect.width, rect.height, frame, detailed);
       frame += reduceMotion ? 0 : 1;
-      animationFrame = window.requestAnimationFrame(draw);
+      if (!reduceMotion && visible) animationFrame = window.requestAnimationFrame(draw);
     };
 
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry?.isIntersecting ?? true;
+      window.cancelAnimationFrame(animationFrame);
+      if (visible) draw();
+    });
+    const resizeObserver = new ResizeObserver(() => {
+      if (reduceMotion && visible) draw();
+    });
+    observer.observe(canvas);
+    resizeObserver.observe(canvas);
     draw();
-    return () => window.cancelAnimationFrame(animationFrame);
+    return () => {
+      observer.disconnect();
+      resizeObserver.disconnect();
+      window.cancelAnimationFrame(animationFrame);
+    };
   }, [detailed]);
 
   return <canvas aria-label="Flujo visual del ArbitrAI Edge Tensor" className="h-full w-full" ref={canvasRef} />;
@@ -147,4 +162,3 @@ function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, wi
   context.beginPath();
   context.roundRect(x, y, width, height, radius);
 }
-

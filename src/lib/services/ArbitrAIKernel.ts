@@ -1,4 +1,4 @@
-import type { ExecutionRuntimeMode, GatewayMessage, GatewaySnapshot, NormalizedOrderBook, Opportunity, ScenarioKind, WalletSeed } from "../types";
+import type { ExecutionRuntimeMode, ExecutionState, GatewayMessage, GatewaySnapshot, LearningSummary, NormalizedOrderBook, Opportunity, ScenarioKind, WalletSeed } from "../types";
 import { ArbitrageEngine } from "./ArbitrageEngine";
 import { CounterfactualLearner } from "./CounterfactualLearner";
 import { EventBus } from "./EventBus";
@@ -22,6 +22,7 @@ export class ArbitrAIKernel {
 
   private readonly opportunities: Opportunity[] = [];
   private readonly executionQueue: Opportunity[] = [];
+  private readonly executionTransitions: GatewaySnapshot["executionTransitions"] = [];
   private readonly lastSignalAt = new Map<string, number>();
   private executing = false;
 
@@ -89,17 +90,18 @@ export class ArbitrAIKernel {
       risk: this.riskManager.getState(this.simulator.exposureBtc()),
       metrics: this.pnlTracker.metrics(),
       priceSeries: this.marketData.priceHistory(),
-      learning: this.learner.summary(),
-      executionRuntime: this.sandboxExecution.status()
+      learning: this.learningSummary(),
+      executionRuntime: this.sandboxExecution.status(),
+      executionTransitions: [...this.executionTransitions]
     };
   }
 
   private handleMarketUpdate(book: NormalizedOrderBook): void {
     this.publish({ type: "BOOK", book });
-    const outcomes = this.learner.observeBook(book);
+    const outcomes = book.symbol === "BTC/USDT" ? this.learner.observeBook(book) : [];
     outcomes.forEach((outcome) => {
       this.engine.recordShadowOutcome(outcome.route, Number(outcome.predictedSurvival), Number(outcome.realizedProfitUsd));
-      this.publish({ type: "LEARNING", summary: this.learner.summary(), outcome });
+      this.publish({ type: "LEARNING", summary: this.learningSummary(), outcome });
     });
     const detected = this.engine.onOrderBook(book);
     detected.forEach((opportunity) => this.handleOpportunity(opportunity));
@@ -109,7 +111,8 @@ export class ArbitrAIKernel {
     const opportunity = this.riskManager.evaluateOpportunity(rawOpportunity);
     const signalKey = `${opportunity.type}:${opportunity.route}:${opportunity.status}`;
     const lastSignalAt = this.lastSignalAt.get(signalKey) ?? 0;
-    if (Date.now() - lastSignalAt < 650) return;
+    const signalCadenceMs = opportunity.status === "REJECTED" ? 1500 : 320;
+    if (Date.now() - lastSignalAt < signalCadenceMs) return;
     this.lastSignalAt.set(signalKey, Date.now());
     this.pnlTracker.recordOpportunity(opportunity);
     this.learner.track(opportunity);
@@ -118,8 +121,17 @@ export class ArbitrAIKernel {
     this.publish({ type: "OPPORTUNITY", opportunity, queue: [...this.executionQueue] });
 
     if (opportunity.status !== "DETECTED" || this.riskManager.shouldHalt()) return;
+    this.transition(opportunity, "DETECTED", "Expected value survived fees, quote basis, impact and AET controls.");
+    this.transition(opportunity, "PREFLIGHT", "Checking prefunded inventory for both execution legs.");
+    const preflight = this.simulator.preflight(opportunity);
+    if (!preflight.ok) {
+      this.transition(opportunity, "PREFLIGHT_FAILED", preflight.reason);
+      this.publish({ type: "OPPORTUNITY", opportunity: { ...opportunity, status: "REJECTED", reason: `Preflight rejected: ${preflight.reason}` }, queue: [...this.executionQueue] });
+      return;
+    }
+    this.transition(opportunity, "VALIDATED", "Signal admitted to the score-prioritized execution queue.");
     this.executionQueue.push({ ...opportunity, status: "EVALUATING" });
-    this.executionQueue.sort((a, b) => b.score - a.score);
+    this.executionQueue.sort((a, b) => Number(b.expectedValueUsd) - Number(a.expectedValueUsd) || b.score - a.score);
     this.publish({ type: "OPPORTUNITY", opportunity: { ...opportunity, status: "EVALUATING" }, queue: [...this.executionQueue] });
     void this.drainQueue();
   }
@@ -132,14 +144,19 @@ export class ArbitrAIKernel {
       const opportunity = this.executionQueue.shift();
       if (!opportunity) continue;
       if (Date.now() > opportunity.expiresAt) {
+        this.transition(opportunity, "EXPIRED", "Signal exceeded its 500ms execution budget.");
         this.publish({ type: "OPPORTUNITY", opportunity: { ...opportunity, status: "EXPIRED" }, queue: [...this.executionQueue] });
         continue;
       }
+      this.transition(opportunity, "RESERVED", "Paper inventory reserved for both legs.");
+      this.transition(opportunity, "LEG_A", `Buying on ${opportunity.buyExchange ?? opportunity.exchange ?? "synthetic venue"}.`);
       const trade = await this.simulator.execute(opportunity);
+      this.transition(opportunity, "LEG_B", `Selling on ${opportunity.sellExchange ?? opportunity.exchange ?? "synthetic venue"}.`);
       const risk = this.riskManager.recordTrade(trade);
       const metrics = this.pnlTracker.recordTrade(trade);
       this.engine.recordExecutionOutcome(opportunity, Number(trade.pnlUsd));
       this.publish({ type: "TRADE", trade, wallets: this.simulator.balances(), metrics, risk });
+      this.transition(opportunity, trade.status === "REJECTED" ? "UNWIND_REQUIRED" : "RECONCILED", trade.status === "REJECTED" ? "Paper fill failed preflight; no wallet mutation applied." : "Both paper legs reconciled.");
       const sandboxReport = await this.sandboxExecution.execute(opportunity);
       if (sandboxReport) this.publish({ type: "EXECUTION_RUNTIME", runtime: this.sandboxExecution.status(), report: sandboxReport });
     }
@@ -150,5 +167,28 @@ export class ArbitrAIKernel {
   private publish(message: GatewayMessage): void {
     this.recorder.record(message);
     this.bus.emit("gateway:message", message);
+  }
+
+  private learningSummary(): LearningSummary {
+    const learning = this.learner.summary();
+    const calibration = this.engine.calibrationSummary();
+    return {
+      ...learning,
+      calibrationObservations: calibration.observations,
+      brierScore: calibration.brierScore.toFixed(4)
+    };
+  }
+
+  private transition(opportunity: Opportunity, state: ExecutionState, detail: string): void {
+    const transition = {
+      opportunityId: opportunity.id,
+      route: opportunity.route,
+      state,
+      at: Date.now(),
+      detail
+    };
+    this.executionTransitions.unshift(transition);
+    this.executionTransitions.splice(60);
+    this.publish({ type: "EXECUTION_STATE", transition });
   }
 }

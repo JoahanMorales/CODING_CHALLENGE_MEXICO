@@ -12,7 +12,9 @@ interface VenueState {
 
 export interface RouteCalibration {
   bias: number;
+  brierScore: number;
   observations: number;
+  wins: number;
 }
 
 export interface EdgeTensorInput {
@@ -36,6 +38,9 @@ export interface EdgeTensorSignal {
   adverseSelectionBps: number;
   edgeQuality: "EXPLOIT" | "WATCH" | "AVOID";
   liquidityScore: number;
+  expectedValueUsd: Decimal;
+  fillProbability: number;
+  legRiskProbability: number;
   micropriceSkewBps: number;
   modelScore: number;
   orderFlowImbalance: number;
@@ -133,6 +138,18 @@ export class EdgeTensor {
     const riskAdjustedProfitUsd = input.expectedProfitUsd
       .mul(survivalProbability)
       .minus(notional.mul(adverseSelectionBps).div(10000));
+    const fillProbability = clamp01(
+      survivalProbability * 0.62 +
+      liquidityScore * 0.2 +
+      timing.freshnessScore * 0.18 -
+      (input.executionStyle === "MAKER_ASSISTED" ? 0.12 : 0)
+    );
+    const bothLegsFillProbability = fillProbability * fillProbability;
+    const legRiskProbability = 1 - bothLegsFillProbability;
+    const unwindCostUsd = notional.mul(d("0.0015").plus(d(adverseSelectionBps).div(10000)));
+    // Queue priority uses expected value, not raw spread: both legs must fill,
+    // while a one-leg outcome pays an unwind penalty.
+    const expectedValueUsd = riskAdjustedProfitUsd.mul(bothLegsFillProbability).minus(unwindCostUsd.mul(legRiskProbability));
     const suggestedSizeScale = Math.max(0.18, Math.min(1, 0.22 + survivalProbability * 0.62 + liquidityScore * 0.16 - volatilityBps / 120));
     const modelScore = Math.round(
       Math.max(
@@ -151,6 +168,9 @@ export class EdgeTensor {
     return {
       adverseSelectionBps,
       edgeQuality: modelScore >= 68 ? "EXPLOIT" : modelScore >= 45 ? "WATCH" : "AVOID",
+      expectedValueUsd,
+      fillProbability: bothLegsFillProbability,
+      legRiskProbability,
       liquidityScore,
       micropriceSkewBps: sellSkew - buySkew,
       modelScore,
@@ -166,14 +186,18 @@ export class EdgeTensor {
   }
 
   recordOutcome(outcome: EdgeOutcome): void {
-    const current = this.routeCalibration.get(outcome.route) ?? { bias: 0, observations: 0 };
+    const current = this.routeCalibration.get(outcome.route) ?? { bias: 0, brierScore: 0, observations: 0, wins: 0 };
     const realizedWin = outcome.realizedPnlUsd > 0 ? 1 : 0;
     const forecastError = realizedWin - clamp01(outcome.predictedSurvival);
     const weight = Math.max(0.05, Math.min(1, outcome.weight ?? 1));
     const nextBias = Math.max(-0.16, Math.min(0.16, current.bias * 0.92 + forecastError * 0.035 * weight));
     this.routeCalibration.set(outcome.route, {
       bias: nextBias,
-      observations: current.observations + weight
+      brierScore: current.observations
+        ? current.brierScore * 0.92 + (realizedWin - clamp01(outcome.predictedSurvival)) ** 2 * 0.08
+        : (realizedWin - clamp01(outcome.predictedSurvival)) ** 2,
+      observations: current.observations + weight,
+      wins: current.wins + (realizedWin ? weight : 0)
     });
   }
 
@@ -186,9 +210,21 @@ export class EdgeTensor {
       if (!Number.isFinite(value.bias) || !Number.isFinite(value.observations)) return;
       this.routeCalibration.set(route, {
         bias: Math.max(-0.16, Math.min(0.16, value.bias)),
-        observations: Math.max(0, value.observations)
+        brierScore: Number.isFinite(value.brierScore) ? Math.max(0, value.brierScore) : 0,
+        observations: Math.max(0, value.observations),
+        wins: Number.isFinite(value.wins) ? Math.max(0, value.wins) : 0
       });
     });
+  }
+
+  calibrationSummary(): { observations: number; brierScore: number } {
+    const routes = [...this.routeCalibration.values()];
+    const observations = routes.reduce((sum, route) => sum + route.observations, 0);
+    const weightedBrier = routes.reduce((sum, route) => sum + route.brierScore * route.observations, 0);
+    return {
+      observations: Math.round(observations),
+      brierScore: observations ? weightedBrier / observations : 0
+    };
   }
 }
 
@@ -196,6 +232,9 @@ export function serializeEdgeTensor(signal: EdgeTensorSignal) {
   return {
     adverseSelectionBps: signal.adverseSelectionBps.toFixed(3),
     edgeQuality: signal.edgeQuality,
+    expectedValueUsd: usd(signal.expectedValueUsd),
+    fillProbability: signal.fillProbability.toFixed(3),
+    legRiskProbability: signal.legRiskProbability.toFixed(3),
     liquidityScore: signal.liquidityScore.toFixed(3),
     micropriceSkewBps: signal.micropriceSkewBps.toFixed(3),
     modelScore: signal.modelScore,

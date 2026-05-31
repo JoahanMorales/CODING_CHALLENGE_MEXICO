@@ -100,11 +100,22 @@ function makeBook(exchange: ExchangeId, symbol: SymbolId, mid: number, spread: n
   return {
     exchange,
     symbol,
+    sourceSymbol: symbol,
+    quoteAsset: symbol === "ETH/BTC" ? "BTC" : "USDT",
+    quoteToUsdRate: "1.00000000",
+    quoteBasisBps: "0.000",
     bids,
     asks,
     receivedAt,
     exchangeTimestamp: receivedAt - Math.floor(Math.random() * 35),
-    processingLatencyMs: Number((Math.random() * 2.7 + 0.4).toFixed(2))
+    processingLatencyMs: Number((Math.random() * 2.7 + 0.4).toFixed(2)),
+    integrity: {
+      status: "VERIFIED",
+      gapCount: 0,
+      resyncCount: 0,
+      checksumValidated: true,
+      reason: "Deterministic simulator snapshot."
+    }
   };
 }
 

@@ -3,6 +3,9 @@ import { timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import WebSocket, { WebSocketServer } from "ws";
 import { ArbitrAIKernel } from "../src/lib/services/ArbitrAIKernel";
+import { BookIntegrityService } from "../src/lib/services/BookIntegrityService";
+import { crc32, krakenChecksumPayload, preserveKrakenBookDecimals } from "../src/lib/services/KrakenBookChecksum";
+import { QuoteNormalizer } from "../src/lib/services/QuoteNormalizer";
 import { EXCHANGE_IDS } from "../src/lib/config/exchanges";
 import { PersistentJournal } from "./PersistentJournal";
 import type {
@@ -14,6 +17,7 @@ import type {
   NormalizedOrderBook,
   OrderBookLevel,
   PublicGatewaySummary,
+  QuoteAsset,
   ScenarioKind,
   SymbolId
 } from "../src/lib/types";
@@ -138,7 +142,7 @@ function queueLearningBroadcast(message: Extract<GatewayMessage, { type: "LEARNI
     if (pendingLearningMessage) broadcast(pendingLearningMessage);
     pendingLearningMessage = null;
     learningFlushTimer = null;
-  }, 280);
+  }, 900);
 }
 
 function queueBookBroadcast(message: Extract<GatewayMessage, { type: "BOOK" }>): void {
@@ -151,7 +155,7 @@ function queueBookBroadcast(message: Extract<GatewayMessage, { type: "BOOK" }>):
     broadcast({ type: "BOOK_BATCH", books: [...pendingBookBroadcasts.values()] });
     pendingBookBroadcasts.clear();
     bookFlushTimer = null;
-  }, 120);
+  }, 260);
 }
 
 function queueRejectedSignal(message: Extract<GatewayMessage, { type: "OPPORTUNITY" }>): void {
@@ -165,7 +169,7 @@ function queueRejectedSignal(message: Extract<GatewayMessage, { type: "OPPORTUNI
       .forEach((queued) => broadcast(queued));
     pendingRejectedSignals.clear();
     rejectedSignalFlushTimer = null;
-  }, 180);
+  }, 550);
 }
 
 function broadcast(message: GatewayMessage): void {
@@ -290,11 +294,19 @@ function isScenario(value: unknown): value is ScenarioKind {
 class ExchangeConnector {
   private reconnects = new Map<string, number>();
   private readonly connectionStatuses = new Map<ExchangeId, ExchangeConnectionStatus>();
+  private readonly integrity = new BookIntegrityService();
+  private readonly quotes = new QuoteNormalizer();
+  private readonly pendingKernelBooks = new Map<string, NormalizedOrderBook>();
   private readonly bybitBids = new Map<string, string>();
   private readonly bybitAsks = new Map<string, string>();
+  private readonly coinbaseBids = new Map<string, string>();
+  private readonly coinbaseAsks = new Map<string, string>();
+  private readonly krakenBids = new Map<string, string>();
+  private readonly krakenAsks = new Map<string, string>();
   private readonly bitfinexBids = new Map<string, string>();
   private readonly bitfinexAsks = new Map<string, string>();
   private poller: ReturnType<typeof setInterval> | null = null;
+  private kernelFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly appKernel: ArbitrAIKernel) {}
 
@@ -318,7 +330,9 @@ class ExchangeConnector {
     this.connectBitfinex();
     this.connectGate();
     this.poller = setInterval(() => void this.pollRealRestFallback(), 2500);
-    setInterval(() => broadcast({ type: "EXCHANGE_STATUS", statuses: this.statuses() }), 1000);
+    setInterval(() => broadcast({ type: "EXCHANGE_STATUS", statuses: this.statuses() }), 1800);
+    void this.pollQuoteBasis();
+    setInterval(() => void this.pollQuoteBasis(), 15000);
   }
 
   statuses(): ExchangeConnectionStatus[] {
@@ -326,7 +340,32 @@ class ExchangeConnector {
   }
 
   private ingest(book: NormalizedOrderBook): void {
-    if (scannerUniverse.has(book.exchange)) this.appKernel.ingest(book);
+    const current = this.connectionStatuses.get(book.exchange);
+    const isPrimaryBook = book.symbol === "BTC/USDT";
+    this.connectionStatuses.set(book.exchange, {
+      ...(current ?? {
+        exchange: book.exchange,
+        transport: "websocket",
+        status: "live",
+        lastMessageAt: 0,
+        messageCount: 0,
+        lastError: "",
+        reliabilityScore: 55
+      }),
+      bookIntegrity: isPrimaryBook ? book.integrity.status : current?.bookIntegrity,
+      quoteAsset: isPrimaryBook ? book.quoteAsset : current?.quoteAsset,
+      quoteBasisBps: isPrimaryBook ? book.quoteBasisBps : current?.quoteBasisBps,
+      gapCount: isPrimaryBook ? book.integrity.gapCount : current?.gapCount,
+      resyncCount: isPrimaryBook ? book.integrity.resyncCount : current?.resyncCount
+    });
+    if (!scannerUniverse.has(book.exchange)) return;
+    this.pendingKernelBooks.set(`${book.exchange}:${book.symbol}`, book);
+    if (this.kernelFlushTimer) return;
+    this.kernelFlushTimer = setTimeout(() => {
+      [...this.pendingKernelBooks.values()].forEach((pending) => this.appKernel.ingest(pending));
+      this.pendingKernelBooks.clear();
+      this.kernelFlushTimer = null;
+    }, 70);
   }
 
   private connectBinance(): void {
@@ -343,7 +382,10 @@ class ExchangeConnector {
       if (!symbol) return;
       const bids = levelsFromUnknown(data.bids);
       const asks = levelsFromUnknown(data.asks);
-      this.ingest(makeBook("binance", symbol, bids, asks, Date.now()));
+      this.ingest(this.makeBook("binance", symbol, bids, asks, Date.now(), {
+        sequence: readStringOrNumber(data, "lastUpdateId"),
+        snapshot: true
+      }));
       this.mark("binance", "websocket", "live");
     });
     this.attachReconnect("binance", socket, () => this.connectBinance());
@@ -357,28 +399,36 @@ class ExchangeConnector {
         JSON.stringify({
           method: "subscribe",
           params: {
-            channel: "ticker",
+            channel: "book",
             symbol: ["BTC/USD"],
-            event_trigger: "bbo",
+            depth: 10,
             snapshot: true
           }
         })
       );
     });
     socket.on("message", (payload) => {
-      const parsed = safeParse(payload.toString());
-      if (readString(parsed, "channel") !== "ticker") return;
+      const parsed = parseKrakenBook(payload.toString());
+      if (readString(parsed, "channel") !== "book") return;
       const data = readArray(parsed, "data");
-      const ticker = data?.[0];
-      if (!isRecord(ticker)) return;
-      const bid = readStringOrNumber(ticker, "bid");
-      const ask = readStringOrNumber(ticker, "ask");
-      const bidQty = readStringOrNumber(ticker, "bid_qty") ?? "0.15";
-      const askQty = readStringOrNumber(ticker, "ask_qty") ?? "0.15";
-      if (!bid || !ask) return;
-      this.ingest(
-        makeBook("kraken", "BTC/USDT", [[bid, bidQty]], [[ask, askQty]], Date.parse(readString(ticker, "timestamp") ?? "") || Date.now())
-      );
+      const book = data?.find(isRecord);
+      if (!book) return;
+      const snapshot = readString(parsed, "type") === "snapshot";
+      this.applyMapLevels(this.krakenBids, levelsFromUnknown(book.bids), snapshot);
+      this.applyMapLevels(this.krakenAsks, levelsFromUnknown(book.asks), snapshot);
+      truncateMap(this.krakenBids, "bid", 10);
+      truncateMap(this.krakenAsks, "ask", 10);
+      const bids = sortedLevelsFromMap(this.krakenBids, "bid", 10);
+      const asks = sortedLevelsFromMap(this.krakenAsks, "ask", 10);
+      if (!bids.length || !asks.length) return;
+      const expectedChecksum = readStringOrNumber(book, "checksum");
+      const checksumValidated = expectedChecksum ? String(crc32(krakenChecksumPayload(bids, asks))) === expectedChecksum : undefined;
+      this.ingest(this.makeBook("kraken", "BTC/USDT", bids, asks, Date.parse(readString(book, "timestamp") ?? "") || Date.now(), {
+          sourceSymbol: "BTC/USD",
+          quoteAsset: "USD",
+          snapshot,
+          checksumValidated
+      }));
       this.mark("kraken", "websocket", "live");
     });
     this.attachReconnect("kraken", socket, () => this.connectKraken());
@@ -388,21 +438,38 @@ class ExchangeConnector {
     this.mark("coinbase", "websocket", "connecting");
     const socket = new WebSocket("wss://advanced-trade-ws.coinbase.com");
     socket.on("open", () => {
-      socket.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channel: "ticker" }));
+      socket.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channel: "level2" }));
     });
     socket.on("message", (payload) => {
       const parsed = safeParse(payload.toString());
+      if (readString(parsed, "channel") !== "l2_data") return;
       const events = readArray(parsed, "events");
-      const ticker = events
-        ?.flatMap((event) => (isRecord(event) && Array.isArray(event.tickers) ? event.tickers : []))
-        .find((item) => isRecord(item) && item.product_id === "BTC-USD");
-      if (!isRecord(ticker)) return;
-      const bid = readStringOrNumber(ticker, "best_bid");
-      const ask = readStringOrNumber(ticker, "best_ask");
-      const bidQty = readStringOrNumber(ticker, "best_bid_quantity") ?? "0.12";
-      const askQty = readStringOrNumber(ticker, "best_ask_quantity") ?? "0.12";
-      if (!bid || !ask) return;
-      this.ingest(makeBook("coinbase", "BTC/USDT", [[bid, bidQty]], [[ask, askQty]], Date.now()));
+      if (!events?.length) return;
+      let snapshot = false;
+      events.filter(isRecord).forEach((event) => {
+        snapshot = snapshot || event.type === "snapshot";
+        if (event.type === "snapshot") {
+          this.coinbaseBids.clear();
+          this.coinbaseAsks.clear();
+        }
+        const updates = Array.isArray(event.updates) ? event.updates : [];
+        updates.filter(isRecord).forEach((update) => {
+          const side = readString(update, "side");
+          const price = readStringOrNumber(update, "price_level");
+          const size = readStringOrNumber(update, "new_quantity");
+          if (!price || !size) return;
+          this.applyMapLevels(side === "bid" ? this.coinbaseBids : this.coinbaseAsks, [[price, size]], false);
+        });
+      });
+      const bids = sortedLevelsFromMap(this.coinbaseBids, "bid");
+      const asks = sortedLevelsFromMap(this.coinbaseAsks, "ask");
+      if (!bids.length || !asks.length) return;
+      this.ingest(this.makeBook("coinbase", "BTC/USDT", bids, asks, Date.now(), {
+        sourceSymbol: "BTC-USD",
+        quoteAsset: "USD",
+        sequence: readStringOrNumber(parsed, "sequence_num"),
+        snapshot
+      }));
       this.mark("coinbase", "websocket", "live");
     });
     this.attachReconnect("coinbase", socket, () => this.connectCoinbase());
@@ -423,7 +490,11 @@ class ExchangeConnector {
       const asks = levelsFromUnknown(book.asks);
       const ts = Number(readStringOrNumber(book, "ts") ?? Date.now());
       if (bids.length && asks.length) {
-        this.ingest(makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+        this.ingest(this.makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now(), {
+          sequence: readStringOrNumber(book, "seqId"),
+          previousSequence: readStringOrNumber(book, "prevSeqId"),
+          snapshot: true
+        }));
         this.mark("okx", "websocket", "live");
       }
     });
@@ -448,7 +519,11 @@ class ExchangeConnector {
       const asks = sortedLevelsFromMap(this.bybitAsks, "ask");
       const ts = Number(readStringOrNumber(parsed, "ts") ?? Date.now());
       if (bids.length && asks.length) {
-        this.ingest(makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+        this.ingest(this.makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now(), {
+          sequence: readStringOrNumber(data, "u"),
+          previousSequence: readStringOrNumber(data, "pu"),
+          snapshot: eventType === "snapshot"
+        }));
         this.mark("bybit", "websocket", "live");
       }
     });
@@ -474,7 +549,11 @@ class ExchangeConnector {
       const bids = sortedLevelsFromMap(this.bitfinexBids, "bid");
       const asks = sortedLevelsFromMap(this.bitfinexAsks, "ask");
       if (bids.length && asks.length) {
-        this.ingest(makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now()));
+        this.ingest(this.makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now(), {
+          sourceSymbol: "tBTCUSD",
+          quoteAsset: "USD",
+          streamOnly: true
+        }));
         this.mark("bitfinex", "websocket", "live");
       }
     });
@@ -496,7 +575,10 @@ class ExchangeConnector {
       const asks = levelsFromUnknown(result.asks);
       const ts = Number(readStringOrNumber(result, "t") ?? Date.now());
       if (bids.length && asks.length) {
-        this.ingest(makeBook("gate", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+        this.ingest(this.makeBook("gate", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now(), {
+          sequence: readStringOrNumber(result, "id"),
+          snapshot: true
+        }));
         this.mark("gate", "websocket", "live");
       }
     });
@@ -518,6 +600,10 @@ class ExchangeConnector {
   }
 
   private applyBybitLevels(target: Map<string, string>, levels: Array<[string, string]>, reset: boolean): void {
+    this.applyMapLevels(target, levels, reset);
+  }
+
+  private applyMapLevels(target: Map<string, string>, levels: Array<[string, string]>, reset: boolean): void {
     if (reset) target.clear();
     levels.forEach(([price, size]) => {
       if (Number(size) === 0) target.delete(price);
@@ -540,7 +626,33 @@ class ExchangeConnector {
   }
 
   private async pollRealRestFallback(): Promise<void> {
-    await Promise.allSettled([this.pollBinanceDepth(), this.pollKrakenDepth(), this.pollCoinbaseBook(), this.pollOkxBook(), this.pollBybitBook(), this.pollBitfinexBook(), this.pollGateBook()]);
+    const tasks: Array<Promise<void>> = [];
+    if (this.needsFallback("binance")) tasks.push(this.pollBinanceDepth());
+    if (this.needsFallback("kraken")) tasks.push(this.pollKrakenDepth());
+    if (this.needsFallback("coinbase")) tasks.push(this.pollCoinbaseBook());
+    if (this.needsFallback("okx")) tasks.push(this.pollOkxBook());
+    if (this.needsFallback("bybit")) tasks.push(this.pollBybitBook());
+    if (this.needsFallback("bitfinex")) tasks.push(this.pollBitfinexBook());
+    if (this.needsFallback("gate")) tasks.push(this.pollGateBook());
+    await Promise.allSettled(tasks);
+  }
+
+  private needsFallback(exchange: ExchangeId): boolean {
+    const status = this.connectionStatuses.get(exchange);
+    return !status?.lastMessageAt || Date.now() - status.lastMessageAt > 5000 || status.status === "error" || status.status === "reconnecting";
+  }
+
+  private async pollQuoteBasis(): Promise<void> {
+    try {
+      const response = await fetch("https://api.exchange.coinbase.com/products/USDT-USD/ticker", {
+        headers: { "User-Agent": "ArbitrAI Hackathon" }
+      });
+      const payload = (await response.json()) as unknown;
+      const price = readStringOrNumber(payload, "price");
+      if (price) this.quotes.setUsdtUsdRate(price);
+    } catch {
+      // Keep the last known basis; a stale basis is safer than silently dropping feeds.
+    }
   }
 
   private async pollBinanceDepth(): Promise<void> {
@@ -557,7 +669,7 @@ class ExchangeConnector {
         const bids = levelsFromUnknown(data.bids);
         const asks = levelsFromUnknown(data.asks);
         if (bids.length && asks.length) {
-          this.ingest(makeBook("binance", symbol, bids, asks, Date.now()));
+          this.ingest(this.makeBook("binance", symbol, bids, asks, Date.now(), { snapshot: true }));
           this.mark("binance", "rest-polling", "polling");
         }
       })
@@ -574,7 +686,7 @@ class ExchangeConnector {
     const bids = levelsFromUnknown(first.bids);
     const asks = levelsFromUnknown(first.asks);
     if (bids.length && asks.length) {
-      this.ingest(makeBook("kraken", "BTC/USDT", bids, asks, Date.now()));
+      this.ingest(this.makeBook("kraken", "BTC/USDT", bids, asks, Date.now(), { sourceSymbol: "BTC/USD", quoteAsset: "USD", snapshot: true }));
       this.mark("kraken", "rest-polling", "polling");
     }
   }
@@ -588,7 +700,7 @@ class ExchangeConnector {
     const bids = levelsFromUnknown(data.bids);
     const asks = levelsFromUnknown(data.asks);
     if (bids.length && asks.length) {
-      this.ingest(makeBook("coinbase", "BTC/USDT", bids, asks, Date.now()));
+      this.ingest(this.makeBook("coinbase", "BTC/USDT", bids, asks, Date.now(), { sourceSymbol: "BTC-USD", quoteAsset: "USD", snapshot: true }));
       this.mark("coinbase", "rest-polling", "polling");
     }
   }
@@ -603,7 +715,7 @@ class ExchangeConnector {
     const asks = levelsFromUnknown(book.asks);
     const ts = Number(readStringOrNumber(book, "ts") ?? Date.now());
     if (bids.length && asks.length) {
-      this.ingest(makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+      this.ingest(this.makeBook("okx", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now(), { snapshot: true }));
       this.mark("okx", "rest-polling", "polling");
     }
   }
@@ -617,7 +729,7 @@ class ExchangeConnector {
     const asks = levelsFromUnknown(result.a);
     const ts = Number(readStringOrNumber(result, "ts") ?? Date.now());
     if (bids.length && asks.length) {
-      this.ingest(makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now()));
+      this.ingest(this.makeBook("bybit", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now(), { snapshot: true }));
       this.mark("bybit", "rest-polling", "polling");
     }
   }
@@ -630,7 +742,7 @@ class ExchangeConnector {
     const bids = sortedLevelsFromMap(this.bitfinexBids, "bid");
     const asks = sortedLevelsFromMap(this.bitfinexAsks, "ask");
     if (bids.length && asks.length) {
-      this.ingest(makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now()));
+      this.ingest(this.makeBook("bitfinex", "BTC/USDT", bids, asks, Date.now(), { sourceSymbol: "tBTCUSD", quoteAsset: "USD", snapshot: true }));
       this.mark("bitfinex", "rest-polling", "polling");
     }
   }
@@ -642,9 +754,20 @@ class ExchangeConnector {
     const bids = levelsFromUnknown(payload.bids);
     const asks = levelsFromUnknown(payload.asks);
     if (bids.length && asks.length) {
-      this.ingest(makeBook("gate", "BTC/USDT", bids, asks, Date.now()));
+      this.ingest(this.makeBook("gate", "BTC/USDT", bids, asks, Date.now(), { snapshot: true }));
       this.mark("gate", "rest-polling", "polling");
     }
+  }
+
+  private makeBook(
+    exchange: ExchangeId,
+    symbol: SymbolId,
+    bidsRaw: Array<[string, string]>,
+    asksRaw: Array<[string, string]>,
+    exchangeTimestamp: number,
+    meta: BookMeta = {}
+  ): NormalizedOrderBook {
+    return makeBook(this.quotes, this.integrity, exchange, symbol, bidsRaw, asksRaw, exchangeTimestamp, meta);
   }
 
   private mark(exchange: ExchangeId, transport: "websocket" | "rest-polling", status: ExchangeConnectionStatus["status"], error = ""): void {
@@ -656,7 +779,12 @@ class ExchangeConnector {
       lastMessageAt: status === "live" || status === "polling" ? Date.now() : current?.lastMessageAt ?? 0,
       messageCount: (current?.messageCount ?? 0) + (status === "live" || status === "polling" ? 1 : 0),
       lastError: error,
-      reliabilityScore: reliabilityScore(status, transport, error)
+      reliabilityScore: reliabilityScore(status, transport, error),
+      bookIntegrity: current?.bookIntegrity,
+      quoteAsset: current?.quoteAsset,
+      quoteBasisBps: current?.quoteBasisBps,
+      gapCount: current?.gapCount,
+      resyncCount: current?.resyncCount
     });
   }
 }
@@ -698,6 +826,7 @@ function publicSummary(): PublicGatewaySummary {
     recentSignals: snapshot.opportunities.slice(0, 8).map((opportunity) => ({
       createdAt: opportunity.createdAt,
       expectedProfitUsd: opportunity.expectedProfitUsd,
+      expectedValueUsd: opportunity.expectedValueUsd,
       netSpreadPct: opportunity.netSpreadPct,
       route: opportunity.route,
       score: opportunity.score,
@@ -707,29 +836,57 @@ function publicSummary(): PublicGatewaySummary {
   };
 }
 
+interface BookMeta {
+  sourceSymbol?: string;
+  quoteAsset?: QuoteAsset;
+  sequence?: string | number | null;
+  previousSequence?: string | number | null;
+  snapshot?: boolean;
+  checksumValidated?: boolean;
+  streamOnly?: boolean;
+  reason?: string;
+}
+
 function makeBook(
+  quotes: QuoteNormalizer,
+  integrity: BookIntegrityService,
   exchange: ExchangeId,
   symbol: SymbolId,
   bidsRaw: Array<[string, string]>,
   asksRaw: Array<[string, string]>,
-  exchangeTimestamp: number
+  exchangeTimestamp: number,
+  meta: BookMeta = {}
 ): NormalizedOrderBook {
   const receivedAt = Date.now();
-  const bids = normalizeLevels(bidsRaw);
-  const asks = normalizeLevels(asksRaw);
+  const quoteAsset = meta.quoteAsset ?? (symbol === "ETH/BTC" ? "BTC" : "USDT");
+  const bids = normalizeLevels(quotes, bidsRaw, quoteAsset);
+  const asks = normalizeLevels(quotes, asksRaw, quoteAsset);
   return {
     exchange,
     symbol,
+    sourceSymbol: meta.sourceSymbol ?? symbol,
+    quoteAsset,
+    quoteToUsdRate: quotes.quoteToUsdRate(quoteAsset),
+    quoteBasisBps: quotes.quoteBasisBps(quoteAsset),
     bids,
     asks,
     exchangeTimestamp,
     receivedAt,
-    processingLatencyMs: Math.max(0, Number((performance.now() % 4).toFixed(2)))
+    processingLatencyMs: Math.max(0, Number((performance.now() % 4).toFixed(2))),
+    integrity: integrity.assess(exchange, {
+      streamKey: symbol,
+      sequence: meta.sequence ?? undefined,
+      previousSequence: meta.previousSequence ?? undefined,
+      snapshot: meta.snapshot,
+      checksumValidated: meta.checksumValidated,
+      streamOnly: meta.streamOnly,
+      reason: meta.reason
+    })
   };
 }
 
-function normalizeLevels(levels: Array<[string, string]>): OrderBookLevel[] {
-  const normalized = levels.slice(0, 5).map(([price, size]) => ({ price, size }));
+function normalizeLevels(quotes: QuoteNormalizer, levels: Array<[string, string]>, quoteAsset: QuoteAsset): OrderBookLevel[] {
+  const normalized = quotes.normalizeLevels(levels, quoteAsset);
   while (normalized.length < 5 && normalized[0]) {
     normalized.push({ ...normalized[0] });
   }
@@ -739,14 +896,20 @@ function normalizeLevels(levels: Array<[string, string]>): OrderBookLevel[] {
 function levelsFromUnknown(value: unknown): Array<[string, string]> {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((level): level is [string, string] => Array.isArray(level) && level.length >= 2)
-    .map((level) => [String(level[0]), String(level[1])]);
+    .map((level): [string, string] | null => {
+      if (Array.isArray(level) && level.length >= 2) return [String(level[0]), String(level[1])];
+      if (!isRecord(level)) return null;
+      const price = readStringOrNumber(level, "price");
+      const size = readStringOrNumber(level, "qty") ?? readStringOrNumber(level, "size");
+      return price && size ? [price, size] : null;
+    })
+    .filter((level): level is [string, string] => Boolean(level));
 }
 
-function sortedLevelsFromMap(levels: Map<string, string>, side: "bid" | "ask"): Array<[string, string]> {
+function sortedLevelsFromMap(levels: Map<string, string>, side: "bid" | "ask", limit = 5): Array<[string, string]> {
   return [...levels.entries()]
     .sort((a, b) => side === "bid" ? Number(b[0]) - Number(a[0]) : Number(a[0]) - Number(b[0]))
-    .slice(0, 5);
+    .slice(0, limit);
 }
 
 function reliabilityScore(status: ExchangeConnectionStatus["status"], transport: "websocket" | "rest-polling", error: string): number {
@@ -771,6 +934,17 @@ function safeParse(text: string): unknown {
   } catch {
     return null;
   }
+}
+
+function parseKrakenBook(text: string): unknown {
+  return safeParse(preserveKrakenBookDecimals(text));
+}
+
+function truncateMap(levels: Map<string, string>, side: "bid" | "ask", limit: number): void {
+  const retained = new Set(sortedLevelsFromMap(levels, side, limit).map(([price]) => price));
+  [...levels.keys()].forEach((price) => {
+    if (!retained.has(price)) levels.delete(price);
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

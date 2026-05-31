@@ -2,6 +2,10 @@ export type ExchangeId = "binance" | "kraken" | "coinbase" | "okx" | "bybit" | "
 
 export type SymbolId = "BTC/USDT" | "ETH/USDT" | "ETH/BTC";
 
+export type QuoteAsset = "USD" | "USDT" | "BTC";
+
+export type BookIntegrityStatus = "VERIFIED" | "SEQUENCED" | "SNAPSHOT" | "STREAMING" | "DEGRADED";
+
 export type OpportunityType = "CROSS_EXCHANGE" | "TRIANGULAR" | "STAT_ARB";
 
 export type OpportunityStatus = "DETECTED" | "EVALUATING" | "EXECUTED" | "REJECTED" | "EXPIRED";
@@ -15,6 +19,18 @@ export type ScenarioKind = "MARKET_CRASH" | "LIQUIDITY_DRAIN" | "LATENCY_SPIKE";
 export type ExecutionRuntimeMode = "PAPER" | "SANDBOX";
 
 export type SandboxOrderMode = "DRY_RUN" | "TEST_ORDER" | "LIVE_SANDBOX";
+
+export type ExecutionState =
+  | "DETECTED"
+  | "PREFLIGHT"
+  | "PREFLIGHT_FAILED"
+  | "VALIDATED"
+  | "RESERVED"
+  | "LEG_A"
+  | "LEG_B"
+  | "RECONCILED"
+  | "UNWIND_REQUIRED"
+  | "EXPIRED";
 
 export type GatewayCommand =
   | { type: "ADMIN_AUTH"; token: string }
@@ -34,6 +50,9 @@ export interface EdgeModelSignal {
   micropriceSkewBps: string;
   modelScore: number;
   orderFlowImbalance: string;
+  expectedValueUsd: string;
+  fillProbability: string;
+  legRiskProbability: string;
   quoteAgeMs: number;
   quoteFreshnessScore: string;
   quoteSkewMs: number;
@@ -46,16 +65,32 @@ export interface EdgeModelSignal {
 export interface OrderBookLevel {
   price: string;
   size: string;
+  sourcePrice?: string;
+}
+
+export interface BookIntegrity {
+  status: BookIntegrityStatus;
+  sequence?: string;
+  previousSequence?: string;
+  gapCount: number;
+  resyncCount: number;
+  checksumValidated: boolean;
+  reason: string;
 }
 
 export interface NormalizedOrderBook {
   exchange: ExchangeId;
   symbol: SymbolId;
+  sourceSymbol: string;
+  quoteAsset: QuoteAsset;
+  quoteToUsdRate: string;
+  quoteBasisBps: string;
   bids: OrderBookLevel[];
   asks: OrderBookLevel[];
   receivedAt: number;
   exchangeTimestamp: number;
   processingLatencyMs: number;
+  integrity: BookIntegrity;
 }
 
 export interface PricePoint {
@@ -77,6 +112,11 @@ export interface ExchangeConnectionStatus {
   messageCount: number;
   lastError: string;
   reliabilityScore?: number;
+  bookIntegrity?: BookIntegrityStatus;
+  quoteAsset?: QuoteAsset;
+  quoteBasisBps?: string;
+  gapCount?: number;
+  resyncCount?: number;
 }
 
 export interface ExecutionPlan {
@@ -86,6 +126,8 @@ export interface ExecutionPlan {
   sellLiquidityRole: "maker" | "taker";
   referenceBuyPrice: string;
   referenceSellPrice: string;
+  referenceBuySourcePrice?: string;
+  referenceSellSourcePrice?: string;
 }
 
 export interface Opportunity {
@@ -104,10 +146,15 @@ export interface Opportunity {
   netSpreadPct: string;
   tradeSizeBtc: string;
   expectedProfitUsd: string;
+  expectedValueUsd: string;
+  executionNetProfitUsd: string;
+  rebalanceAdjustedProfitUsd: string;
   grossProfitUsd: string;
   totalFeesUsd: string;
   slippageUsd: string;
   networkCostUsd: string;
+  quoteConversionCostUsd: string;
+  rebalanceCostUsd: string;
   score: number;
   confidence: number;
   highImpact: boolean;
@@ -129,6 +176,9 @@ export interface CounterfactualOutcome {
   realizedProfitUsd: string;
   deltaUsd: string;
   predictedSurvival: string;
+  expectedValueUsd: string;
+  modelScore: number;
+  quoteAgeMs: number;
   label: "MISSED_PROFIT" | "AVOIDED_LOSS" | "FALSE_POSITIVE" | "CONFIRMED_REJECT" | "CONFIRMED_EDGE";
 }
 
@@ -145,6 +195,8 @@ export interface LearningSummary {
   averageOutcomeUsd: string;
   bestMissedUsd: string;
   hitRatePct: string;
+  calibrationObservations: number;
+  brierScore: string;
   lastOutcome?: CounterfactualOutcome;
 }
 
@@ -265,10 +317,13 @@ export interface Trade {
   latencyMs: number;
   sizeBtc: string;
   pnlUsd: string;
+  rebalanceAdjustedPnlUsd: string;
   grossPnlUsd: string;
   feesUsd: string;
   slippageUsd: string;
   executionRiskUsd: string;
+  quoteConversionCostUsd: string;
+  rebalanceCostUsd: string;
   fillRatio: number;
   status: "FILLED" | "PARTIAL" | "REJECTED";
   highImpact: boolean;
@@ -305,6 +360,7 @@ export interface PerformanceMetrics {
   rejectedOpportunities: number;
   tradesExecuted: number;
   netPnlUsd: string;
+  rebalanceAdjustedPnlUsd: string;
   grossPnlUsd: string;
   winRatePct: string;
   averageProfitUsd: string;
@@ -312,9 +368,19 @@ export interface PerformanceMetrics {
   totalFeesPaidUsd: string;
   totalSlippageUsd: string;
   totalExecutionRiskUsd: string;
+  totalQuoteConversionCostUsd: string;
+  totalRebalanceCostUsd: string;
   opportunityExecutionRatioPct: string;
   averageDetectionLatencyMs: string;
   sharpeLikeRatio: string;
+}
+
+export interface ExecutionTransition {
+  opportunityId: string;
+  route: string;
+  state: ExecutionState;
+  at: number;
+  detail: string;
 }
 
 export interface BenchmarkSummary {
@@ -360,7 +426,7 @@ export interface PublicGatewaySummary {
     validationStatus: "VALIDATED" | "READY" | "NOT_CONFIGURED";
     fundsMoved: false;
   };
-  recentSignals: Array<Pick<Opportunity, "createdAt" | "expectedProfitUsd" | "netSpreadPct" | "route" | "score" | "status" | "type">>;
+  recentSignals: Array<Pick<Opportunity, "createdAt" | "expectedProfitUsd" | "expectedValueUsd" | "netSpreadPct" | "route" | "score" | "status" | "type">>;
 }
 
 export interface GatewaySnapshot {
@@ -375,6 +441,7 @@ export interface GatewaySnapshot {
   priceSeries: PricePoint[];
   learning: LearningSummary;
   executionRuntime: ExecutionRuntimeState;
+  executionTransitions: ExecutionTransition[];
   exchangeStatuses?: ExchangeConnectionStatus[];
   scannerUniverse?: ExchangeId[];
   adminAuthenticated?: boolean;
@@ -387,6 +454,7 @@ export type GatewayMessage =
   | { type: "EXCHANGE_STATUS"; statuses: ExchangeConnectionStatus[] }
   | { type: "OPPORTUNITY"; opportunity: Opportunity; queue: Opportunity[] }
   | { type: "TRADE"; trade: Trade; wallets: WalletBalance[]; metrics: PerformanceMetrics; risk: RiskState }
+  | { type: "EXECUTION_STATE"; transition: ExecutionTransition }
   | { type: "LEARNING"; summary: LearningSummary; outcome: CounterfactualOutcome }
   | { type: "EXECUTION_RUNTIME"; runtime: ExecutionRuntimeState; report?: SandboxExecutionReport }
   | { type: "REPLAY"; opportunities: Opportunity[]; trades: Trade[]; events: RecordedEvent[] }

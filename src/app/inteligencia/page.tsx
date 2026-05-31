@@ -6,8 +6,10 @@ import { PublicSiteHeader } from "@/components/PublicSiteHeader";
 const formulas = [
   ["MLOFI", "Σ peso(nivel) × Δ profundidad", "Mide cómo cambia la presión compradora y vendedora en los primeros cinco niveles del libro."],
   ["Microprice", "(ask × volumen bid + bid × volumen ask) / volumen total", "Ajusta el precio medio con el desequilibrio visible en la punta del libro."],
-  ["Beneficio neto", "ingreso venta - costo compra - fees - slippage - red", "Evita ejecutar spreads atractivos que dejan de ser rentables después de costos."],
-  ["Supervivencia AET", "sigmoid(edge - selección adversa - latencia - impacto)", "Estima si la oportunidad seguirá existiendo al completar ambas piernas."]
+  ["Execution Net P&L", "gross edge - fees - slippage - quote basis - execution risk", "Separa el resultado operativo inmediato del costo periódico de rebalancear inventario entre venues."],
+  ["Rebalance-adjusted P&L", "execution net - withdrawal amortization", "Permite comparar rutas prefunded sin ocultar el costo económico de recuperar la asignación inicial."],
+  ["Expected Value", "P(fill A ∩ fill B) × P&L ajustado - P(leg risk) × unwind cost", "Prioriza señales por valor esperado y no por un spread que podría desaparecer antes de completar ambas piernas."],
+  ["Supervivencia AET", "sigmoid(edge - adverse selection - latency - impact + calibration bias)", "Estima si la oportunidad seguirá existiendo al completar ambas piernas y se recalibra con markouts observados."]
 ];
 
 export default function IntelligencePage() {
@@ -39,7 +41,7 @@ export default function IntelligencePage() {
           <p className="font-mono text-[10px] font-black uppercase text-sky-700">Pipeline completo</p>
           <h2 className="mt-2 max-w-3xl text-3xl font-black text-zinc-950">De siete libros de órdenes a una ejecución priorizada</h2>
           <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-zinc-500">
-            Cada bloque tiene una responsabilidad acotada. El motor procesa todos los eventos; la interfaz recibe una versión resumida para mantenerse fluida.
+            Cada bloque tiene una responsabilidad acotada. El motor procesa los eventos coalesced del scanner; la interfaz recibe una versión resumida para mantenerse fluida.
           </p>
           <div className="mt-6">
             <AetPipelineDiagram />

@@ -66,6 +66,30 @@ export class ExecutionSimulator {
     return [...this.wallets.values()].reduce((sum, wallet) => sum.plus(wallet.btc), ZERO);
   }
 
+  preflight(opportunity: Opportunity): { ok: boolean; reason: string } {
+    if (opportunity.type !== "CROSS_EXCHANGE") {
+      return { ok: true, reason: "Synthetic strategy inventory model is available." };
+    }
+    const buyExchange = opportunity.buyExchange;
+    const sellExchange = opportunity.sellExchange;
+    if (!buyExchange || !sellExchange) return { ok: false, reason: "Execution route is incomplete." };
+    const buyWallet = this.wallets.get(buyExchange);
+    const sellWallet = this.wallets.get(sellExchange);
+    if (!buyWallet || !sellWallet) return { ok: false, reason: "Paper wallet is missing for one execution leg." };
+    const filledSize = d(opportunity.tradeSizeBtc).mul(fillRatioFor(opportunity));
+    if (filledSize.lessThanOrEqualTo(0)) return { ok: false, reason: "Expected fill quantity is zero." };
+    const execution = depthAwareQuote(opportunity.executionPlan, filledSize);
+    const buyFeeRate = EXCHANGE_FEES[buyExchange][opportunity.executionPlan?.buyLiquidityRole ?? "taker"];
+    const buyCost = execution.buyNotional.plus(execution.buyNotional.mul(buyFeeRate));
+    if (buyWallet.usdt.lessThan(buyCost)) {
+      return { ok: false, reason: `${buyExchange} requires ${usd(buyCost)} USDT but has ${usd(buyWallet.usdt)}.` };
+    }
+    if (sellWallet.btc.lessThan(filledSize)) {
+      return { ok: false, reason: `${sellExchange} requires ${filledSize.toFixed(8)} BTC but has ${sellWallet.btc.toFixed(8)}.` };
+    }
+    return { ok: true, reason: "Both paper legs have sufficient prefunded inventory." };
+  }
+
   private executeCrossExchange(opportunity: Opportunity, latencyMs: number): Trade {
     const buyExchange = opportunity.buyExchange;
     const sellExchange = opportunity.sellExchange;
@@ -79,10 +103,7 @@ export class ExecutionSimulator {
     }
 
     const size = d(opportunity.tradeSizeBtc);
-    const styleFillRatio = opportunity.executionStyle === "MAKER_ASSISTED"
-      ? Decimal.min(1, d("0.55").plus(d(opportunity.confidence).div(220)))
-      : d(1);
-    const fillRatio = opportunity.highImpact ? Decimal.min(styleFillRatio, d("0.8")) : styleFillRatio;
+    const fillRatio = fillRatioFor(opportunity);
     const filledSize = size.mul(fillRatio);
     const execution = depthAwareQuote(opportunity.executionPlan, filledSize);
     const buyFeeRate = EXCHANGE_FEES[buyExchange][opportunity.executionPlan?.buyLiquidityRole ?? "taker"];
@@ -100,11 +121,14 @@ export class ExecutionSimulator {
     const adverseLatencyCost = notional.mul(realizedLatencyShockRate(latencyMs, opportunity.highImpact, opportunity.executionStyle));
     const survivalDecayCost = realizedSurvivalDecayCost(notional, opportunity);
     const slippageCost = d(opportunity.slippageUsd).mul(fillRatio);
+    const quoteConversionCost = d(opportunity.quoteConversionCostUsd).mul(fillRatio);
+    const rebalanceCost = d(opportunity.rebalanceCostUsd).mul(fillRatio);
     const executionRiskCost = d(opportunity.networkCostUsd).mul(fillRatio).plus(adverseLatencyCost).plus(survivalDecayCost);
-    const modeledCosts = slippageCost.plus(executionRiskCost);
+    const modeledCosts = slippageCost.plus(quoteConversionCost).plus(executionRiskCost);
     const grossPnl = execution.sellNotional.minus(execution.buyNotional);
     const fees = buyFee.plus(sellFee);
     const realizedPnl = grossPnl.minus(fees).minus(modeledCosts);
+    const rebalanceAdjustedPnl = realizedPnl.minus(rebalanceCost);
     buyWallet.usdt = buyWallet.usdt.minus(buyCost);
     buyWallet.btc = buyWallet.btc.plus(filledSize);
     sellWallet.btc = sellWallet.btc.minus(filledSize);
@@ -119,10 +143,13 @@ export class ExecutionSimulator {
       latencyMs,
       sizeBtc: filledSize.toFixed(8),
       pnlUsd: usd(realizedPnl),
+      rebalanceAdjustedPnlUsd: usd(rebalanceAdjustedPnl),
       grossPnlUsd: usd(grossPnl),
       feesUsd: usd(fees),
       slippageUsd: usd(slippageCost),
       executionRiskUsd: usd(executionRiskCost),
+      quoteConversionCostUsd: usd(quoteConversionCost),
+      rebalanceCostUsd: usd(rebalanceCost),
       fillRatio: fillRatio.toNumber(),
       status: fillRatio.lessThan(1) ? "PARTIAL" : "FILLED",
       highImpact: opportunity.highImpact
@@ -134,6 +161,8 @@ export class ExecutionSimulator {
     const notional = d(opportunity.tradeSizeBtc).mul(fillRatio).mul("70000");
     const survivalDecayCost = realizedSurvivalDecayCost(notional, opportunity);
     const slippageCost = d(opportunity.slippageUsd).mul(fillRatio);
+    const quoteConversionCost = d(opportunity.quoteConversionCostUsd).mul(fillRatio);
+    const rebalanceCost = d(opportunity.rebalanceCostUsd).mul(fillRatio);
     const adverseLatencyCost = notional.mul(
       realizedLatencyShockRate(latencyMs, opportunity.highImpact, opportunity.executionStyle)
     );
@@ -143,7 +172,8 @@ export class ExecutionSimulator {
       .mul(fillRatio)
       .minus(adverseLatencyCost)
       .minus(survivalDecayCost);
-    const grossPnl = realizedPnl.plus(fees).plus(slippageCost).plus(executionRiskCost);
+    const grossPnl = realizedPnl.plus(fees).plus(slippageCost).plus(quoteConversionCost).plus(executionRiskCost);
+    const rebalanceAdjustedPnl = realizedPnl.minus(rebalanceCost);
     return {
       id: cryptoId("trade"),
       opportunityId: opportunity.id,
@@ -153,10 +183,13 @@ export class ExecutionSimulator {
       latencyMs,
       sizeBtc: d(opportunity.tradeSizeBtc).mul(fillRatio).toFixed(8),
       pnlUsd: usd(realizedPnl),
+      rebalanceAdjustedPnlUsd: usd(rebalanceAdjustedPnl),
       grossPnlUsd: usd(grossPnl),
       feesUsd: usd(fees),
       slippageUsd: usd(slippageCost),
       executionRiskUsd: usd(executionRiskCost),
+      quoteConversionCostUsd: usd(quoteConversionCost),
+      rebalanceCostUsd: usd(rebalanceCost),
       fillRatio: fillRatio.toNumber(),
       status: fillRatio.lessThan(1) ? "PARTIAL" : "FILLED",
       highImpact: opportunity.highImpact
@@ -173,15 +206,25 @@ export class ExecutionSimulator {
       latencyMs,
       sizeBtc,
       pnlUsd: "0.00",
+      rebalanceAdjustedPnlUsd: "0.00",
       grossPnlUsd: "0.00",
       feesUsd: "0.00",
       slippageUsd: "0.00",
       executionRiskUsd: "0.00",
+      quoteConversionCostUsd: "0.00",
+      rebalanceCostUsd: "0.00",
       fillRatio: 0,
       status: "REJECTED",
       highImpact: opportunity.highImpact
     };
   }
+}
+
+function fillRatioFor(opportunity: Opportunity): Decimal {
+  const styleFillRatio = opportunity.executionStyle === "MAKER_ASSISTED"
+    ? Decimal.min(1, d("0.55").plus(d(opportunity.confidence).div(220)))
+    : d(1);
+  return opportunity.highImpact ? Decimal.min(styleFillRatio, d("0.8")) : styleFillRatio;
 }
 
 function depthAwareQuote(plan: ExecutionPlan | undefined, quantity: Decimal): { buyNotional: Decimal; sellNotional: Decimal } {

@@ -12,10 +12,16 @@ export class CounterfactualLearner {
   private readonly books = new Map<string, NormalizedOrderBook>();
   private readonly pending: PendingSignal[] = [];
   private readonly outcomes: CounterfactualOutcome[] = [];
+  private readonly lastTrackedAt = new Map<string, number>();
 
   track(opportunity: Opportunity): void {
     if (opportunity.type !== "CROSS_EXCHANGE" || !opportunity.buyExchange || !opportunity.sellExchange) return;
-    const horizons = opportunity.status === "REJECTED" ? [500, 2000, 5000] : [500, 2000];
+    if (opportunity.status === "REJECTED" && opportunity.score < 50) return;
+    const sampleKey = `${opportunity.route}:${opportunity.status}`;
+    const lastTrackedAt = this.lastTrackedAt.get(sampleKey) ?? 0;
+    if (Date.now() - lastTrackedAt < (opportunity.status === "REJECTED" ? 1800 : 450)) return;
+    this.lastTrackedAt.set(sampleKey, Date.now());
+    const horizons = [100, 500, 2000];
     horizons.forEach((horizonMs) => {
       this.pending.push({
         dueAt: opportunity.createdAt + horizonMs,
@@ -50,6 +56,12 @@ export class CounterfactualLearner {
       .filter((outcome) => outcome.label === "MISSED_PROFIT")
       .reduce((best, outcome) => Decimal.max(best, d(outcome.realizedProfitUsd)), ZERO);
     const useful = missedProfits + avoidedLosses + confirmedEdges;
+    const brierScore = evaluatedSignals
+      ? this.outcomes.reduce((sum, outcome) => {
+        const realized = Number(outcome.realizedProfitUsd) > 0 ? 1 : 0;
+        return sum + (realized - Number(outcome.predictedSurvival)) ** 2;
+      }, 0) / evaluatedSignals
+      : 0;
 
     return {
       evaluatedSignals,
@@ -64,6 +76,8 @@ export class CounterfactualLearner {
       averageOutcomeUsd: usd(averageOutcome),
       bestMissedUsd: usd(bestMissed),
       hitRatePct: evaluatedSignals ? ((useful / evaluatedSignals) * 100).toFixed(2) : "0.00",
+      calibrationObservations: evaluatedSignals,
+      brierScore: brierScore.toFixed(4),
       lastOutcome: this.outcomes[0]
     };
   }
@@ -125,10 +139,14 @@ export class CounterfactualLearner {
       includeWithdrawal: true,
       withdrawalAmortization: role === "maker" ? d("0.005") : d("0.01"),
       buyLiquidityRole: role,
-      sellLiquidityRole: opportunity.executionPlan?.sellLiquidityRole ?? role
+      sellLiquidityRole: opportunity.executionPlan?.sellLiquidityRole ?? role,
+      buyQuoteAsset: buyBook.quoteAsset,
+      sellQuoteAsset: sellBook.quoteAsset,
+      buyQuoteToUsdRate: d(buyBook.quoteToUsdRate),
+      sellQuoteToUsdRate: d(sellBook.quoteToUsdRate)
     });
 
-    const realized = result.netProfitUsd;
+    const realized = result.rebalanceAdjustedProfitUsd;
     const entry = d(opportunity.expectedProfitUsd);
     const label = classify(opportunity, realized);
 
@@ -144,6 +162,9 @@ export class CounterfactualLearner {
       realizedProfitUsd: usd(realized),
       deltaUsd: usd(realized.minus(entry)),
       predictedSurvival: opportunity.edgeModel?.survivalProbability ?? (opportunity.confidence / 100).toFixed(3),
+      expectedValueUsd: opportunity.expectedValueUsd,
+      modelScore: opportunity.edgeModel?.modelScore ?? opportunity.score,
+      quoteAgeMs: opportunity.edgeModel?.quoteAgeMs ?? 0,
       label
     };
   }

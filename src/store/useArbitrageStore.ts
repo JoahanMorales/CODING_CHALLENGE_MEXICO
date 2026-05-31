@@ -10,6 +10,7 @@ import type {
   ExchangeConnectionStatus,
   ExecutionRuntimeMode,
   ExecutionRuntimeState,
+  ExecutionTransition,
   NormalizedOrderBook,
   Opportunity,
   LearningSummary,
@@ -52,6 +53,7 @@ interface ArbitrageState {
   metrics: PerformanceMetrics;
   learning: LearningSummary;
   executionRuntime: ExecutionRuntimeState;
+  executionTransitions: ExecutionTransition[];
   priceSeries: PricePoint[];
   init: () => void;
   setMode: (mode: Mode) => void;
@@ -91,6 +93,7 @@ const defaultMetrics: PerformanceMetrics = {
   rejectedOpportunities: 0,
   tradesExecuted: 0,
   netPnlUsd: "0.00",
+  rebalanceAdjustedPnlUsd: "0.00",
   grossPnlUsd: "0.00",
   winRatePct: "0.00",
   averageProfitUsd: "0.00",
@@ -98,6 +101,8 @@ const defaultMetrics: PerformanceMetrics = {
   totalFeesPaidUsd: "0.00",
   totalSlippageUsd: "0.00",
   totalExecutionRiskUsd: "0.00",
+  totalQuoteConversionCostUsd: "0.00",
+  totalRebalanceCostUsd: "0.00",
   opportunityExecutionRatioPct: "0.00",
   averageDetectionLatencyMs: "0.00",
   sharpeLikeRatio: "0.000"
@@ -115,7 +120,9 @@ const defaultLearning: LearningSummary = {
   opportunityCostUsd: "0.00",
   averageOutcomeUsd: "0.00",
   bestMissedUsd: "0.00",
-  hitRatePct: "0.00"
+  hitRatePct: "0.00",
+  calibrationObservations: 0,
+  brierScore: "0.0000"
 };
 
 const defaultExecutionRuntime: ExecutionRuntimeState = {
@@ -160,6 +167,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   metrics: defaultMetrics,
   learning: defaultLearning,
   executionRuntime: defaultExecutionRuntime,
+  executionTransitions: [],
   priceSeries: [],
 
   init: () => {
@@ -172,7 +180,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
     if (mode === get().mode) return;
     stopGateway();
     stopLocalKernel();
-    set({ mode, connected: false, connectionError: mode === "LIVE" ? "Conectando con el gateway de mercado..." : "", books: {}, opportunities: [], executionQueue: [], trades: [], priceSeries: [], metrics: defaultMetrics, learning: defaultLearning });
+    set({ mode, connected: false, connectionError: mode === "LIVE" ? "Conectando con el gateway de mercado..." : "", books: {}, opportunities: [], executionQueue: [], executionTransitions: [], trades: [], priceSeries: [], metrics: defaultMetrics, learning: defaultLearning });
     if (mode === "LIVE") startGateway(set, get().walletSeed);
     else startDemo(set, get().walletSeed);
   },
@@ -192,7 +200,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   applyWalletSeed: () => {
     if (get().mode === "LIVE") return;
     stopLocalKernel();
-    set({ connected: false, books: {}, opportunities: [], executionQueue: [], trades: [], priceSeries: [], metrics: defaultMetrics, learning: defaultLearning });
+    set({ connected: false, books: {}, opportunities: [], executionQueue: [], executionTransitions: [], trades: [], priceSeries: [], metrics: defaultMetrics, learning: defaultLearning });
     startDemo(set, get().walletSeed);
   },
 
@@ -270,7 +278,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
 
   exportSessionCsv: () => {
     const rows = [
-      ["timestamp", "kind", "type", "route", "status", "size_btc", "net_pnl_usd", "gross_pnl_usd", "fees_usd", "slippage_usd", "execution_risk_usd", "score", "net_spread_pct", "edge_survival", "edge_quality"],
+      ["timestamp", "kind", "type", "route", "status", "size_btc", "execution_net_pnl_usd", "rebalance_adjusted_pnl_usd", "gross_pnl_usd", "fees_usd", "slippage_usd", "quote_conversion_usd", "execution_risk_usd", "rebalance_cost_usd", "expected_value_usd", "score", "net_spread_pct", "edge_survival", "edge_quality"],
       ...get().trades.map((trade) => [
         new Date(trade.executedAt).toISOString(),
         "trade",
@@ -279,10 +287,14 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
         trade.status,
         trade.sizeBtc,
         trade.pnlUsd,
+        trade.rebalanceAdjustedPnlUsd,
         trade.grossPnlUsd,
         trade.feesUsd,
         trade.slippageUsd,
+        trade.quoteConversionCostUsd,
         trade.executionRiskUsd,
+        trade.rebalanceCostUsd,
+        "",
         "",
         "",
         "",
@@ -295,11 +307,15 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
         opportunity.route,
         opportunity.status,
         opportunity.tradeSizeBtc,
-        opportunity.expectedProfitUsd,
+        opportunity.executionNetProfitUsd,
+        opportunity.rebalanceAdjustedProfitUsd,
         opportunity.grossProfitUsd,
         opportunity.totalFeesUsd,
         opportunity.slippageUsd,
+        opportunity.quoteConversionCostUsd,
         opportunity.networkCostUsd,
+        opportunity.rebalanceCostUsd,
+        opportunity.expectedValueUsd,
         String(opportunity.score),
         opportunity.netSpreadPct,
         opportunity.edgeModel?.survivalProbability ?? "",
@@ -403,6 +419,7 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
       priceSeries: message.priceSeries,
       learning: message.learning,
       executionRuntime: message.executionRuntime,
+      executionTransitions: message.executionTransitions ?? [],
       scannerUniverse: message.scannerUniverse ?? EXCHANGE_IDS,
       adminAuthenticated: message.adminAuthenticated ?? useArbitrageStore.getState().adminAuthenticated
     });
@@ -415,6 +432,7 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
   }
 
   if (message.type === "BOOK_BATCH") {
+    if (typeof document !== "undefined" && document.hidden) return;
     applyBookBatch(set, message.books);
     return;
   }
@@ -439,6 +457,11 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
       metrics: message.metrics,
       risk: message.risk
     }));
+    return;
+  }
+
+  if (message.type === "EXECUTION_STATE") {
+    set((state) => ({ executionTransitions: [message.transition, ...state.executionTransitions].slice(0, 60) }));
     return;
   }
 
@@ -529,7 +552,7 @@ function updateLivePriceSeries(series: PricePoint[], book: NormalizedOrderBook):
   const next = previous && Date.now() - previous.time < 750 ? { ...previous } : { time: Date.now() };
   next[book.exchange] = nextPrice;
   const updated = previous && previous.time === next.time ? [...series.slice(0, -1), next] : [...series, next];
-  return updated.slice(-160);
+  return updated.slice(-120);
 }
 
 function stateExchangeStatuses(books: NormalizedOrderBook[]): ExchangeConnectionStatus[] {
@@ -543,7 +566,12 @@ function stateExchangeStatuses(books: NormalizedOrderBook[]): ExchangeConnection
       lastMessageAt,
       messageCount: exchangeBooks.length,
       lastError: "",
-      reliabilityScore: lastMessageAt ? 92 : 55
+      reliabilityScore: lastMessageAt ? 92 : 55,
+      bookIntegrity: exchangeBooks[0]?.integrity.status,
+      quoteAsset: exchangeBooks[0]?.quoteAsset,
+      quoteBasisBps: exchangeBooks[0]?.quoteBasisBps,
+      gapCount: exchangeBooks[0]?.integrity.gapCount,
+      resyncCount: exchangeBooks[0]?.integrity.resyncCount
     };
   });
 }
@@ -561,7 +589,12 @@ function updateStatusFromBook(
     lastMessageAt: book.receivedAt,
     messageCount: (existing?.messageCount ?? 0) + 1,
     lastError: "",
-    reliabilityScore: transport === "rest-polling" ? 76 : 96
+    reliabilityScore: transport === "rest-polling" ? 76 : 96,
+    bookIntegrity: book.integrity.status,
+    quoteAsset: book.quoteAsset,
+    quoteBasisBps: book.quoteBasisBps,
+    gapCount: book.integrity.gapCount,
+    resyncCount: book.integrity.resyncCount
   };
   const merged = statuses.filter((status) => status.exchange !== book.exchange);
   return [...merged, next].sort((a, b) => a.exchange.localeCompare(b.exchange));

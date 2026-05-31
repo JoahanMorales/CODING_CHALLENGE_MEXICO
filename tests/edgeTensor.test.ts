@@ -7,11 +7,16 @@ function book(exchange: ExchangeId, bid: string, bidSize: string, ask: string, a
   return {
     exchange,
     symbol: "BTC/USDT",
+    sourceSymbol: "BTC/USDT",
+    quoteAsset: "USDT",
+    quoteToUsdRate: "1.00000000",
+    quoteBasisBps: "0.000",
     bids: Array.from({ length: 5 }, (_, index) => ({ price: String(Number(bid) - index), size: bidSize })),
     asks: Array.from({ length: 5 }, (_, index) => ({ price: String(Number(ask) + index), size: askSize })),
     receivedAt,
     exchangeTimestamp: Date.now(),
-    processingLatencyMs: 0.2
+    processingLatencyMs: 0.2,
+    integrity: { status: "VERIFIED", gapCount: 0, resyncCount: 0, checksumValidated: true, reason: "test" }
   };
 }
 

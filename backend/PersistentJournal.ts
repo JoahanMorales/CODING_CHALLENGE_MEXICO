@@ -3,6 +3,14 @@ import { join } from "node:path";
 import type { GatewayMessage, SandboxLedgerEntry } from "../src/lib/types";
 import type { RouteCalibration } from "../src/lib/services/EdgeTensor";
 
+const AET_CALIBRATION_VERSION = 2;
+
+interface CalibrationPayload {
+  version: number;
+  savedAt: string;
+  routes: Record<string, RouteCalibration>;
+}
+
 export class PersistentJournal {
   private readonly directory: string;
   private readonly eventsPath: string;
@@ -33,14 +41,20 @@ export class PersistentJournal {
   }
 
   saveCalibration(calibration: Record<string, RouteCalibration>): void {
-    writeFileSync(this.calibrationPath, JSON.stringify(calibration, null, 2), "utf8");
+    const payload: CalibrationPayload = {
+      version: AET_CALIBRATION_VERSION,
+      savedAt: new Date().toISOString(),
+      routes: calibration
+    };
+    writeFileSync(this.calibrationPath, JSON.stringify(payload, null, 2), "utf8");
   }
 
   loadCalibration(): Record<string, RouteCalibration> {
     if (!existsSync(this.calibrationPath)) return {};
     try {
       const value = JSON.parse(readFileSync(this.calibrationPath, "utf8")) as unknown;
-      return isRecord(value) ? value as Record<string, RouteCalibration> : {};
+      if (!isRecord(value) || value.version !== AET_CALIBRATION_VERSION || !isRecord(value.routes)) return {};
+      return value.routes as Record<string, RouteCalibration>;
     } catch {
       return {};
     }
@@ -93,7 +107,7 @@ export class PersistentJournal {
 }
 
 function shouldPersist(message: GatewayMessage): boolean {
-  return message.type === "TRADE" || message.type === "LEARNING" || message.type === "EXECUTION_RUNTIME";
+  return message.type === "TRADE" || message.type === "LEARNING" || message.type === "EXECUTION_RUNTIME" || message.type === "EXECUTION_STATE";
 }
 
 function countLines(path: string): number {

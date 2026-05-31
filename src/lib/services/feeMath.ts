@@ -1,6 +1,6 @@
 import { EXCHANGE_FEES } from "../config/exchanges";
 import { Decimal, d, ZERO } from "../math/decimal";
-import type { ExchangeId, NormalizedOrderBook } from "../types";
+import type { ExchangeId, NormalizedOrderBook, QuoteAsset } from "../types";
 
 export interface NetProfitInput {
   buyExchange: ExchangeId;
@@ -14,6 +14,10 @@ export interface NetProfitInput {
   withdrawalAmortization?: Decimal;
   buyLiquidityRole?: "maker" | "taker";
   sellLiquidityRole?: "maker" | "taker";
+  buyQuoteAsset?: QuoteAsset;
+  sellQuoteAsset?: QuoteAsset;
+  buyQuoteToUsdRate?: Decimal;
+  sellQuoteToUsdRate?: Decimal;
 }
 
 export interface NetProfitResult {
@@ -22,6 +26,9 @@ export interface NetProfitResult {
   sellFeeUsd: Decimal;
   slippageUsd: Decimal;
   networkCostUsd: Decimal;
+  quoteConversionCostUsd: Decimal;
+  rebalanceCostUsd: Decimal;
+  rebalanceAdjustedProfitUsd: Decimal;
   netProfitUsd: Decimal;
   grossSpreadPct: Decimal;
   netSpreadPct: Decimal;
@@ -62,11 +69,21 @@ export function calculateNetProfit(input: NetProfitInput): NetProfitResult {
   const visibleDepth = Decimal.min(input.availableAskQty, input.availableBidQty);
   const slippageRate = estimateSlippageRate(input.quantityBtc, visibleDepth);
   const slippageUsd = buyNotional.plus(sellNotional).mul(slippageRate);
+  const buyQuoteAsset = input.buyQuoteAsset ?? "USDT";
+  const sellQuoteAsset = input.sellQuoteAsset ?? "USDT";
+  const buyQuoteToUsdRate = input.buyQuoteToUsdRate ?? d(1);
+  const sellQuoteToUsdRate = input.sellQuoteToUsdRate ?? d(1);
+  const quoteConversionRate = buyQuoteAsset === sellQuoteAsset
+    ? ZERO
+    : buyQuoteToUsdRate.minus(sellQuoteToUsdRate).abs().plus("0.0001");
+  const quoteConversionCostUsd = buyNotional.plus(sellNotional).div(2).mul(quoteConversionRate);
   const withdrawalBtc = input.includeWithdrawal
     ? d(EXCHANGE_FEES[input.buyExchange].withdrawalBtc).mul(input.withdrawalAmortization ?? 1)
     : ZERO;
-  const networkCostUsd = withdrawalBtc.mul(input.askPrice);
-  const netProfitUsd = grossProfitUsd.minus(buyFeeUsd).minus(sellFeeUsd).minus(slippageUsd).minus(networkCostUsd);
+  const rebalanceCostUsd = withdrawalBtc.mul(input.askPrice);
+  const networkCostUsd = ZERO;
+  const netProfitUsd = grossProfitUsd.minus(buyFeeUsd).minus(sellFeeUsd).minus(slippageUsd).minus(quoteConversionCostUsd);
+  const rebalanceAdjustedProfitUsd = netProfitUsd.minus(rebalanceCostUsd);
   const grossSpreadPct = input.bidPrice.minus(input.askPrice).div(input.askPrice);
   const netSpreadPct = buyNotional.greaterThan(0) ? netProfitUsd.div(buyNotional) : ZERO;
   const impactRatio = visibleDepth.greaterThan(0) ? input.quantityBtc.div(visibleDepth) : d(1);
@@ -77,6 +94,9 @@ export function calculateNetProfit(input: NetProfitInput): NetProfitResult {
     sellFeeUsd,
     slippageUsd,
     networkCostUsd,
+    quoteConversionCostUsd,
+    rebalanceCostUsd,
+    rebalanceAdjustedProfitUsd,
     netProfitUsd,
     grossSpreadPct,
     netSpreadPct,

@@ -29,11 +29,14 @@ export class PnLTracker {
     const executed = this.trades.filter((trade) => trade.status !== "REJECTED");
     const pnlValues = executed.map((trade) => d(trade.pnlUsd));
     const netPnl = pnlValues.reduce((sum, value) => sum.plus(value), ZERO);
+    const rebalanceAdjustedPnl = executed.reduce((sum, trade) => sum.plus(trade.rebalanceAdjustedPnlUsd), ZERO);
     const wins = pnlValues.filter((value) => value.greaterThan(0)).length;
     const grossPnl = executed.reduce((sum, trade) => sum.plus(trade.grossPnlUsd), ZERO);
     const totalFees = executed.reduce((sum, trade) => sum.plus(trade.feesUsd), ZERO);
     const totalSlippage = executed.reduce((sum, trade) => sum.plus(trade.slippageUsd), ZERO);
     const totalExecutionRisk = executed.reduce((sum, trade) => sum.plus(trade.executionRiskUsd), ZERO);
+    const totalQuoteConversion = executed.reduce((sum, trade) => sum.plus(trade.quoteConversionCostUsd), ZERO);
+    const totalRebalance = executed.reduce((sum, trade) => sum.plus(trade.rebalanceCostUsd), ZERO);
     const bestTrade = pnlValues.reduce((best, value) => Decimal.max(best, value), ZERO);
     const averageProfit = executed.length ? netPnl.div(executed.length) : ZERO;
     const mean = averageProfit;
@@ -50,6 +53,7 @@ export class PnLTracker {
       rejectedOpportunities: this.rejectedOpportunities,
       tradesExecuted: executed.length,
       netPnlUsd: usd(netPnl),
+      rebalanceAdjustedPnlUsd: usd(rebalanceAdjustedPnl),
       grossPnlUsd: usd(grossPnl),
       winRatePct: executed.length ? ((wins / executed.length) * 100).toFixed(2) : "0.00",
       averageProfitUsd: usd(averageProfit),
@@ -57,6 +61,8 @@ export class PnLTracker {
       totalFeesPaidUsd: usd(totalFees),
       totalSlippageUsd: usd(totalSlippage),
       totalExecutionRiskUsd: usd(totalExecutionRisk),
+      totalQuoteConversionCostUsd: usd(totalQuoteConversion),
+      totalRebalanceCostUsd: usd(totalRebalance),
       opportunityExecutionRatioPct: this.opportunitiesDetected
         ? ((executed.length / this.opportunitiesDetected) * 100).toFixed(2)
         : "0.00",

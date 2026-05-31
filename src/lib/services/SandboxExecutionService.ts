@@ -230,8 +230,8 @@ export class SandboxExecutionService {
     if (!buy || !sell || buy === sell) return [];
 
     const requestedQty = d(opportunity.tradeSizeBtc);
-    const buyPrice = d(opportunity.executionPlan?.referenceBuyPrice ?? "0");
-    const sellPrice = d(opportunity.executionPlan?.referenceSellPrice ?? "0");
+    const buyPrice = d(opportunity.executionPlan?.referenceBuySourcePrice ?? opportunity.executionPlan?.referenceBuyPrice ?? "0");
+    const sellPrice = d(opportunity.executionPlan?.referenceSellSourcePrice ?? opportunity.executionPlan?.referenceSellPrice ?? "0");
     if (buyPrice.lessThanOrEqualTo(0) || sellPrice.lessThanOrEqualTo(0)) return [];
     const maxQty = this.config.maxNotionalUsd.div(Decimal.max(buyPrice, sellPrice));
     const quantity = Decimal.max("0.00001", Decimal.min(requestedQty, maxQty));
