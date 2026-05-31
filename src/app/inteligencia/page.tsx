@@ -3,6 +3,44 @@ import { AetPipelineDiagram } from "@/components/AetPipelineDiagram";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
 
+const strategies = [
+  {
+    name: "Cross-exchange",
+    code: "CROSS_EXCHANGE",
+    desc: "Compra en el mejor ask de un venue y vende simultáneamente en el mejor bid de otro. La señal solo sobrevive si el spread neto —después de comisiones, deslizamiento, latencia e impacto— sigue siendo positivo.",
+    guard: "Filtros: frescura de quotes, sincronización < 1800 ms, survival AET > 50%, valor esperado > umbral dinámico por volatilidad.",
+    tone: "sky"
+  },
+  {
+    name: "Triangular",
+    code: "TRIANGULAR",
+    desc: "Evalúa el ciclo completo BTC/USDT → ETH/USDT → ETH/BTC dentro de un mismo venue usando VWAP en cada pata. El beneficio neto descuenta comisiones de las tres operaciones y deslizamiento contra depth real.",
+    guard: "Ejecuta solo si el producto de las tres tasas cruzadas supera el costo de round trip.",
+    tone: "emerald"
+  },
+  {
+    name: "Stat Arb (Mean Reversion)",
+    code: "STAT_ARB",
+    desc: "Busca desviaciones entre dos venues usando Z-score sobre una ventana móvil de 60 segundos. Estima half-life de reversión con MLE de OU process y aplica corrección FDR (Benjamini-Hochberg, q=0.25) para controlar falsos positivos.",
+    guard: "Filtros: |Z| > 1.6, calidad de reversión > 14 %, survival AET > 56 %, half-life finito.",
+    tone: "violet"
+  }
+];
+
+const innovations = [
+  ["VWAP pricing con depth completa", "Precios de ejecución realistas contra múltiples niveles del LOB en vez de top-of-book. Cont/Stoikov (price impact)."],
+  ["FDR multiple testing correction", "Control de falsos positivos en stat arb usando Benjamini-Hochberg con q=0.25. Benjamini & Hochberg (1995)."],
+  ["MLE para OU process", "Estimación closed-form AR(1) de half-life de mean reversion, estable desde 5 muestras. Bergstrom (Leeds Econ WP)."],
+  ["Adaptive freshness por venue", "Hard limit adaptativo: max(2000, ewmaInterval × 3 + 500) por exchange. Binance (100 ms) → 800 ms, Gate (500 ms) → 2000 ms."],
+  ["Dynamic size scaling", "Tamaño dinámico = min(0.1, 18 % del depth total a 5 niveles) en vez de tamaño fijo. Respeta liquidez disponible."],
+  ["Drift risk dual calibration", "Detección usa z = 1.28 (80 % confianza) para pasar más señales; position sizing usa z = 1.96 (95 %) para riesgo controlado."],
+  ["Triangular arbitrage con VWAP", "Simulación VWAP en cada una de las 3 patas del ciclo en vez de top-of-book. Capta profundidad real."],
+  ["Latency kill switch", "RecordLatency trackea últimos 20 mensajes; shouldHalt frena si avg > 3000 ms; getLatencyMultiplier escala 1.5 / 2.5 / 3.2."],
+  ["XGBoost-style ML EdgeTensor", "Gradient-boosted ensemble de decision stumps (max 32 trees), 19 features del order book, entrenamiento online desde outcomes reales y shadow. Chen & Guestrin (XGBoost, 2016)."],
+  ["Hybrid maker/taker execution", "Compra como maker (mejor precio, comisión menor) y vende como taker (fill garantizado). Fees menores que taker puro con mejor fill que maker puro."],
+  ["Adaptive volatility threshold", "CROSS_EXCHANGE_THRESHOLD_PCT se ajusta según volatilidad: base × clamp(1.0, 2, 1 + (volBps − 1.5) / 5). Floor en 1.0 para no relajar el umbral en baja volatilidad."]
+];
+
 const formulas = [
   ["MLOFI", "Σ peso(nivel) × Δ profundidad", "Mide cómo cambia la presión compradora y vendedora en los primeros cinco niveles del libro."],
   ["Microprice", "(ask × volumen bid + bid × volumen ask) / volumen total", "Ajusta el precio medio con el desequilibrio visible en la punta del libro."],
@@ -82,6 +120,54 @@ export default function IntelligencePage() {
 
       <section className="border-t border-sky-100 bg-white px-5 py-12">
         <div className="mx-auto max-w-7xl">
+          <p className="font-mono text-[10px] font-black uppercase text-sky-700">Estrategias de arbitraje</p>
+          <h2 className="mt-2 text-3xl font-black text-zinc-950">Tres motores, un mismo pipeline de costos</h2>
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            {strategies.map((s) => (
+              <article className={`rounded-2xl border bg-white p-5 shadow-sm ${strategyBorder(s.tone)}`} key={s.code}>
+                <span className={`font-mono text-xs font-black ${strategyText(s.tone)}`}>{s.code}</span>
+                <h3 className="mt-3 text-lg font-black text-zinc-950">{s.name}</h3>
+                <p className="mt-2 text-sm font-semibold leading-6 text-zinc-500">{s.desc}</p>
+                <p className="mt-3 text-xs font-bold leading-5 text-zinc-400">{s.guard}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-sky-100 px-5 py-12">
+        <div className="mx-auto max-w-7xl">
+          <p className="font-mono text-[10px] font-black uppercase text-sky-700">Innovaciones implementadas</p>
+          <h2 className="mt-2 text-3xl font-black text-zinc-950">Once mejoras sobre el modelo base</h2>
+          <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-zinc-500">
+            Cada innovación está activa en el motor de producción y tiene cobertura de pruebas.
+          </p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {innovations.map(([title, desc], i) => (
+              <article className="rounded-2xl border border-zinc-200 bg-[#fbfdff] p-4" key={i}>
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 font-mono text-xs font-black text-sky-700">
+                  {i + 1}
+                </span>
+                <h3 className="mt-3 text-sm font-black text-zinc-950">{title}</h3>
+                <p className="mt-1.5 text-xs font-semibold leading-5 text-zinc-500">{desc}</p>
+              </article>
+            ))}
+          </div>
+          <div className="mt-6 text-center">
+            <a
+              className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-5 py-3 font-mono text-xs font-black text-sky-700 transition hover:bg-sky-100"
+              href="https://github.com/JoahanMorales"
+              rel="noreferrer"
+              target="_blank"
+            >
+              VER README COMPLETO EN GITHUB →<span className="sr-only">Abrir README</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-sky-100 bg-white px-5 py-12">
+        <div className="mx-auto max-w-7xl">
           <p className="font-mono text-[10px] font-black uppercase text-sky-700">Referencias primarias</p>
           <div className="mt-4 grid gap-3 lg:grid-cols-3">
             <Reference href="https://arxiv.org/abs/1011.6402" title="Price Impact of Order Book Events">Fundamento para usar desequilibrio del flujo de órdenes como señal de impacto a corto horizonte.</Reference>
@@ -108,6 +194,18 @@ function Waterfall({ label, tone, value }: { label: string; tone: "amber" | "eme
       <strong className="mt-3 block font-mono text-xl font-black">{value}</strong>
     </div>
   );
+}
+
+function strategyBorder(tone: string): string {
+  if (tone === "emerald") return "border-emerald-100";
+  if (tone === "violet") return "border-violet-100";
+  return "border-sky-100";
+}
+
+function strategyText(tone: string): string {
+  if (tone === "emerald") return "text-emerald-700";
+  if (tone === "violet") return "text-violet-700";
+  return "text-sky-700";
 }
 
 function Reference({ children, href, title }: { children: React.ReactNode; href: string; title: string }) {
