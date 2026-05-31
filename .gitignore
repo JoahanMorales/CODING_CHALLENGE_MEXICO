@@ -14,3 +14,6 @@ build/
 .DS_Store
 npm-debug.log*
 data/
+scripts/railway_keepalive.py
+
+.vercel

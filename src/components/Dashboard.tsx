@@ -1214,7 +1214,7 @@ function RiskDock({
             <summary className="cursor-pointer list-none rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-100">
               LABORATORIO DE ESTRÉS
             </summary>
-            <div className="absolute bottom-12 right-0 z-40 w-[min(92vw,360px)] rounded-2xl border border-amber-100 bg-white p-4 shadow-xl shadow-amber-100">
+            <div className="fixed inset-x-3 bottom-20 z-[90] w-[min(92vw,360px)] rounded-2xl border border-amber-100 bg-white p-4 shadow-xl shadow-amber-100 sm:absolute sm:inset-x-auto sm:bottom-12 sm:right-0">
               <SectionKicker>Escenarios controlados</SectionKicker>
               <p className="mt-2 text-xs font-semibold leading-5 text-zinc-500">
                 {scenarioLocked ? "Disponible únicamente en Demo. Nunca alteramos los precios recibidos del mercado live." : "Cada escenario modifica el simulador durante 30 segundos para comprobar la reacción del motor."}
