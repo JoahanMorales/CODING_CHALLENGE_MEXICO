@@ -10,6 +10,7 @@ interface VenueState {
   lastMid?: Decimal;
   lastBookAt: number;
   wsLatencyMs: number;
+  ewmaInterMessageInterval: number;
 }
 
 export interface RouteCalibration {
@@ -68,7 +69,8 @@ export class EdgeTensor {
       ewmaMultiLevelOfi: 0,
       ewmaVolatilityBps: 0,
       lastBookAt: 0,
-      wsLatencyMs: 0
+      wsLatencyMs: 0,
+      ewmaInterMessageInterval: 500
     };
     const previous = state.lastBook;
     const mid = midPrice(book);
@@ -84,6 +86,10 @@ export class EdgeTensor {
       state.ewmaVolatilityBps = ewma(state.ewmaVolatilityBps, returnBps, 0.12);
     }
 
+    if (state.lastBookAt > 0) {
+      const interval = Math.max(1, book.receivedAt - state.lastBookAt);
+      state.ewmaInterMessageInterval = ewma(state.ewmaInterMessageInterval, interval, 0.15);
+    }
     state.lastBook = book;
     state.lastMid = mid ?? state.lastMid;
     state.lastBookAt = book.receivedAt;
@@ -105,7 +111,10 @@ export class EdgeTensor {
     const volatilityBps = ((buyState?.ewmaVolatilityBps ?? 0) + (sellState?.ewmaVolatilityBps ?? 0)) / 2;
     const netEdgeBps = input.netSpreadPct.mul(10000).toNumber();
     const liquidityScore = liquidityDepthScore(input.buyBook, input.sellBook, input.quantityBtc);
-    const timing = quoteTiming(input.buyBook, input.sellBook);
+    const buyHardLimit = Math.max(2000, (buyState?.ewmaInterMessageInterval ?? 500) * 3 + 500);
+    const sellHardLimit = Math.max(2000, (sellState?.ewmaInterMessageInterval ?? 500) * 3 + 500);
+    const adaptiveHardLimit = Math.max(buyHardLimit, sellHardLimit);
+    const timing = quoteTiming(input.buyBook, input.sellBook, adaptiveHardLimit);
 
     // Cross-venue arbitrage survives better when the buy venue shows sell pressure
     // and the sell venue shows buy pressure. OFI reacts faster than mid-price.
@@ -120,8 +129,11 @@ export class EdgeTensor {
     const edgeStrength = sigmoid(netEdgeBps * 0.72);
     const volatilityPenalty = sigmoid((volatilityBps - 1.8) * 0.9);
     const delayBetweenLegsMs = timing.skewMs + 200;
-    const driftRiskBps = volatilityBps * Math.sqrt(delayBetweenLegsMs / 60000) * 1.96;
-    const driftRiskPenalty = driftRiskBps / 20 * 0.12;
+    const driftRiskZDetection = 1.28;
+    const driftRiskZExecution = 1.96;
+    const driftRiskBpsDetection = volatilityBps * Math.sqrt(delayBetweenLegsMs / 60000) * driftRiskZDetection;
+    const driftRiskBpsExecution = volatilityBps * Math.sqrt(delayBetweenLegsMs / 60000) * driftRiskZExecution;
+    const driftRiskPenalty = driftRiskBpsDetection / 20 * 0.12;
     const calibration = this.routeCalibration.get(input.route);
     const calibrationBias = calibration?.bias ?? 0;
     // A cross-venue spread is only actionable while both quotes describe the
@@ -146,7 +158,7 @@ export class EdgeTensor {
         Math.max(0, netEdgeBps) * 0.16
     );
     const notional = notionalUsd(input.buyBook, input.quantityBtc);
-    const legDriftCostUsd = notional.mul(driftRiskBps).div(10000);
+    const legDriftCostUsd = notional.mul(driftRiskBpsExecution).div(10000);
     const riskAdjustedProfitUsd = input.expectedProfitUsd
       .mul(survivalProbability)
       .minus(notional.mul(adverseSelectionBps).div(10000))
@@ -332,12 +344,11 @@ function notionalUsd(book: NormalizedOrderBook, quantity: Decimal): Decimal {
   return (ask?.price ?? fallback ?? d(70000)).mul(quantity);
 }
 
-function quoteTiming(buyBook: NormalizedOrderBook, sellBook: NormalizedOrderBook): { ageMs: number; freshnessScore: number; skewMs: number } {
+function quoteTiming(buyBook: NormalizedOrderBook, sellBook: NormalizedOrderBook, adaptiveHardLimit = 2200): { ageMs: number; freshnessScore: number; skewMs: number } {
   const now = Date.now();
   const ageMs = Math.max(0, now - Math.min(buyBook.receivedAt, sellBook.receivedAt));
   const skewMs = Math.abs(buyBook.receivedAt - sellBook.receivedAt);
-  const quoteAgeHardLimit = 2200;
-  const ageScore = ageMs > quoteAgeHardLimit ? 0.01 : clamp01(1 - ageMs / 2800);
+  const ageScore = ageMs > adaptiveHardLimit ? 0.01 : clamp01(1 - ageMs / 2800);
   const synchronizationScore = clamp01(1 - skewMs / 1800);
   return {
     ageMs,

@@ -164,7 +164,7 @@ export class ArbitrageEngine {
           : d(0);
         const route = `${label(buyBook.exchange)} -> ${label(sellBook.exchange)}`;
         const tradeValue = ask.price.mul(desiredQty);
-        const threshold = tradeValue.mul(CROSS_EXCHANGE_THRESHOLD_PCT);
+        const baseThreshold = tradeValue.mul(CROSS_EXCHANGE_THRESHOLD_PCT);
         const takerEdge = this.edgeTensor.routeSignal({
           route,
           buyBook,
@@ -183,15 +183,57 @@ export class ArbitrageEngine {
           netSpreadPct: makerNetSpreadPct,
           quantityBtc: desiredQty
         });
+        const effectiveVolatilityBps = (takerEdge.volatilityBps + makerEdge.volatilityBps) / 2;
+        const volatilityMultiplier = Math.max(1.0, Math.min(2, 1 + (effectiveVolatilityBps - 1.5) / 5));
+        const threshold = baseThreshold.mul(volatilityMultiplier);
+        // Hybrid: buy leg as maker (better price, lower fee), sell leg as taker (guaranteed fill)
+        const hybridNet = calculateNetProfit({
+          buyExchange: buyBook.exchange,
+          sellExchange: sellBook.exchange,
+          askPrice: makerBuyPrice,
+          bidPrice: bid.price,
+          quantityBtc: desiredQty,
+          availableAskQty: ask.size,
+          availableBidQty: bid.size,
+          includeWithdrawal: true,
+          withdrawalAmortization: d("0.015"),
+          buyLiquidityRole: "maker",
+          sellLiquidityRole: "taker",
+          buyQuoteAsset: buyBook.quoteAsset,
+          sellQuoteAsset: sellBook.quoteAsset,
+          buyQuoteToUsdRate: d(buyBook.quoteToUsdRate),
+          sellQuoteToUsdRate: d(sellBook.quoteToUsdRate)
+        });
+        const hybridMakerFillProbability = this.estimateMakerFillProbability(buyBook, sellBook, desiredQty);
+        const hybridRiskCost = makerBuyPrice
+          .mul(desiredQty)
+          .mul(d("0.00010").plus(d(1).minus(hybridMakerFillProbability).mul("0.00012")))
+          .mul(makerRiskMultiplier);
+        const hybridExpectedProfit = hybridNet.rebalanceAdjustedProfitUsd.mul(hybridMakerFillProbability).minus(hybridRiskCost);
+        const hybridNetSpreadPct = makerBuyPrice.mul(desiredQty).greaterThan(0)
+          ? hybridExpectedProfit.div(makerBuyPrice.mul(desiredQty))
+          : d(0);
+        const hybridEdge = this.edgeTensor.routeSignal({
+          route,
+          buyBook,
+          sellBook,
+          executionStyle: "MAKER_ASSISTED",
+          expectedProfitUsd: hybridExpectedProfit,
+          netSpreadPct: hybridNetSpreadPct,
+          quantityBtc: desiredQty
+        });
+
         const booksHealthy = buyBook.integrity.status !== "DEGRADED" && sellBook.integrity.status !== "DEGRADED";
         const takerExecutable = quotesSynchronized && booksHealthy && takerEdge.expectedValueUsd.greaterThan(threshold) && takerEdge.survivalProbability > 0.5;
         const makerExecutable = quotesSynchronized && booksHealthy && !takerExecutable && makerEdge.expectedValueUsd.greaterThan("0.25") && makerNetSpreadPct.greaterThan("0.000025") && makerEdge.survivalProbability > 0.54;
-        const status = takerExecutable || makerExecutable ? "DETECTED" : "REJECTED";
+        const hybridExecutable = quotesSynchronized && booksHealthy && !takerExecutable && !makerExecutable && hybridEdge.expectedValueUsd.greaterThan("0.25") && hybridNetSpreadPct.greaterThan("0.000025") && hybridEdge.survivalProbability > 0.54;
+        const status = takerExecutable || makerExecutable || hybridExecutable ? "DETECTED" : "REJECTED";
         const executionStyle = takerExecutable ? "INSTANT_TAKER" : makerExecutable ? "MAKER_ASSISTED" : "INSTANT_TAKER";
-        const selectedNet = makerExecutable ? makerNetRaw : takerNet;
-        const selectedEdge = makerExecutable ? makerEdge : takerEdge;
+        const selectedNet = makerExecutable ? makerNetRaw : hybridExecutable ? hybridNet : takerNet;
+        const selectedEdge = makerExecutable ? makerEdge : hybridExecutable ? hybridEdge : takerEdge;
         const selectedProfit = selectedEdge.riskAdjustedProfitUsd;
-        const selectedNetSpreadPct = makerExecutable ? makerNetSpreadPct : takerNet.netSpreadPct;
+        const selectedNetSpreadPct = makerExecutable ? makerNetSpreadPct : hybridExecutable ? hybridNetSpreadPct : takerNet.netSpreadPct;
+        const isMakerSelected = makerExecutable || hybridExecutable;
 
         opportunities.push({
           id: cryptoId("cross"),
@@ -214,7 +256,7 @@ export class ArbitrageEngine {
           grossProfitUsd: usd(selectedNet.grossProfitUsd),
           totalFeesUsd: usd(selectedNet.buyFeeUsd.plus(selectedNet.sellFeeUsd)),
           slippageUsd: usd(selectedNet.slippageUsd),
-          networkCostUsd: usd(selectedNet.networkCostUsd.plus(makerExecutable ? makerRiskCost : 0)),
+          networkCostUsd: usd(selectedNet.networkCostUsd.plus(isMakerSelected ? makerRiskCost : 0)),
           quoteConversionCostUsd: usd(selectedNet.quoteConversionCostUsd),
           rebalanceCostUsd: usd(selectedNet.rebalanceCostUsd),
           score: this.scoreOpportunity({
@@ -224,8 +266,8 @@ export class ArbitrageEngine {
             availableDepth: Decimal.min(ask.size, bid.size),
             exchanges: [buyBook.exchange, sellBook.exchange],
             expectedValueUsd: selectedEdge.expectedValueUsd,
-            confidenceBoost: makerExecutable
-              ? makerFillProbability.toNumber() * 0.42 + microstructureAlignment * 0.18 + selectedEdge.modelScore / 100 * 0.4
+            confidenceBoost: isMakerSelected
+              ? (makerExecutable ? makerFillProbability : hybridMakerFillProbability).toNumber() * 0.42 + microstructureAlignment * 0.18 + selectedEdge.modelScore / 100 * 0.4
               : microstructureAlignment * 0.24 + selectedEdge.modelScore / 100 * 0.48
           }),
           confidence: takerExecutable
@@ -243,18 +285,20 @@ export class ArbitrageEngine {
               : status === "DETECTED"
               ? takerExecutable
                 ? `Executable instant taker edge. Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, adverse-selection ${selectedEdge.adverseSelectionBps.toFixed(2)}bps.`
-                : `Executable maker-assisted paper trade. Fill ${makerFillProbability.mul(100).toFixed(0)}%, Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, microstructure alignment ${(microstructureAlignment * 100).toFixed(0)}%.`
+                : makerExecutable
+                  ? `Executable maker-assisted paper trade. Fill ${makerFillProbability.mul(100).toFixed(0)}%, Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, microstructure alignment ${(microstructureAlignment * 100).toFixed(0)}%.`
+                  : `Executable hybrid trade (maker buy, taker sell). Fill ${hybridMakerFillProbability.mul(100).toFixed(0)}%, Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%.`
               : `Rejected: Edge Tensor quality ${selectedEdge.edgeQuality}, survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, risk-adjusted P&L ${usd(selectedEdge.riskAdjustedProfitUsd)} USD.`,
           edgeModel: serializeEdgeTensor(selectedEdge),
           executionPlan: {
             buyLevels: buyBook.asks.slice(0, 5),
             sellLevels: sellBook.bids.slice(0, 5),
-            buyLiquidityRole: makerExecutable ? "maker" : "taker",
-            sellLiquidityRole: makerExecutable ? "maker" : "taker",
-            referenceBuyPrice: (makerExecutable ? makerBuyPrice : ask.price).toFixed(8),
-            referenceSellPrice: (makerExecutable ? makerSellPrice : bid.price).toFixed(8),
-            referenceBuySourcePrice: sourceLevelPrice(buyBook, makerExecutable ? makerBuyPrice : ask.price, "ask"),
-            referenceSellSourcePrice: sourceLevelPrice(sellBook, makerExecutable ? makerSellPrice : bid.price, "bid")
+            buyLiquidityRole: isMakerSelected ? (makerExecutable ? "maker" : "maker") : "taker",
+            sellLiquidityRole: isMakerSelected ? (makerExecutable ? "maker" : "taker") : "taker",
+            referenceBuyPrice: (isMakerSelected ? makerBuyPrice : ask.price).toFixed(8),
+            referenceSellPrice: (isMakerSelected ? (makerExecutable ? makerSellPrice : bid.price) : bid.price).toFixed(8),
+            referenceBuySourcePrice: sourceLevelPrice(buyBook, isMakerSelected ? makerBuyPrice : ask.price, "ask"),
+            referenceSellSourcePrice: sourceLevelPrice(sellBook, isMakerSelected ? (makerExecutable ? makerSellPrice : bid.price) : bid.price, "bid")
           }
         });
       });

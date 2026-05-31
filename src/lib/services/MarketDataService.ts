@@ -47,9 +47,9 @@ export class MarketDataService {
 
   stepDemo(): void {
     this.demoState.tick += 1;
-    const volatility = 0.00065 * this.riskManager.getVolatilityMultiplier();
-    this.demoState.btc = gbm(this.demoState.btc, 0.00001, volatility);
-    this.demoState.eth = gbm(this.demoState.eth, 0.000015, volatility * 1.25);
+    const volatility = 0.00025 * this.riskManager.getVolatilityMultiplier();
+    this.demoState.btc = gbm(this.demoState.btc, 0.00001, volatility, this.demoState.tick);
+    this.demoState.eth = gbm(this.demoState.eth, 0.000015, volatility * 1.25, this.demoState.tick + 1000);
     this.demoState.ethBtc = this.demoState.eth / this.demoState.btc;
 
     const arbPulse = this.demoState.tick % 19 === 0 ? 1 : 0;
@@ -57,9 +57,10 @@ export class MarketDataService {
     const spreadMultiplier = this.riskManager.getSpreadMultiplier();
     const liquidityMultiplier = this.riskManager.getLiquidityMultiplier();
     const tickAt = Date.now();
+    const simulatedTime = this.demoState.tick * 220;
 
     EXCHANGE_IDS.forEach((exchange, index) => {
-      const exchangeBias = Math.sin((Date.now() / 900) + index) * 18;
+      const exchangeBias = Math.sin((simulatedTime / 900) + index) * 18;
       // Demo pulses model a brief fragmented-market dislocation between two
       // liquid venues. They must still survive the production fee, slippage,
       // freshness and impact model; only the market input is synthetic.
@@ -119,15 +120,15 @@ function makeBook(exchange: ExchangeId, symbol: SymbolId, mid: number, spread: n
   };
 }
 
-function gbm(price: number, drift: number, volatility: number): number {
-  const randomShock = gaussianRandom();
+function gbm(price: number, drift: number, volatility: number, tick: number): number {
+  const randomShock = gaussianRandom(tick);
   return price * Math.exp((drift - 0.5 * volatility ** 2) + volatility * randomShock);
 }
 
-function gaussianRandom(): number {
-  const u = 1 - Math.random();
-  const v = Math.random();
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+function gaussianRandom(tick: number): number {
+  const theta = 2 * Math.PI * ((tick * 0.618033988749895) % 1);
+  const u = Math.max(1e-10, 0.5 + ((tick * 0.381966011250105) % 0.5));
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(theta);
 }
 
 function formatPrice(symbol: SymbolId, price: number): string {
