@@ -155,7 +155,7 @@ export class ArbitrAIKernel {
       const risk = this.riskManager.recordTrade(trade);
       const metrics = this.pnlTracker.recordTrade(trade);
       this.engine.recordExecutionOutcome(opportunity, Number(trade.pnlUsd));
-      this.publish({ type: "TRADE", trade, wallets: this.simulator.balances(), metrics, risk });
+      this.publish({ type: "TRADE", trade, wallets: this.simulator.balances(), metrics, risk, queue: [...this.executionQueue] });
       this.transition(opportunity, trade.status === "REJECTED" ? "UNWIND_REQUIRED" : "RECONCILED", trade.status === "REJECTED" ? "Paper fill failed preflight; no wallet mutation applied." : "Both paper legs reconciled.");
       const sandboxReport = await this.sandboxExecution.execute(opportunity);
       if (sandboxReport) this.publish({ type: "EXECUTION_RUNTIME", runtime: this.sandboxExecution.status(), report: sandboxReport });

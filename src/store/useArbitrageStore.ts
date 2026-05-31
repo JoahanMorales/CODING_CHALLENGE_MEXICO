@@ -456,7 +456,8 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
       trades: [message.trade, ...state.trades].slice(0, 100),
       wallets: message.wallets,
       metrics: message.metrics,
-      risk: message.risk
+      risk: message.risk,
+      executionQueue: message.queue
     }));
     return;
   }

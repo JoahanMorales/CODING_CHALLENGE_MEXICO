@@ -453,7 +453,7 @@ export type GatewayMessage =
   | { type: "BOOK_BATCH"; books: NormalizedOrderBook[] }
   | { type: "EXCHANGE_STATUS"; statuses: ExchangeConnectionStatus[] }
   | { type: "OPPORTUNITY"; opportunity: Opportunity; queue: Opportunity[] }
-  | { type: "TRADE"; trade: Trade; wallets: WalletBalance[]; metrics: PerformanceMetrics; risk: RiskState }
+  | { type: "TRADE"; trade: Trade; wallets: WalletBalance[]; metrics: PerformanceMetrics; risk: RiskState; queue: Opportunity[] }
   | { type: "EXECUTION_STATE"; transition: ExecutionTransition }
   | { type: "LEARNING"; summary: LearningSummary; outcome: CounterfactualOutcome }
   | { type: "EXECUTION_RUNTIME"; runtime: ExecutionRuntimeState; report?: SandboxExecutionReport }
