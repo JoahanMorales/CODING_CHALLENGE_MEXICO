@@ -146,7 +146,7 @@ let gatewayReconnectTimer: number | null = null;
 let lastGatewayHeartbeatPaintAt = 0;
 
 export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
-  mode: "LIVE",
+  mode: "DEMO",
   connected: false,
   connectionError: "",
   lastGatewayMessageAt: 0,
@@ -173,7 +173,8 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   init: () => {
     if (get().initialized) return;
     set({ initialized: true });
-    startGateway(set, get().walletSeed);
+    if (get().mode === "LIVE") startGateway(set, get().walletSeed);
+    else startDemo(set, get().walletSeed);
   },
 
   setMode: (mode) => {
