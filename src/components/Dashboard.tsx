@@ -76,8 +76,6 @@ export function Dashboard() {
     executionRuntime,
     priceSeries,
     adminAuthenticated,
-    adminMessage,
-    authenticateAdmin,
     scannerUniverse,
     setScannerUniverse
   } = useArbitrageStore();
@@ -126,9 +124,6 @@ export function Dashboard() {
       />
 
       <MemoTerminalToolbar
-        adminAuthenticated={adminAuthenticated}
-        adminMessage={adminMessage}
-        authenticateAdmin={authenticateAdmin}
         scannerUniverse={scannerUniverse}
         setScannerUniverse={setScannerUniverse}
         setVisibleExchanges={setVisibleExchanges}
@@ -276,9 +271,6 @@ function CommandBar({
 }
 
 function TerminalToolbar({
-  adminAuthenticated,
-  adminMessage,
-  authenticateAdmin,
   scannerUniverse,
   setScannerUniverse,
   setVisibleExchanges,
@@ -288,9 +280,6 @@ function TerminalToolbar({
   visibleStatus,
   visibleTypes
 }: {
-  adminAuthenticated: boolean;
-  adminMessage: string;
-  authenticateAdmin: (token: string) => void;
   scannerUniverse: ExchangeId[];
   setScannerUniverse: (exchanges: ExchangeId[]) => void;
   setVisibleExchanges: React.Dispatch<React.SetStateAction<ExchangeId[]>>;
@@ -300,7 +289,6 @@ function TerminalToolbar({
   visibleStatus: "ALL" | "EXECUTABLE" | "REJECTED";
   visibleTypes: OpportunityType[];
 }) {
-  const [token, setToken] = useState("");
   const visibleFilterCount = visibleExchanges.length + visibleTypes.length;
   return (
     <section className="relative z-[60] min-w-0 border-b border-sky-100 bg-white px-4 py-2.5">
@@ -341,37 +329,19 @@ function TerminalToolbar({
         </div>
 
         <details className="relative">
-          <summary className={`cursor-pointer list-none rounded-lg border px-3 py-2 font-mono text-[10px] font-black uppercase ${adminAuthenticated ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-600"}`}>
-            {adminAuthenticated ? "Control admin activo" : "Desbloquear admin"}
+          <summary className="cursor-pointer list-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-[10px] font-black uppercase text-zinc-600 transition hover:border-sky-200 hover:text-sky-700">
+            Universo del scanner
           </summary>
           <div className="fixed inset-x-3 top-36 z-[90] max-h-[calc(100vh-10rem)] overflow-y-auto rounded-2xl border border-sky-100 bg-white p-4 shadow-xl shadow-sky-100 sm:absolute sm:inset-x-auto sm:right-0 sm:top-11 sm:w-[min(92vw,440px)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <SectionKicker>Configuración protegida</SectionKicker>
-                <h2 className="mt-1 text-lg font-black text-zinc-950">Universo del scanner</h2>
-              </div>
-              <StatusPill label={adminAuthenticated ? "Habilitado" : "Solo lectura"} tone={adminAuthenticated ? "emerald" : "zinc"} />
+            <div>
+              <SectionKicker>Configuración</SectionKicker>
+              <h2 className="mt-1 text-lg font-black text-zinc-950">Universo del scanner</h2>
             </div>
-            {!adminAuthenticated && (
-              <div className="mt-3 flex gap-2">
-                <input
-                  className="min-w-0 flex-1 rounded-lg border border-zinc-200 px-3 py-2 font-mono text-xs outline-none focus:border-sky-300"
-                  onChange={(event) => setToken(event.target.value)}
-                  placeholder="ADMIN_CONTROL_TOKEN"
-                  type="password"
-                  value={token}
-                />
-                <button className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 font-mono text-[10px] font-black text-sky-700" onClick={() => authenticateAdmin(token)} type="button">
-                  DESBLOQUEAR
-                </button>
-              </div>
-            )}
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {exchanges.map((exchange) => (
                 <label className="flex items-center gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-2 py-2 text-xs font-black text-zinc-700" key={exchange}>
                   <input
                     checked={scannerUniverse.includes(exchange)}
-                    disabled={!adminAuthenticated}
                     onChange={() => setScannerUniverse(toggleAtLeastTwo(scannerUniverse, exchange))}
                     type="checkbox"
                   />
@@ -380,7 +350,7 @@ function TerminalToolbar({
               ))}
             </div>
             <p className="mt-3 font-mono text-[10px] font-semibold leading-5 text-zinc-500">
-              {adminMessage || "Este control modifica los mercados que el motor evalúa. Los feeds continúan conectados para conservar observabilidad."}
+              Este control modifica los mercados que el motor evalúa. Los feeds continúan conectados para conservar observabilidad.
             </p>
           </div>
         </details>

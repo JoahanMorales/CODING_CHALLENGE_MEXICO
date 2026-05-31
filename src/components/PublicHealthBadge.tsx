@@ -35,7 +35,7 @@ export function PublicHealthBadge({ expanded = false }: { expanded?: boolean }) 
     return (
       <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10px] font-black uppercase ${offline ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
         <span className={`h-2 w-2 rounded-full ${offline ? "bg-amber-500" : "animate-pulse bg-emerald-500"}`} />
-        {offline ? "Gateway local pendiente" : `${live}/7 mercados en vivo`}
+        {offline ? "Sin conexión" : `${live}/7 mercados en vivo`}
       </span>
     );
   }
