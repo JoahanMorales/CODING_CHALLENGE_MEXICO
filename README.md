@@ -27,7 +27,7 @@ La entrega pública separa con claridad:
 - `Demo`: escenario controlado para mostrar el ciclo completo cuando el mercado está quieto.
 
 <p align="center">
-  <img alt="Landing page" src="recursos/landing.png" width="820" />
+  <img alt="Terminal en vivo" src="recursos/terminalvideo.gif" width="820" />
 </p>
 
 ## Demo web
