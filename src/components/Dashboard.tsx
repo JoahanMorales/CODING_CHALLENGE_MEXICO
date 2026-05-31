@@ -1187,11 +1187,12 @@ function RiskDock({
   risk: RiskState;
   runScenario: (scenario: ScenarioKind) => void;
 }) {
+  const [stressOpen, setStressOpen] = useState(false);
   const scenarioSeconds = Math.ceil(risk.scenarioRemainingMs / 1000);
   const scenarioLocked = mode === "LIVE";
   const adminLocked = mode === "LIVE" && !adminAuthenticated;
   return (
-    <footer className="relative z-50 min-w-0 overflow-x-hidden border-t border-sky-100 bg-white/92 px-4 py-3 shadow-[0_-8px_24px_rgba(186,230,253,0.25)] backdrop-blur">
+    <footer className="relative min-w-0 overflow-x-hidden border-t border-sky-100 bg-white/92 px-4 py-3 shadow-[0_-8px_24px_rgba(186,230,253,0.25)] backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
           <span className="flex items-center gap-2 font-black text-zinc-800">
@@ -1216,22 +1217,40 @@ function RiskDock({
           <button className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 font-mono text-xs font-black text-violet-700 transition hover:bg-violet-100" onClick={exportSessionCsv} type="button">
             EXPORTAR CSV
           </button>
-          <details className="relative">
-            <summary className="cursor-pointer list-none rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-100">
+          <div className="relative">
+            <button
+              className="cursor-pointer rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 font-mono text-xs font-black text-amber-700 transition hover:bg-amber-100"
+              onClick={() => setStressOpen((prev) => !prev)}
+              type="button"
+            >
               LABORATORIO DE ESTRÉS
-            </summary>
-            <div className="fixed bottom-20 right-4 z-[100] w-[min(92vw,360px)] rounded-2xl border border-amber-200 bg-white p-4 shadow-2xl shadow-amber-200/60 ring-1 ring-amber-100">
-              <SectionKicker>Escenarios controlados</SectionKicker>
-              <p className="mt-2 text-xs font-semibold leading-5 text-zinc-500">
-                {scenarioLocked ? "Disponible únicamente en Demo. Nunca alteramos los precios recibidos del mercado live." : "Cada escenario modifica el simulador durante 30 segundos para comprobar la reacción del motor."}
-              </p>
-              <div className="mt-3 grid gap-2">
-                <ScenarioButton disabled={scenarioLocked} label="Crash: volatilidad x3" onClick={() => runScenario("MARKET_CRASH")} />
-                <ScenarioButton disabled={scenarioLocked} label="Drenaje de liquidez" onClick={() => runScenario("LIQUIDITY_DRAIN")} />
-                <ScenarioButton disabled={scenarioLocked} label="Latencia elevada" onClick={() => runScenario("LATENCY_SPIKE")} />
+            </button>
+            {stressOpen && (
+              <div
+                className="fixed bottom-24 right-4 z-[100] w-[min(92vw,360px)] rounded-2xl border border-amber-200 bg-white p-4 shadow-2xl shadow-amber-200/60 ring-1 ring-amber-100"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between">
+                  <SectionKicker>Escenarios controlados</SectionKicker>
+                  <button className="font-mono text-xs font-black text-zinc-400 hover:text-zinc-700" onClick={() => setStressOpen(false)} type="button">
+                    CERRAR
+                  </button>
+                </div>
+                <p className="mt-2 text-xs font-semibold leading-5 text-zinc-500">
+                  {scenarioLocked ? "Disponible únicamente en Demo. Nunca alteramos los precios recibidos del mercado live." : "Cada escenario modifica el simulador durante 30 segundos para comprobar la reacción del motor."}
+                </p>
+                <div className="mt-3 grid gap-2">
+                  <ScenarioButton disabled={scenarioLocked} label="Crash: volatilidad x3" onClick={() => runScenario("MARKET_CRASH")} />
+                  <ScenarioButton disabled={scenarioLocked} label="Drenaje de liquidez" onClick={() => runScenario("LIQUIDITY_DRAIN")} />
+                  <ScenarioButton disabled={scenarioLocked} label="Latencia elevada" onClick={() => runScenario("LATENCY_SPIKE")} />
+                </div>
               </div>
-            </div>
-          </details>
+            )}
+            {/* backdrop para cerrar al hacer clic fuera */}
+            {stressOpen && (
+              <div className="fixed inset-0 z-[99]" onClick={() => setStressOpen(false)} />
+            )}
+          </div>
         </div>
       </div>
     </footer>
