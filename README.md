@@ -26,6 +26,10 @@ La entrega pública separa con claridad:
 - `Signed TEST_ORDER`: validación autenticada sin mover fondos.
 - `Demo`: escenario controlado para mostrar el ciclo completo cuando el mercado está quieto.
 
+<p align="center">
+  <img alt="Landing page" src="recursos/landing.png" width="820" />
+</p>
+
 ## Demo web
 
 | Ruta | Propósito |
@@ -49,6 +53,10 @@ AET estima si un edge visible sobrevivirá el tiempo suficiente para ejecutarse.
 - calibración por ruta usando `markouts`.
 
 El resultado incluye `survival probability`, `fill probability`, `leg risk`, `adverse selection`, `Expected Value`, `suggested size` y un score explicable de `0-100`. La queue usa `Expected Value`, no el spread bruto.
+
+<p align="center">
+  <img alt="AET pipeline animation" src="recursos/diagrama.gif" width="820" />
+</p>
 
 ### 2. Tres estrategias
 
@@ -89,6 +97,10 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 | 10 | **Hybrid maker/taker execution** | Compra como maker (mejor precio, baja fee) y vende como taker (fill garantizado) — fees menores que taker puro con mejor fill que maker puro | |
 | 11 | **Adaptive volatility threshold** | `CROSS_EXCHANGE_THRESHOLD_PCT` se ajusta según volatilidad: `base * clamp(1.0, 2, 1 + (volBps - 1.5)/5)`. Floor en 1.0 para no relajar el umbral en baja volatilidad | |
 
+<p align="center">
+  <img alt="Once innovaciones implementadas" src="recursos/11mejoras.png" width="820" />
+</p>
+
 #### Papers base
 
 - Cont, Kukanov y Stoikov: [The Price Impact of Order Book Events](https://arxiv.org/abs/1011.6402)
@@ -121,6 +133,10 @@ flowchart LR
 ```
 
 El backend reconstruye feeds live y coalesce actualizaciones por símbolo antes de recalcular las rutas tocadas. La UI recibe `BOOK_BATCH` throttled, desactiva animaciones costosas en charts y memoiza paneles independientes para mantener React fluido sin convertir el navegador en el cuello de botella.
+
+<p align="center">
+  <img alt="Terminal en vivo" src="recursos/terminal.png" width="820" />
+</p>
 
 ## Quick start
 
