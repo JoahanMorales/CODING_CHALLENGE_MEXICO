@@ -185,6 +185,22 @@ Adjuntar un Railway Volume en `/data` para journal y calibración.
 
 ## Investigación base
 
+### Innovaciones implementadas (hackathon)
+
+| # | Innovación | Impacto | Papers |
+|---|---|---|---|
+| 1 | **VWAP pricing con depth completa** | Precios de ejecución realistas contra múltiples niveles del LOB en vez de top-of-book | Cont/Stoikov (price impact) |
+| 2 | **FDR multiple testing correction** | Control de falsos positivos en stat arb usando Benjamini-Hochberg (q=0.25) | Benjamini & Hochberg (1995) |
+| 3 | **MLE para OU process** | Estimación closed-form AR(1) de half-life de mean reversion, estable desde 5 muestras | Bergstrom (Leeds Econ WP) |
+| 4 | **Quote freshness con hard cutoff** | Survival probability cae a 0.01 si quote age > 2200ms; drift risk entre piernas modelado como `volatilityBps * sqrt(delay/60000) * 1.96` | |
+| 5 | **Dynamic size scaling** | Tamaño dinámico = `min(0.1, 18% del depth total a 5 niveles)` en vez de `min(0.1, ask.size, bid.size)` flat | |
+| 6 | **Leg risk modeling** | Deriva adversa entre piernas resta del expected value; penaliza edges con skew alto entre venues | |
+| 7 | **Triangular arbitrage con VWAP** | Simulación VWAP en cada una de las 3 patas del ciclo en vez de top-of-book | |
+| 8 | **Latency kill switch** | `recordLatency()` trackea últimos 20 mensajes; `shouldHalt()` frena si avg > 3000ms; `getLatencyMultiplier()` escala 1.5/2.5/3.2 | |
+| 9 | **XGBoost-style ML EdgeTensor** | Gradient-boosted ensemble de decision stumps (max 32 trees), 19 features del order book, entrenamiento online desde outcomes reales y shadow | Chen & Guestrin (XGBoost, 2016) |
+
+### Papers base
+
 - Cont, Kukanov y Stoikov: [The Price Impact of Order Book Events](https://arxiv.org/abs/1011.6402)
 - Xu, Gould y Howison: [Multi-Level Order-Flow Imbalance in a Limit Order Book](https://arxiv.org/abs/1907.06230)
 - Lipton, Pesavento y Sotiropoulos: [Trade arrival dynamics and quote imbalance](https://arxiv.org/abs/1312.0514)

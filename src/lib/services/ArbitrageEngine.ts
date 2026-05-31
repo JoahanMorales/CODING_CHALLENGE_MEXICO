@@ -2,7 +2,8 @@ import { CROSS_EXCHANGE_THRESHOLD_PCT, EXCHANGE_FEES, EXCHANGE_IDS } from "../co
 import { Decimal, d, pct, usd, ZERO } from "../math/decimal";
 import type { ExchangeId, NormalizedOrderBook, Opportunity, SymbolId } from "../types";
 import { EdgeTensor, serializeEdgeTensor } from "./EdgeTensor";
-import { calculateNetProfit, midPrice, topAsk, topBid } from "./feeMath";
+import { calculateNetProfit, midPrice, simulateVwap, topAsk, topBid } from "./feeMath";
+import { MlEdgeTensor } from "./MlEdgeTensor";
 import { RollingWindow } from "./RollingWindow";
 
 export class ArbitrageEngine {
@@ -11,6 +12,7 @@ export class ArbitrageEngine {
   private readonly lastStatSampleAt = new Map<string, number>();
   private readonly historicalSuccess = new Map<string, number>();
   private readonly edgeTensor = new EdgeTensor();
+  readonly mlEdgeTensor = new MlEdgeTensor();
 
   onOrderBook(book: NormalizedOrderBook): Opportunity[] {
     const startedAt = performanceNow();
@@ -45,6 +47,7 @@ export class ArbitrageEngine {
         realizedPnlUsd: pnlUsd
       });
     }
+    this.trainMlModel(opportunity, pnlUsd, 1);
   }
 
   recordShadowOutcome(route: string, predictedSurvival: number, pnlUsd: number): void {
@@ -54,6 +57,26 @@ export class ArbitrageEngine {
       realizedPnlUsd: pnlUsd,
       weight: 0.22
     });
+  }
+
+  trainMlModel(opportunity: Opportunity, pnlUsd: number, weight?: number): void {
+    const buyBook = opportunity.buyExchange
+      ? this.books.get(bookKey(opportunity.buyExchange, "BTC/USDT"))
+      : undefined;
+    const sellBook = opportunity.sellExchange
+      ? this.books.get(bookKey(opportunity.sellExchange, "BTC/USDT"))
+      : undefined;
+    if (!buyBook || !sellBook) return;
+    const features = this.mlEdgeTensor.extractFeatures(
+      buyBook,
+      sellBook,
+      d(opportunity.tradeSizeBtc),
+      opportunity.executionStyle,
+      d(opportunity.netSpreadPct)
+    );
+    const realizedWin = pnlUsd > 0 ? 1 : 0;
+    this.mlEdgeTensor.train(opportunity.route, features, realizedWin, weight ?? 0.3);
+    this.mlEdgeTensor.recordOutcome(opportunity.route, Number(opportunity.edgeModel?.survivalProbability ?? 0.5), pnlUsd, weight);
   }
 
   exportCalibration() {
@@ -81,13 +104,13 @@ export class ArbitrageEngine {
         if (!ask || !bid || bid.price.lessThanOrEqualTo(ask.price)) return;
         const quoteSkewMs = Math.abs(buyBook.receivedAt - sellBook.receivedAt);
         const quotesSynchronized = quoteSkewMs <= 1800;
-        const topDepth = Decimal.min(ask.size, bid.size);
-        const uncappedQty = Decimal.min(d("0.1"), ask.size, bid.size);
-        const rawImpactRatio = topDepth.greaterThan(0) ? uncappedQty.div(topDepth) : d(1);
-        // Production arbitrage desks operate prefunded wallets and rebalance in batches.
-        // We therefore charge an amortized rebalance cost while limiting any single trade
-        // to at most 20% of visible top-level liquidity.
-        const desiredQty = rawImpactRatio.greaterThan("0.2") ? Decimal.min(uncappedQty, topDepth.mul("0.2")) : uncappedQty;
+        const buyAskDepth5 = buyBook.asks.slice(0, 5).reduce((s, l) => s.plus(d(l.size)), ZERO);
+        const sellBidDepth5 = sellBook.bids.slice(0, 5).reduce((s, l) => s.plus(d(l.size)), ZERO);
+        const depth5Total = Decimal.min(buyAskDepth5, sellBidDepth5);
+        const depthBasedSize = depth5Total.mul("0.18");
+        const uncappedQty = Decimal.min(d("0.1"), depthBasedSize);
+        const rawImpactRatio = depth5Total.greaterThan(0) ? uncappedQty.div(Decimal.min(ask.size, bid.size)) : d(1);
+        const desiredQty = rawImpactRatio.greaterThan("0.2") ? Decimal.min(uncappedQty, depth5Total.mul("0.2")) : uncappedQty;
         const takerNet = calculateNetProfit({
           buyExchange: buyBook.exchange,
           sellExchange: sellBook.exchange,
@@ -252,20 +275,24 @@ export class ArbitrageEngine {
       const ethAsk = topAsk(ethUsdt);
       const ethBtcBid = topBid(ethBtc);
       if (!btcBid || !ethAsk || !ethBtcBid) return;
-
-      // Cycle math: 1 BTC -> USDT at BTC/USDT bid -> ETH at ETH/USDT ask -> BTC at ETH/BTC bid.
       const startingBtc = d("0.1");
-      const usdt = startingBtc.mul(btcBid.price).mul(d(1).minus(EXCHANGE_FEES[exchange].taker));
-      const eth = usdt.div(ethAsk.price).mul(d(1).minus(EXCHANGE_FEES[exchange].taker));
-      const endingBtc = eth.mul(ethBtcBid.price).mul(d(1).minus(EXCHANGE_FEES[exchange].taker));
+      const ethQtyApprox = startingBtc.mul(btcBid.price).div(ethAsk.price);
+      const btcBidVwap = simulateVwap(btcUsdt.bids, startingBtc);
+      const ethAskVwap = simulateVwap(ethUsdt.asks, ethQtyApprox);
+      const ethBtcBidVwap = simulateVwap(ethBtc.bids, ethQtyApprox);
+      if (btcBidVwap.filledQty.lessThanOrEqualTo(0) || ethAskVwap.filledQty.lessThanOrEqualTo(0) || ethBtcBidVwap.filledQty.lessThanOrEqualTo(0)) return;
+
+      const usdt = startingBtc.mul(btcBidVwap.price).mul(d(1).minus(EXCHANGE_FEES[exchange].taker));
+      const eth = usdt.div(ethAskVwap.price).mul(d(1).minus(EXCHANGE_FEES[exchange].taker));
+      const endingBtc = eth.mul(ethBtcBidVwap.price).mul(d(1).minus(EXCHANGE_FEES[exchange].taker));
       const profitBtc = endingBtc.minus(startingBtc);
-      const slippageUsd = startingBtc.mul(btcBid.price).mul("0.0003");
-      const profitUsd = profitBtc.mul(btcBid.price).minus(slippageUsd);
-      const netSpreadPct = profitUsd.div(startingBtc.mul(btcBid.price));
+      const slippageUsd = startingBtc.mul(btcBidVwap.price).mul("0.0003");
+      const profitUsd = profitBtc.mul(btcBidVwap.price).minus(slippageUsd);
+      const netSpreadPct = profitUsd.div(startingBtc.mul(btcBidVwap.price));
       if (netSpreadPct.lessThan("-0.001")) return;
 
       const route = `${label(exchange)} BTC/USDT -> ETH/USDT -> ETH/BTC`;
-      const status = profitUsd.greaterThan(startingBtc.mul(btcBid.price).mul(CROSS_EXCHANGE_THRESHOLD_PCT))
+      const status = profitUsd.greaterThan(startingBtc.mul(btcBidVwap.price).mul(CROSS_EXCHANGE_THRESHOLD_PCT))
         ? "DETECTED"
         : "REJECTED";
       opportunities.push({
@@ -286,7 +313,7 @@ export class ArbitrageEngine {
         executionNetProfitUsd: usd(profitUsd),
         rebalanceAdjustedProfitUsd: usd(profitUsd),
         grossProfitUsd: usd(profitUsd),
-        totalFeesUsd: usd(startingBtc.mul(btcBid.price).mul(EXCHANGE_FEES[exchange].taker).mul(3)),
+        totalFeesUsd: usd(startingBtc.mul(btcBidVwap.price).mul(EXCHANGE_FEES[exchange].taker).mul(3)),
         slippageUsd: usd(slippageUsd),
         networkCostUsd: "0.00",
         quoteConversionCostUsd: "0.00",
@@ -309,9 +336,18 @@ export class ArbitrageEngine {
 
   private detectStatistical(startedAt: number, changedExchange: ExchangeId): Opportunity[] {
     const btcBooks = this.booksForSymbol("BTC/USDT", 1800);
-    const opportunities: Opportunity[] = [];
     const now = Date.now();
+    interface RawSignal {
+      leftBook: NormalizedOrderBook;
+      rightBook: NormalizedOrderBook;
+      zScore: number;
+      mean: number;
+      spread: number;
+      stdDev: number;
+    }
+    const rawSignals: RawSignal[] = [];
 
+    // First pass: collect all z-scores for FDR
     for (let left = 0; left < btcBooks.length; left += 1) {
       for (let right = left + 1; right < btcBooks.length; right += 1) {
         const leftBook = btcBooks[left];
@@ -335,88 +371,99 @@ export class ArbitrageEngine {
         if (stdDev <= 0 || window.count(now) < 12) continue;
         const zScore = (spread - mean) / stdDev;
         if (Math.abs(zScore) <= 1.35) continue;
-
-        const reversion = estimateOuReversion(window.values(now));
-        const expectedMoveUsd = d(Math.abs(spread - mean)).mul("0.54").mul(d(reversion.quality).plus("0.25"));
-        const size = d("0.06");
-        const referenceMid = leftMid.plus(rightMid).div(2);
-        const longExchange: ExchangeId = zScore > 0 ? rightBook.exchange : leftBook.exchange;
-        const shortExchange: ExchangeId = zScore > 0 ? leftBook.exchange : rightBook.exchange;
-        const longBook = longExchange === leftBook.exchange ? leftBook : rightBook;
-        const shortBook = shortExchange === leftBook.exchange ? leftBook : rightBook;
-        const route = `STAT ARB SIGNAL ${label(longExchange)} long / ${label(shortExchange)} short`;
-        // Mean reversion needs an opening and a closing leg on both venues.
-        // The signal remains visible when rejected, but execution only happens
-        // after round-trip taker fees and a microstructure buffer are paid.
-        const roundTripFeeRate = d(EXCHANGE_FEES[longExchange].taker)
-          .plus(EXCHANGE_FEES[shortExchange].taker)
-          .mul(2);
-        const slippageRate = d("0.0002");
-        const latencyRiskRate = d("0.00014")
-          .plus(d(Math.max(0, 2.1 - Math.abs(zScore))).mul("0.00004"))
-          .plus(d(Math.max(0, reversion.halfLifeSamples - 55)).mul("0.000001"));
-        const executionBufferRate = slippageRate.plus(latencyRiskRate);
-        const totalCostRate = roundTripFeeRate.plus(executionBufferRate);
-        const conservativeProfit = expectedMoveUsd.mul(size).minus(referenceMid.mul(size).mul(totalCostRate));
-        const netSpreadPct = conservativeProfit.div(referenceMid.mul(size));
-        const tensor = this.edgeTensor.routeSignal({
-          route,
-          buyBook: longBook,
-          sellBook: shortBook,
-          executionStyle: "STAT_MEAN_REVERSION",
-          expectedProfitUsd: conservativeProfit,
-          netSpreadPct,
-          quantityBtc: size
-        });
-        const status =
-          conservativeProfit.greaterThan("0.10") &&
-          tensor.expectedValueUsd.greaterThan("0.05") &&
-          tensor.survivalProbability > 0.56 &&
-          reversion.quality > 0.14 &&
-          Math.abs(zScore) > 1.6
-            ? "DETECTED"
-            : "REJECTED";
-
-        opportunities.push({
-          id: cryptoId("stat"),
-          type: "STAT_ARB",
-          executionStyle: "STAT_MEAN_REVERSION",
-          status,
-          route,
-          createdAt: now,
-          expiresAt: now + 500,
-          detectionLatencyMs: performanceNow() - startedAt,
-          buyExchange: longExchange,
-          sellExchange: shortExchange,
-          grossSpreadPct: pct(d(Math.abs(spread)).div(referenceMid)),
-          netSpreadPct: pct(netSpreadPct),
-          tradeSizeBtc: size.toFixed(8),
-          expectedProfitUsd: usd(tensor.riskAdjustedProfitUsd),
-          expectedValueUsd: usd(tensor.expectedValueUsd),
-          executionNetProfitUsd: usd(conservativeProfit),
-          rebalanceAdjustedProfitUsd: usd(conservativeProfit),
-          grossProfitUsd: usd(expectedMoveUsd.mul(size)),
-          totalFeesUsd: usd(referenceMid.mul(size).mul(roundTripFeeRate)),
-          slippageUsd: usd(referenceMid.mul(size).mul(slippageRate)),
-          networkCostUsd: usd(referenceMid.mul(size).mul(latencyRiskRate)),
-          quoteConversionCostUsd: "0.00",
-          rebalanceCostUsd: "0.00",
-          score: this.scoreOpportunity({
-            route,
-            netSpreadPct,
-            quantity: size,
-            availableDepth: d("0.4"),
-            exchanges: [longExchange, shortExchange],
-            expectedValueUsd: tensor.expectedValueUsd,
-            confidenceBoost: Math.min(1, Math.abs(zScore) / 4 * 0.52 + reversion.quality * 0.24 + tensor.modelScore / 100 * 0.24)
-          }),
-          confidence: Math.min(99, Math.round(28 + Math.abs(zScore) * 10 + reversion.quality * 24 + tensor.survivalProbability * 28)),
-          highImpact: false,
-          impactRatio: 0.08,
-          reason: `Stat arb multi-venue: Z ${zScore.toFixed(2)}, OU half-life ${reversion.halfLifeSamples.toFixed(1)} samples, reversion quality ${(reversion.quality * 100).toFixed(0)}%, round-trip costs ${(totalCostRate.mul(10000)).toFixed(2)}bps.`,
-          edgeModel: serializeEdgeTensor(tensor)
-        });
+        rawSignals.push({ leftBook, rightBook, zScore, mean, spread, stdDev });
       }
+    }
+
+    // FDR correction using Benjamini-Hochberg
+    const pValues = rawSignals.map((signal) => 2 * (1 - normalCdf(Math.abs(signal.zScore))));
+    const rejections = benjaminiHochberg(pValues, 0.25);
+    const opportunities: Opportunity[] = [];
+
+    for (let index = 0; index < rawSignals.length; index++) {
+      if (!rejections[index]) continue;
+      const { leftBook, rightBook, zScore, mean, spread } = rawSignals[index];
+      const values = this.spreadWindows.get([leftBook.exchange, rightBook.exchange].sort().join(":"))?.values(now) ?? [];
+      const reversion = estimateOuMle(values);
+      const expectedMoveUsd = d(Math.abs(spread - mean)).mul("0.54").mul(d(reversion.quality).plus("0.25"));
+      const size = d("0.06");
+      const leftMid = midPrice(leftBook);
+      const rightMid = midPrice(rightBook);
+      if (!leftMid || !rightMid) continue;
+      const referenceMid = leftMid.plus(rightMid).div(2);
+      const longExchange: ExchangeId = zScore > 0 ? rightBook.exchange : leftBook.exchange;
+      const shortExchange: ExchangeId = zScore > 0 ? leftBook.exchange : rightBook.exchange;
+      const longBook = longExchange === leftBook.exchange ? leftBook : rightBook;
+      const shortBook = shortExchange === leftBook.exchange ? leftBook : rightBook;
+      const route = `STAT ARB SIGNAL ${label(longExchange)} long / ${label(shortExchange)} short`;
+      const roundTripFeeRate = d(EXCHANGE_FEES[longExchange].taker)
+        .plus(EXCHANGE_FEES[shortExchange].taker)
+        .mul(2);
+      const slippageRate = d("0.0002");
+      const latencyRiskRate = d("0.00014")
+        .plus(d(Math.max(0, 2.1 - Math.abs(zScore))).mul("0.00004"))
+        .plus(d(Math.max(0, reversion.halfLifeSamples - 55)).mul("0.000001"));
+      const executionBufferRate = slippageRate.plus(latencyRiskRate);
+      const totalCostRate = roundTripFeeRate.plus(executionBufferRate);
+      const conservativeProfit = expectedMoveUsd.mul(size).minus(referenceMid.mul(size).mul(totalCostRate));
+      const netSpreadPct = conservativeProfit.div(referenceMid.mul(size));
+      const tensor = this.edgeTensor.routeSignal({
+        route,
+        buyBook: longBook,
+        sellBook: shortBook,
+        executionStyle: "STAT_MEAN_REVERSION",
+        expectedProfitUsd: conservativeProfit,
+        netSpreadPct,
+        quantityBtc: size
+      });
+      const status =
+        conservativeProfit.greaterThan("0.10") &&
+        tensor.expectedValueUsd.greaterThan("0.05") &&
+        tensor.survivalProbability > 0.56 &&
+        reversion.quality > 0.14 &&
+        Math.abs(zScore) > 1.6
+          ? "DETECTED"
+          : "REJECTED";
+
+      opportunities.push({
+        id: cryptoId("stat"),
+        type: "STAT_ARB",
+        executionStyle: "STAT_MEAN_REVERSION",
+        status,
+        route,
+        createdAt: now,
+        expiresAt: now + 500,
+        detectionLatencyMs: performanceNow() - startedAt,
+        buyExchange: longExchange,
+        sellExchange: shortExchange,
+        grossSpreadPct: pct(d(Math.abs(spread)).div(referenceMid)),
+        netSpreadPct: pct(netSpreadPct),
+        tradeSizeBtc: size.toFixed(8),
+        expectedProfitUsd: usd(tensor.riskAdjustedProfitUsd),
+        expectedValueUsd: usd(tensor.expectedValueUsd),
+        executionNetProfitUsd: usd(conservativeProfit),
+        rebalanceAdjustedProfitUsd: usd(conservativeProfit),
+        grossProfitUsd: usd(expectedMoveUsd.mul(size)),
+        totalFeesUsd: usd(referenceMid.mul(size).mul(roundTripFeeRate)),
+        slippageUsd: usd(referenceMid.mul(size).mul(slippageRate)),
+        networkCostUsd: usd(referenceMid.mul(size).mul(latencyRiskRate)),
+        quoteConversionCostUsd: "0.00",
+        rebalanceCostUsd: "0.00",
+        score: this.scoreOpportunity({
+          route,
+          netSpreadPct,
+          quantity: size,
+          availableDepth: d("0.4"),
+          exchanges: [longExchange, shortExchange],
+          expectedValueUsd: tensor.expectedValueUsd,
+          confidenceBoost: Math.min(1, Math.abs(zScore) / 4 * 0.52 + reversion.quality * 0.24 + tensor.modelScore / 100 * 0.24)
+        }),
+        confidence: Math.min(99, Math.round(28 + Math.abs(zScore) * 10 + reversion.quality * 24 + tensor.survivalProbability * 28)),
+        highImpact: false,
+        impactRatio: 0.08,
+        reason: `Stat arb multi-venue: Z ${zScore.toFixed(2)}, OU half-life ${reversion.halfLifeSamples.toFixed(1)} samples, reversion quality ${(reversion.quality * 100).toFixed(0)}%, round-trip costs ${(totalCostRate.mul(10000)).toFixed(2)}bps.`,
+        edgeModel: serializeEdgeTensor(tensor)
+      });
     }
 
     return opportunities.sort((a, b) => b.score - a.score).slice(0, 3);
@@ -517,22 +564,59 @@ function sigmoid(value: number): number {
   return 1 / (1 + Math.exp(-value));
 }
 
-function estimateOuReversion(values: number[]): { halfLifeSamples: number; quality: number } {
-  if (values.length < 8) return { halfLifeSamples: 999, quality: 0 };
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  let numerator = 0;
-  let denominator = 0;
-  for (let index = 1; index < values.length; index += 1) {
-    const lag = values[index - 1] - mean;
-    const change = values[index] - values[index - 1];
-    numerator += lag * change;
-    denominator += lag * lag;
+function estimateOuMle(values: number[]): { halfLifeSamples: number; quality: number } {
+  if (values.length < 5) return { halfLifeSamples: 999, quality: 0 };
+  const n = values.length;
+  let sumY = 0, sumX = 0, sumX2 = 0, sumXY = 0;
+  for (let i = 1; i < n; i++) {
+    const x = values[i - 1];
+    const y = values[i];
+    sumX += x;
+    sumY += y;
+    sumX2 += x * x;
+    sumXY += x * y;
   }
-  if (denominator === 0) return { halfLifeSamples: 999, quality: 0 };
-  const beta = numerator / denominator;
-  const kappa = Math.max(0, -beta);
-  if (kappa <= 0) return { halfLifeSamples: 999, quality: 0 };
-  const halfLifeSamples = Math.log(2) / kappa;
+  const denom = n * sumX2 - sumX * sumX;
+  if (Math.abs(denom) < 1e-12) return { halfLifeSamples: 999, quality: 0 };
+  const beta = (n * sumXY - sumX * sumY) / denom;
+  const kappa = Math.max(0, -Math.log(Math.max(beta, 1e-6)));
+  const halfLifeSamples = kappa > 0 ? Math.log(2) / kappa : 999;
   const quality = Math.max(0, Math.min(1, (80 - halfLifeSamples) / 80));
   return { halfLifeSamples, quality };
+}
+
+function normalCdf(x: number): number {
+  return 0.5 * (1 + erf(x / Math.SQRT2));
+}
+
+function erf(x: number): number {
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  const absX = Math.abs(x);
+  const t = 1 / (1 + p * absX);
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX);
+  return sign * y;
+}
+
+function benjaminiHochberg(pValues: number[], fdrLevel: number): boolean[] {
+  const n = pValues.length;
+  if (n === 0) return [];
+  const indexed = pValues.map((p, i) => ({ p, i }));
+  indexed.sort((a, b) => a.p - b.p);
+  let maxReject = -1;
+  for (let k = 0; k < n; k++) {
+    if (indexed[k].p <= ((k + 1) / n) * fdrLevel) maxReject = k;
+  }
+  const rejected = new Array(n).fill(false);
+  for (let k = 0; k <= maxReject; k++) rejected[indexed[k].i] = true;
+  return rejected;
+}
+
+function estimateOuReversion(values: number[]): { halfLifeSamples: number; quality: number } {
+  return estimateOuMle(values);
 }

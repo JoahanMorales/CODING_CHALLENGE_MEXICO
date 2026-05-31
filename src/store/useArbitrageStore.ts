@@ -519,7 +519,10 @@ function applyBookBatch(set: StoreSet, incomingBooks: NormalizedOrderBook[]): vo
         ask: direction(previous?.asks[0]?.price, book.asks[0]?.price),
         until: Date.now() + 420
       };
-      if (localKernel) exchangeStatuses = updateStatusFromBook(exchangeStatuses, book, "demo");
+      if (localKernel) {
+        exchangeStatuses = updateStatusFromBook(exchangeStatuses, book, "demo");
+        localKernel.riskManager.recordLatency(book.processingLatencyMs);
+      }
       priceSeries = localKernel?.marketData.priceHistory() ?? updateLivePriceSeries(priceSeries, book);
     });
     return { books, exchangeStatuses, flashes, priceSeries };

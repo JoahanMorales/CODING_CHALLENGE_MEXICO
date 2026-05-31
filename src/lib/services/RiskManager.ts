@@ -7,12 +7,26 @@ export class RiskManager {
   private activeScenario: ScenarioKind | null = null;
   private scenarioUntil = 0;
   private readonly materialLossThresholdUsd = d("-0.25");
+  private readonly latencyHistory: number[] = [];
+  private static readonly MAX_LATENCY_SAMPLES = 20;
+  private static readonly LATENCY_HALT_THRESHOLD_MS = 3000;
 
   readonly maxPositionBtc = d("0.1");
   readonly dailyLossLimitUsd = d("-500");
 
+  recordLatency(latencyMs: number): void {
+    this.latencyHistory.push(latencyMs);
+    if (this.latencyHistory.length > RiskManager.MAX_LATENCY_SAMPLES) this.latencyHistory.shift();
+  }
+
+  private averageLatency(): number {
+    if (this.latencyHistory.length === 0) return 0;
+    return this.latencyHistory.reduce((sum, ms) => sum + ms, 0) / this.latencyHistory.length;
+  }
+
   shouldHalt(): boolean {
-    return this.consecutiveLosses >= 3 || this.dailyPnlUsd.lessThanOrEqualTo(this.dailyLossLimitUsd);
+    if (this.consecutiveLosses >= 3 || this.dailyPnlUsd.lessThanOrEqualTo(this.dailyLossLimitUsd)) return true;
+    return this.averageLatency() > RiskManager.LATENCY_HALT_THRESHOLD_MS;
   }
 
   evaluateOpportunity(opportunity: Opportunity): Opportunity {
@@ -69,7 +83,11 @@ export class RiskManager {
 
   getLatencyMultiplier(): number {
     this.refreshScenario();
-    return this.activeScenario === "LATENCY_SPIKE" ? 3.2 : 1;
+    if (this.activeScenario === "LATENCY_SPIKE") return 3.2;
+    const avgLatency = this.averageLatency();
+    if (avgLatency > 2000) return 2.5;
+    if (avgLatency > 1000) return 1.5;
+    return 1;
   }
 
   getState(exposureBtc = ZERO): RiskState {

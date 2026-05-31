@@ -8,6 +8,8 @@ interface VenueState {
   ewmaVolatilityBps: number;
   lastBook?: NormalizedOrderBook;
   lastMid?: Decimal;
+  lastBookAt: number;
+  wsLatencyMs: number;
 }
 
 export interface RouteCalibration {
@@ -60,10 +62,13 @@ export class EdgeTensor {
   ingest(book: NormalizedOrderBook): void {
     if (book.symbol !== "BTC/USDT") return;
     const key = stateKey(book.exchange);
-    const state = this.venueStates.get(key) ?? {
+    const existing = this.venueStates.get(key);
+    const state: VenueState = existing ?? {
       ewmaOfi: 0,
       ewmaMultiLevelOfi: 0,
-      ewmaVolatilityBps: 0
+      ewmaVolatilityBps: 0,
+      lastBookAt: 0,
+      wsLatencyMs: 0
     };
     const previous = state.lastBook;
     const mid = midPrice(book);
@@ -81,6 +86,8 @@ export class EdgeTensor {
 
     state.lastBook = book;
     state.lastMid = mid ?? state.lastMid;
+    state.lastBookAt = book.receivedAt;
+    state.wsLatencyMs = book.processingLatencyMs;
     this.venueStates.set(key, state);
   }
 
@@ -112,6 +119,9 @@ export class EdgeTensor {
     const styleBoost = input.executionStyle === "MAKER_ASSISTED" ? 0.08 : input.executionStyle === "STAT_MEAN_REVERSION" ? 0.05 : 0;
     const edgeStrength = sigmoid(netEdgeBps * 0.72);
     const volatilityPenalty = sigmoid((volatilityBps - 1.8) * 0.9);
+    const delayBetweenLegsMs = timing.skewMs + 200;
+    const driftRiskBps = volatilityBps * Math.sqrt(delayBetweenLegsMs / 60000) * 1.96;
+    const driftRiskPenalty = driftRiskBps / 20 * 0.12;
     const calibration = this.routeCalibration.get(input.route);
     const calibrationBias = calibration?.bias ?? 0;
     // A cross-venue spread is only actionable while both quotes describe the
@@ -124,7 +134,8 @@ export class EdgeTensor {
         liquidityScore * 0.14 +
         timing.freshnessScore * 0.2 +
         styleBoost -
-        volatilityPenalty * 0.18 +
+        volatilityPenalty * 0.18 -
+        driftRiskPenalty +
         calibrationBias
     );
     const adverseSelectionBps = Math.max(
@@ -135,9 +146,11 @@ export class EdgeTensor {
         Math.max(0, netEdgeBps) * 0.16
     );
     const notional = notionalUsd(input.buyBook, input.quantityBtc);
+    const legDriftCostUsd = notional.mul(driftRiskBps).div(10000);
     const riskAdjustedProfitUsd = input.expectedProfitUsd
       .mul(survivalProbability)
-      .minus(notional.mul(adverseSelectionBps).div(10000));
+      .minus(notional.mul(adverseSelectionBps).div(10000))
+      .minus(legDriftCostUsd);
     const fillProbability = clamp01(
       survivalProbability * 0.62 +
       liquidityScore * 0.2 +
@@ -323,7 +336,8 @@ function quoteTiming(buyBook: NormalizedOrderBook, sellBook: NormalizedOrderBook
   const now = Date.now();
   const ageMs = Math.max(0, now - Math.min(buyBook.receivedAt, sellBook.receivedAt));
   const skewMs = Math.abs(buyBook.receivedAt - sellBook.receivedAt);
-  const ageScore = clamp01(1 - ageMs / 2800);
+  const quoteAgeHardLimit = 2200;
+  const ageScore = ageMs > quoteAgeHardLimit ? 0.01 : clamp01(1 - ageMs / 2800);
   const synchronizationScore = clamp01(1 - skewMs / 1800);
   return {
     ageMs,

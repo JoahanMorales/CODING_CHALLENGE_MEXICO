@@ -21,7 +21,7 @@ describe("PersistentJournal", () => {
 
     try {
       const journal = new PersistentJournal(directory);
-      journal.saveCalibration({ "Binance -> OKX": { bias: 0.04, observations: 12 } });
+      journal.saveCalibration({ "Binance -> OKX": { bias: 0.04, brierScore: 0, observations: 12, wins: 0 } });
       Array.from({ length: 100 }, () => executionMessage(entry)).forEach((message) => journal.record(message));
 
       const restored = new PersistentJournal(directory);

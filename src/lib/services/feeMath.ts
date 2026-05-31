@@ -1,6 +1,6 @@
 import { EXCHANGE_FEES } from "../config/exchanges";
 import { Decimal, d, ZERO } from "../math/decimal";
-import type { ExchangeId, NormalizedOrderBook, QuoteAsset } from "../types";
+import type { ExchangeId, NormalizedOrderBook, OrderBookLevel, QuoteAsset } from "../types";
 
 export interface NetProfitInput {
   buyExchange: ExchangeId;
@@ -18,6 +18,8 @@ export interface NetProfitInput {
   sellQuoteAsset?: QuoteAsset;
   buyQuoteToUsdRate?: Decimal;
   sellQuoteToUsdRate?: Decimal;
+  askLevels?: OrderBookLevel[];
+  bidLevels?: OrderBookLevel[];
 }
 
 export interface NetProfitResult {
@@ -60,9 +62,42 @@ export function estimateSlippageRate(quantityBtc: Decimal, availableDepthBtc: De
   return Decimal.min(d("0.0005"), d("0.0002").plus(utilization.mul("0.0003")));
 }
 
+export function simulateVwap(levels: OrderBookLevel[], quantity: Decimal): { price: Decimal; filledQty: Decimal } {
+  let remaining = quantity;
+  let notional = ZERO;
+  let filled = ZERO;
+  for (const level of levels) {
+    if (remaining.lessThanOrEqualTo(0)) break;
+    const levelSize = d(level.size);
+    const fill = Decimal.min(remaining, levelSize);
+    notional = notional.plus(fill.mul(d(level.price)));
+    filled = filled.plus(fill);
+    remaining = remaining.minus(fill);
+  }
+  if (filled.lessThanOrEqualTo(0)) return { price: d(levels[0]?.price ?? "0"), filledQty: ZERO };
+  return { price: notional.div(filled), filledQty: filled };
+}
+
+export function computeVwapAdjustedPrices(
+  buyBook: NormalizedOrderBook,
+  sellBook: NormalizedOrderBook,
+  quantity: Decimal
+): { vwapAskPrice: Decimal; vwapBidPrice: Decimal; vwapAskFilled: Decimal; vwapBidFilled: Decimal } {
+  const askVwap = simulateVwap(buyBook.asks, quantity);
+  const bidVwap = simulateVwap(sellBook.bids, quantity);
+  return {
+    vwapAskPrice: askVwap.price,
+    vwapBidPrice: bidVwap.price,
+    vwapAskFilled: askVwap.filledQty,
+    vwapBidFilled: bidVwap.filledQty
+  };
+}
+
 export function calculateNetProfit(input: NetProfitInput): NetProfitResult {
-  const buyNotional = input.askPrice.mul(input.quantityBtc);
-  const sellNotional = input.bidPrice.mul(input.quantityBtc);
+  const effectiveAskPrice = input.askLevels ? simulateVwap(input.askLevels, input.quantityBtc).price : input.askPrice;
+  const effectiveBidPrice = input.bidLevels ? simulateVwap(input.bidLevels, input.quantityBtc).price : input.bidPrice;
+  const buyNotional = effectiveAskPrice.mul(input.quantityBtc);
+  const sellNotional = effectiveBidPrice.mul(input.quantityBtc);
   const grossProfitUsd = sellNotional.minus(buyNotional);
   const buyFeeUsd = buyNotional.mul(EXCHANGE_FEES[input.buyExchange][input.buyLiquidityRole ?? "taker"]);
   const sellFeeUsd = sellNotional.mul(EXCHANGE_FEES[input.sellExchange][input.sellLiquidityRole ?? "taker"]);
@@ -80,11 +115,11 @@ export function calculateNetProfit(input: NetProfitInput): NetProfitResult {
   const withdrawalBtc = input.includeWithdrawal
     ? d(EXCHANGE_FEES[input.buyExchange].withdrawalBtc).mul(input.withdrawalAmortization ?? 1)
     : ZERO;
-  const rebalanceCostUsd = withdrawalBtc.mul(input.askPrice);
+  const rebalanceCostUsd = withdrawalBtc.mul(effectiveAskPrice);
   const networkCostUsd = ZERO;
   const netProfitUsd = grossProfitUsd.minus(buyFeeUsd).minus(sellFeeUsd).minus(slippageUsd).minus(quoteConversionCostUsd);
   const rebalanceAdjustedProfitUsd = netProfitUsd.minus(rebalanceCostUsd);
-  const grossSpreadPct = input.bidPrice.minus(input.askPrice).div(input.askPrice);
+  const grossSpreadPct = effectiveBidPrice.minus(effectiveAskPrice).div(effectiveAskPrice);
   const netSpreadPct = buyNotional.greaterThan(0) ? netProfitUsd.div(buyNotional) : ZERO;
   const impactRatio = visibleDepth.greaterThan(0) ? input.quantityBtc.div(visibleDepth) : d(1);
 
