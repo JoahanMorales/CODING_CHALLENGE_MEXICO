@@ -2,7 +2,15 @@
 
 import { useEffect, useRef } from "react";
 
-const venues = ["BIN", "KRK", "CB", "OKX", "BYB", "BFX", "GATE"];
+const venues = [
+  { label: "BIN", color: "#F0B90B" },
+  { label: "KRK", color: "#5841D8" },
+  { label: "CB",  color: "#0052FF" },
+  { label: "OKX", color: "#1A1A1A" },
+  { label: "BYB", color: "#0AA9F0" },
+  { label: "BFX", color: "#172D3E" },
+  { label: "GATE",color: "#1F2126" }
+];
 
 export function AetFlowCanvas({ detailed = false }: { detailed?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -49,42 +57,102 @@ export function AetFlowCanvas({ detailed = false }: { detailed?: boolean }) {
     };
   }, [detailed]);
 
-  return <canvas aria-label="Flujo visual del ArbitrAI Edge Tensor" className="h-full w-full" ref={canvasRef} />;
+  return <canvas aria-label="ArbitrAI Edge Tensor flow" className="h-full w-full" ref={canvasRef} />;
 }
 
 function drawFlow(context: CanvasRenderingContext2D, width: number, height: number, frame: number, detailed: boolean): void {
   const compact = width < 620;
-  const routeStart = compact ? 22 : width * 0.06;
-  const normalizeX = compact ? width * 0.31 : width * 0.29;
-  const tensorX = compact ? width * 0.59 : width * 0.56;
-  const executionX = compact ? width * 0.84 : width * 0.84;
-  const centerY = detailed ? height * 0.42 : height * 0.5;
-  const top = detailed ? 34 : 26;
-  const bottom = detailed ? height - 104 : height - 28;
-  const radius = compact ? 4 : 5;
+  const feedX = compact ? width * 0.04 : width * 0.04;
+  const normalizeX = compact ? width * 0.26 : width * 0.24;
+  const tensorX = compact ? width * 0.46 : width * 0.44;
+  const preflightX = compact ? width * 0.66 : width * 0.65;
+  const queueX = compact ? width * 0.85 : width * 0.85;
+  const centerY = detailed ? height * 0.40 : height * 0.5;
+  const top = detailed ? 28 : height * 0.14;
+  const bottom = detailed ? height - 110 : height * 0.86;
+  const s = compact ? 0.72 : 1;
 
   drawGrid(context, width, height);
-  drawStage(context, normalizeX, centerY, compact ? 64 : 82, compact ? 60 : 76, "#F0F9FF", "#7DD3FC", "NORMALIZA", "top 5");
-  drawStage(context, tensorX, centerY, compact ? 72 : 96, compact ? 74 : 88, "#ECFDF5", "#6EE7B7", "AET", "72% surv.");
-  drawStage(context, executionX, centerY, compact ? 62 : 84, compact ? 60 : 76, "#FFF7ED", "#FDBA74", "COLA", "score");
 
+  const stageH = Math.round(52 * s);
+  const stageR = Math.round(12 * s);
+
+  drawStage(context, normalizeX, centerY, Math.round(90 * s), stageH, stageR, "#F0F9FF", "#38BDF8", "NORMALIZA", "depth 5", frame * 0.3);
+  drawStage(context, tensorX, centerY, Math.round(104 * s), stageH + 8, stageR, "#ECFDF5", "#34D399", "EDGE TENSOR", "72% surv.", frame * 0.5);
+  drawStage(context, preflightX, centerY, Math.round(88 * s), stageH, stageR, "#FFF7ED", "#FB923C", "PREFLIGHT", "2-leg check", frame * 0.7);
+  drawStage(context, queueX, centerY, Math.round(76 * s), stageH - 4, stageR, "#F5F3FF", "#A78BFA", "COLA EV", "score", frame * 0.9);
+
+  // venue dots with connection lines
   venues.forEach((venue, index) => {
     const y = top + index * ((bottom - top) / (venues.length - 1));
-    const selected = index === 1 || index === 4;
-    drawLine(context, routeStart + radius, y, normalizeX - (compact ? 33 : 43), centerY, selected ? "rgba(14,165,233,0.58)" : "rgba(148,163,184,0.25)");
-    drawDot(context, routeStart, y, radius, selected ? "#0EA5E9" : "#CBD5E1");
+    const lineEndX = normalizeX - Math.round(44 * s);
+    const pulseSpeed = 0.005 + index * 0.0006;
+    const hue = 200 + index * 8;
+
+    // connection line with gradient
+    const gradient = context.createLinearGradient(feedX + 12, y, lineEndX, centerY);
+    gradient.addColorStop(0, `hsla(${hue}, 70%, 55%, 0.35)`);
+    gradient.addColorStop(1, `hsla(${hue + 30}, 70%, 60%, 0.15)`);
+    context.strokeStyle = gradient;
+    context.lineWidth = 1.6;
+    context.beginPath();
+    context.moveTo(feedX + 12, y);
+    context.lineTo(lineEndX, centerY);
+    context.stroke();
+
+    // venue dot with glow
+    const glowRadius = 5 + Math.sin(frame * 0.04 + index * 1.2) * 1.5;
+    context.fillStyle = `hsla(${hue}, 70%, 55%, 0.15)`;
+    context.beginPath();
+    context.arc(feedX + 12, y, glowRadius + 4, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = `hsla(${hue}, 70%, 55%, 1)`;
+    context.beginPath();
+    context.arc(feedX + 12, y, 4, 0, Math.PI * 2);
+    context.fill();
+
+    // label
     if (!compact || index % 2 === 0) {
-      context.fillStyle = selected ? "#0369A1" : "#64748B";
-      context.font = `${selected ? 800 : 700} ${compact ? 8 : 9}px ui-monospace, SFMono-Regular, monospace`;
-      context.fillText(venue, routeStart + 10, y + 3);
+      context.fillStyle = `hsla(${hue}, 60%, 30%, 1)`;
+      context.font = `800 ${compact ? 7 : 9}px ui-monospace, monospace`;
+      context.fillText(venue.label, feedX + 22, y + 3);
     }
-    drawPulse(context, routeStart + radius, y, normalizeX - (compact ? 34 : 44), centerY, frame + index * 17, selected ? "#0EA5E9" : "#CBD5E1");
+
+    // particle on the line
+    const progress = (frame * pulseSpeed + index * 0.15) % 1;
+    const px = feedX + 12 + (lineEndX - feedX - 12) * progress;
+    const py = y + (centerY - y) * progress;
+    context.fillStyle = `hsla(${hue}, 80%, 70%, ${0.6 + Math.sin(progress * Math.PI) * 0.4})`;
+    context.beginPath();
+    context.arc(px, py, 2.5, 0, Math.PI * 2);
+    context.fill();
   });
 
-  drawLine(context, normalizeX + (compact ? 33 : 43), centerY, tensorX - (compact ? 37 : 49), centerY, "rgba(14,165,233,0.64)", 2);
-  drawPulse(context, normalizeX + 34, centerY, tensorX - 39, centerY, frame + 26, "#0EA5E9");
-  drawLine(context, tensorX + (compact ? 37 : 49), centerY, executionX - (compact ? 32 : 44), centerY, "rgba(16,185,129,0.72)", 2);
-  drawPulse(context, tensorX + 39, centerY, executionX - 34, centerY, frame + 52, "#10B981");
+  // inter-stage arrows with pulses
+  drawArrowLine(context, normalizeX + Math.round(45 * s), centerY, tensorX - Math.round(52 * s), centerY, "rgba(56,189,248,0.5)", 2);
+  drawParticle(context, normalizeX + 45 * s, centerY, tensorX - 52 * s, centerY, frame * 0.008 + 0.1, "#38BDF8");
+  drawArrowLine(context, tensorX + Math.round(52 * s), centerY, preflightX - Math.round(44 * s), centerY, "rgba(52,211,153,0.5)", 2);
+  drawParticle(context, tensorX + 52 * s, centerY, preflightX - 44 * s, centerY, frame * 0.008 + 0.3, "#34D399");
+  drawArrowLine(context, preflightX + Math.round(44 * s), centerY, queueX - Math.round(38 * s), centerY, "rgba(251,146,60,0.5)", 2);
+  drawParticle(context, preflightX + 44 * s, centerY, queueX - 38 * s, centerY, frame * 0.008 + 0.5, "#FB923C");
+
+  // feedback loop from queue back to tensor
+  if (!compact) {
+    const feedbackY = centerY + Math.round(60 * s);
+    context.strokeStyle = "rgba(139,92,246,0.2)";
+    context.lineWidth = 1;
+    context.setLineDash([4, 6]);
+    context.beginPath();
+    context.moveTo(queueX, feedbackY);
+    context.lineTo(tensorX, feedbackY);
+    context.stroke();
+    context.setLineDash([]);
+    context.fillStyle = "rgba(139,92,246,0.4)";
+    context.font = `700 ${Math.round(7 * s)}px ui-monospace, monospace`;
+    context.textAlign = "center";
+    context.fillText("shadow learning", (queueX + tensorX) / 2, feedbackY + 12);
+    context.textAlign = "start";
+  }
 
   if (detailed) {
     const labels = compact
@@ -96,7 +164,7 @@ function drawFlow(context: CanvasRenderingContext2D, width: number, height: numb
     const startX = Math.max(10, (width - totalWidth) / 2);
     labels.forEach(([label, fill, text], index) => {
       const x = startX + index * (boxWidth + gap);
-      const y = height - 54;
+      const y = height - 50;
       context.fillStyle = fill;
       context.strokeStyle = text;
       roundedRect(context, x, y, boxWidth, 24, 7);
@@ -105,7 +173,7 @@ function drawFlow(context: CanvasRenderingContext2D, width: number, height: numb
       context.stroke();
       context.globalAlpha = 1;
       context.fillStyle = text;
-      context.font = `800 ${compact ? 7 : 8}px ui-monospace, SFMono-Regular, monospace`;
+      context.font = `800 ${compact ? 7 : 8}px ui-monospace, monospace`;
       context.textAlign = "center";
       context.fillText(label, x + boxWidth / 2, y + 15);
     });
@@ -114,48 +182,86 @@ function drawFlow(context: CanvasRenderingContext2D, width: number, height: numb
 }
 
 function drawGrid(context: CanvasRenderingContext2D, width: number, height: number): void {
-  context.strokeStyle = "rgba(186,230,253,0.25)";
+  context.strokeStyle = "rgba(186,230,253,0.18)";
   context.lineWidth = 1;
-  for (let x = 0; x < width; x += 32) drawLine(context, x, 0, x, height, context.strokeStyle);
-  for (let y = 0; y < height; y += 32) drawLine(context, 0, y, width, y, context.strokeStyle);
+  for (let x = 0; x < width; x += 40) {
+    drawLine(context, x, 0, x, height, context.strokeStyle);
+  }
+  for (let y = 0; y < height; y += 40) {
+    drawLine(context, 0, y, width, y, context.strokeStyle);
+  }
 }
 
-function drawStage(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, fill: string, stroke: string, title: string, value: string): void {
+function drawStage(
+  context: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number,
+  fill: string, stroke: string, title: string, value: string, phase = 0
+): void {
+  // glow
+  const glow = context.createRadialGradient(x, y, 0, x, y, w * 0.7);
+  glow.addColorStop(0, stroke.replace(")", ",0.12)").replace("rgb", "rgba"));
+  glow.addColorStop(1, "transparent");
+  context.fillStyle = glow;
+  context.beginPath();
+  context.arc(x, y, w * 0.7, 0, Math.PI * 2);
+  context.fill();
+
   context.fillStyle = fill;
   context.strokeStyle = stroke;
-  context.lineWidth = 1.4;
-  roundedRect(context, x - width / 2, y - height / 2, width, height, 16);
+  context.lineWidth = 1.5;
+  roundedRect(context, x - w / 2, y - h / 2, w, h, r);
   context.fill();
   context.stroke();
+
+  // Title
   context.textAlign = "center";
   context.fillStyle = "#0F172A";
-  context.font = `900 ${width < 80 ? 9 : 11}px ui-sans-serif, system-ui`;
-  context.fillText(title, x, y - 4);
+  context.font = `900 ${Math.round(w * 0.11)}px ui-sans-serif, system-ui`;
+  context.fillText(title, x, y - 3);
+
+  // Value
   context.fillStyle = "#0369A1";
-  context.font = `800 ${width < 80 ? 8 : 9}px ui-monospace, SFMono-Regular, monospace`;
+  context.font = `800 ${Math.round(w * 0.09)}px ui-monospace, monospace`;
   context.fillText(value, x, y + 14);
   context.textAlign = "start";
 }
 
-function drawLine(context: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string, width = 1): void {
+function drawLine(context: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string, lineWidth = 1): void {
   context.strokeStyle = color;
-  context.lineWidth = width;
+  context.lineWidth = lineWidth;
   context.beginPath();
   context.moveTo(x1, y1);
   context.lineTo(x2, y2);
   context.stroke();
 }
 
-function drawDot(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string): void {
+function drawArrowLine(context: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string, lineWidth: number): void {
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const headLen = 8;
+  context.strokeStyle = color;
+  context.lineWidth = lineWidth;
+  context.beginPath();
+  context.moveTo(x1, y1);
+  context.lineTo(x2, y2);
+  context.stroke();
   context.fillStyle = color;
   context.beginPath();
-  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.moveTo(x2, y2);
+  context.lineTo(x2 - headLen * Math.cos(angle - 0.4), y2 - headLen * Math.sin(angle - 0.4));
+  context.lineTo(x2 - headLen * Math.cos(angle + 0.4), y2 - headLen * Math.sin(angle + 0.4));
+  context.closePath();
   context.fill();
 }
 
-function drawPulse(context: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, frame: number, color: string): void {
-  const progress = (frame % 120) / 120;
-  drawDot(context, x1 + (x2 - x1) * progress, y1 + (y2 - y1) * progress, 3, color);
+function drawParticle(context: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, progress: number, color: string): void {
+  const t = ((progress % 1) + 1) % 1;
+  const px = x1 + (x2 - x1) * t;
+  const py = y1 + (y2 - y1) * t;
+  const alpha = Math.sin(t * Math.PI) * 0.8;
+  context.fillStyle = color.replace(")", `,${alpha})`).replace("rgb", "rgba");
+  context.beginPath();
+  context.arc(px, py, 3, 0, Math.PI * 2);
+  context.fill();
 }
 
 function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
