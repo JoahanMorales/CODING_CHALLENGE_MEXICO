@@ -55,11 +55,24 @@ export function midPrice(book: NormalizedOrderBook): Decimal | null {
   return bid.price.plus(ask.price).div(2);
 }
 
+// Square-root law of market impact. Empirically the price impact of an order
+// scales with the SQUARE ROOT of participation (order size / available
+// liquidity), not linearly — a near-universal result validated on equities,
+// futures, options and, specifically, Bitcoin (Donier & Bonart 2015, exponent
+// ~0.5; Toth et al. 2011; Almgren et al. 2005). A linear model materially
+// underestimates the cost of consuming depth, so we model:
+//   impactRate = baseHalfSpread + IMPACT_COEF * sqrt(participation)
+// bounded by a floor (touch cost) and a cap (extreme participation, where the
+// pure square-root law itself breaks down).
+const SLIPPAGE_BASE_RATE = d("0.0001");
+const SLIPPAGE_IMPACT_COEF = d("0.0011");
+const SLIPPAGE_MAX_RATE = d("0.006");
+
 export function estimateSlippageRate(quantityBtc: Decimal, availableDepthBtc: Decimal): Decimal {
-  if (availableDepthBtc.lessThanOrEqualTo(0)) return d("0.0005");
-  const utilization = quantityBtc.div(availableDepthBtc);
-  // Slippage is bounded to 0.02%-0.05%, increasing as we consume more visible depth.
-  return Decimal.min(d("0.0005"), d("0.0002").plus(utilization.mul("0.0003")));
+  if (availableDepthBtc.lessThanOrEqualTo(0)) return SLIPPAGE_MAX_RATE;
+  const participation = Decimal.min(1, quantityBtc.div(availableDepthBtc));
+  const impact = SLIPPAGE_BASE_RATE.plus(SLIPPAGE_IMPACT_COEF.mul(participation.sqrt()));
+  return Decimal.min(SLIPPAGE_MAX_RATE, impact);
 }
 
 export function simulateVwap(levels: OrderBookLevel[], quantity: Decimal): { price: Decimal; filledQty: Decimal } {

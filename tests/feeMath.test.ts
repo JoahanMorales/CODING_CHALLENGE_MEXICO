@@ -23,9 +23,17 @@ describe("fee math", () => {
     expect(result.rebalanceAdjustedProfitUsd.lessThan(result.netProfitUsd)).toBe(true);
   });
 
-  it("bounds slippage between 0.02% and 0.05%", () => {
-    expect(estimateSlippageRate(d("0.01"), d("10")).toFixed(6)).toBe("0.000200");
-    expect(estimateSlippageRate(d("2"), d("1")).toFixed(6)).toBe("0.000500");
+  it("prices slippage with the square-root law of market impact", () => {
+    // Quadrupling participation only ~doubles the impact above the touch cost
+    // (sqrt(0.16/0.04) = 2), where a linear model would quadruple it.
+    const low = estimateSlippageRate(d("0.04"), d("1"));
+    const high = estimateSlippageRate(d("0.16"), d("1"));
+    expect(low.toFixed(6)).toBe("0.000320");
+    expect(high.toFixed(6)).toBe("0.000540");
+    const ratio = high.minus("0.0001").div(low.minus("0.0001"));
+    expect(ratio.toNumber()).toBeCloseTo(2, 5);
+    // No visible depth => maximum modeled impact.
+    expect(estimateSlippageRate(d("1"), d("0")).toFixed(6)).toBe("0.006000");
   });
 
   it("charges quote conversion only across USD and USDT venues", () => {

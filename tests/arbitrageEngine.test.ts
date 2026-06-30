@@ -19,7 +19,10 @@ describe("ArbitrageEngine.calculateNetProfit", () => {
     expect(result.grossProfitUsd.toFixed(2)).toBe("250.00");
     expect(result.buyFeeUsd.toFixed(2)).toBe("70.00");
     expect(result.sellFeeUsd.toFixed(2)).toBe("70.25");
-    expect(result.netProfitUsd.toNumber()).toBeLessThan(110);
-    expect(result.netProfitUsd.toNumber()).toBeGreaterThan(60);
+    // A 1 BTC order against 4 BTC of visible depth is 25% participation, so the
+    // square-root impact law charges meaningful slippage (~6.5bps) and the net
+    // edge is small but still positive — large orders in finite depth barely pay.
+    expect(result.netProfitUsd.toNumber()).toBeGreaterThan(0);
+    expect(result.netProfitUsd.toNumber()).toBeLessThan(40);
   });
 });
