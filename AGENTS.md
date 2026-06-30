@@ -1,5 +1,45 @@
 # ArbitrAI Agent Guide
 
+## The Challenge (CODING_CHALLENGE_MEXICO — BTC Arbitrage)
+
+Build, develop and deploy an automated trading system that detects BTC
+arbitrage opportunities in real time and simulates their execution intelligently.
+
+**Functional requirements**
+
+1. **Real-time monitoring** of BTC order books across two or more exchanges via
+   WebSocket or polling, tracking the best Ask/Bid per venue.
+2. **Opportunity detection**: when one venue's Ask < another venue's Bid, compute
+   net profitability and decide whether to execute.
+3. **Simulated execution**: register and simulate the buy on the cheaper venue and
+   the simultaneous sell on the dearer venue, respecting order-book liquidity.
+4. **Real operating costs**: every opportunity must be evaluated net of trading
+   fees, withdrawal fees, estimated slippage and network latency. A gross-profitable
+   edge can be net-negative.
+5. **Partial fills & wallet balances**: handle low-liquidity scenarios with partial
+   orders; keep each wallet balance correct after every simulated trade.
+6. **Logging & visualization**: keep a history of detected opportunities, executed
+   trades, cumulative P&L, and present it clearly in the web UI.
+
+**Judging rubric** (what reviewers score):
+
+| Criterion | What they look for |
+|---|---|
+| Speed / efficiency | Detection latency, WebSocket vs polling, real-time data processing. |
+| Net-profit accuracy | Correct fees per venue, slippage, execution risk; reject gross-positive-but-net-negative edges. |
+| Robustness | Low liquidity, partial fills, sharp moves mid-execution, risk management / circuit breaker. |
+| Strategy / intelligence | Prioritization, multi-pair comparison, advanced strategies (triangular, statistical arb). |
+| Architecture / code quality | Structured, maintainable, scalable, readable, documented, good engineering practices. |
+| Web UX | Deployed, publicly accessible web app showing live market state, opportunities, executions and cumulative P&L. |
+
+**Delivery**: must be deployed and publicly accessible as a web app, with repo
+access and a clear README (architecture, usage, technical decisions).
+
+> Context: this was already submitted; a one-week extension was granted to pick
+> finalists. Goal now is to harden and improve the existing system, not rewrite it.
+> Keep changes consistent with the established (well-tuned) architecture, keep
+> `npm run check` + `npm run build` green, and prefer surgical, defensible edits.
+
 ## Build / Lint / Test Commands
 
 ```bash
@@ -7,8 +47,9 @@ npm run dev          # Next.js dev server (port 3000)
 npm run dev:ws       # WebSocket backend (port 8080)
 npm run build        # Production build
 npm run typecheck    # tsc --noEmit (strict mode)
+npm run lint         # next lint (next/core-web-vitals)
 npm run test         # vitest run (all tests in tests/)
-npm run check        # typecheck + test
+npm run check        # typecheck + lint + test
 npm run start        # Next.js production server
 npm run start:ws     # WS backend production
 ```
