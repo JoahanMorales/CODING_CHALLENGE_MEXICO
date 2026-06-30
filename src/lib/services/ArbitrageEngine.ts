@@ -21,7 +21,8 @@ export class ArbitrageEngine {
     const opportunities = [
       ...(book.symbol === "BTC/USDT" ? this.detectCrossExchange(startedAt, book.exchange) : []),
       ...this.detectTriangular(startedAt, book.exchange),
-      ...(book.symbol === "BTC/USDT" ? this.detectStatistical(startedAt, book.exchange) : [])
+      ...(book.symbol === "BTC/USDT" ? this.detectStatistical(startedAt, book.exchange) : []),
+      ...(book.symbol === "BTC/USDT" ? this.detectLatencyArb(startedAt, book.exchange) : [])
     ];
     return opportunities.sort((a, b) => b.score - a.score);
   }
@@ -552,6 +553,117 @@ export class ArbitrageEngine {
     }
 
     return opportunities.sort((a, b) => b.score - a.score).slice(0, 3);
+  }
+
+  // Latency / stale-quote arbitrage targets exactly the async space that
+  // cross-exchange rejects: a venue whose cheap *buy* quote has gone stale while
+  // another venue prints a fresh, richer bid. We lift the resting stale ask and
+  // sell into the fresh bid, but charge an explicit staleness-risk premium that
+  // grows with the age of the stale quote (the older it is, the likelier the
+  // resting order is already gone) and demand a higher bar than cross-exchange.
+  // It is dormant whenever quotes are synchronized, so the deterministic demo
+  // (which stamps every venue with the same timestamp) never triggers it.
+  private detectLatencyArb(startedAt: number, changedExchange: ExchangeId): Opportunity[] {
+    const now = Date.now();
+    const btcBooks = this.booksForSymbol("BTC/USDT", 8000);
+    const opportunities: Opportunity[] = [];
+
+    btcBooks.forEach((buyBook) => {
+      btcBooks.forEach((sellBook) => {
+        if (buyBook.exchange === sellBook.exchange) return;
+        if (buyBook.exchange !== changedExchange && sellBook.exchange !== changedExchange) return;
+        const ask = topAsk(buyBook);
+        const bid = topBid(sellBook);
+        if (!ask || !bid || bid.price.lessThanOrEqualTo(ask.price)) return;
+        const stalenessMs = sellBook.receivedAt - buyBook.receivedAt;
+        const buyAgeMs = now - buyBook.receivedAt;
+        if (stalenessMs <= 1800 || buyAgeMs > 6000) return;
+        if (buyBook.integrity.status === "DEGRADED" || sellBook.integrity.status === "DEGRADED") return;
+
+        const depthBtc = Decimal.min(
+          buyBook.asks.slice(0, 5).reduce((sum, level) => sum.plus(d(level.size)), ZERO),
+          sellBook.bids.slice(0, 5).reduce((sum, level) => sum.plus(d(level.size)), ZERO)
+        );
+        const desiredQty = Decimal.min(d("0.05"), depthBtc.mul("0.15"));
+        if (desiredQty.lessThanOrEqualTo("0.0001")) return;
+
+        const net = calculateNetProfit({
+          buyExchange: buyBook.exchange,
+          sellExchange: sellBook.exchange,
+          askPrice: ask.price,
+          bidPrice: bid.price,
+          quantityBtc: desiredQty,
+          availableAskQty: ask.size,
+          availableBidQty: bid.size,
+          includeWithdrawal: true,
+          withdrawalAmortization: d("0.02"),
+          buyQuoteAsset: buyBook.quoteAsset,
+          sellQuoteAsset: sellBook.quoteAsset,
+          buyQuoteToUsdRate: d(buyBook.quoteToUsdRate),
+          sellQuoteToUsdRate: d(sellBook.quoteToUsdRate)
+        });
+        const notional = ask.price.mul(desiredQty);
+        const stalenessRiskRate = d(Math.min(0.006, buyAgeMs / 6000 * 0.006));
+        const stalenessRiskUsd = notional.mul(stalenessRiskRate);
+        const netProfitUsd = net.rebalanceAdjustedProfitUsd.minus(stalenessRiskUsd);
+        const netSpreadPct = notional.greaterThan(0) ? netProfitUsd.div(notional) : ZERO;
+        const route = `${label(buyBook.exchange)} (stale ${Math.round(buyAgeMs)}ms) -> ${label(sellBook.exchange)}`;
+        // Higher bar than cross-exchange: a stale edge must clear 1.5x threshold.
+        const threshold = notional.mul(CROSS_EXCHANGE_THRESHOLD_PCT).mul("1.5");
+        const status = netProfitUsd.greaterThan(threshold) ? "DETECTED" : "REJECTED";
+
+        opportunities.push({
+          id: cryptoId("lat"),
+          type: "LATENCY_ARB",
+          executionStyle: "INSTANT_TAKER",
+          status,
+          route,
+          createdAt: now,
+          expiresAt: now + 400,
+          detectionLatencyMs: performanceNow() - startedAt,
+          buyExchange: buyBook.exchange,
+          sellExchange: sellBook.exchange,
+          grossSpreadPct: pct(bid.price.minus(ask.price).div(ask.price)),
+          netSpreadPct: pct(netSpreadPct),
+          tradeSizeBtc: desiredQty.toFixed(8),
+          expectedProfitUsd: usd(netProfitUsd),
+          expectedValueUsd: usd(netProfitUsd),
+          executionNetProfitUsd: usd(net.netProfitUsd),
+          rebalanceAdjustedProfitUsd: usd(net.rebalanceAdjustedProfitUsd),
+          grossProfitUsd: usd(net.grossProfitUsd),
+          totalFeesUsd: usd(net.buyFeeUsd.plus(net.sellFeeUsd)),
+          slippageUsd: usd(net.slippageUsd),
+          networkCostUsd: usd(stalenessRiskUsd),
+          quoteConversionCostUsd: usd(net.quoteConversionCostUsd),
+          rebalanceCostUsd: usd(net.rebalanceCostUsd),
+          score: this.scoreOpportunity({
+            route,
+            netSpreadPct,
+            quantity: desiredQty,
+            availableDepth: Decimal.min(ask.size, bid.size),
+            exchanges: [buyBook.exchange, sellBook.exchange]
+          }),
+          confidence: status === "DETECTED" ? Math.round(Math.max(20, 58 - buyAgeMs / 200)) : 22,
+          highImpact: false,
+          impactRatio: 0.1,
+          reason: status === "DETECTED"
+            ? `Latency edge: lifting a ${Math.round(buyAgeMs)}ms-stale ask on ${label(buyBook.exchange)} into a fresh ${label(sellBook.exchange)} bid, net of a ${stalenessRiskRate.mul(10000).toFixed(1)}bps staleness-risk premium.`
+            : `Rejected: ${Math.round(buyAgeMs)}ms-stale quote edge did not clear the 1.5x staleness-risk bar.`,
+          executionPlan: {
+            buyLevels: buyBook.asks.slice(0, 5),
+            sellLevels: sellBook.bids.slice(0, 5),
+            buyLiquidityRole: "taker",
+            sellLiquidityRole: "taker",
+            referenceBuyPrice: ask.price.toFixed(8),
+            referenceSellPrice: bid.price.toFixed(8),
+            referenceBuySourcePrice: sourceLevelPrice(buyBook, ask.price, "ask"),
+            referenceSellSourcePrice: sourceLevelPrice(sellBook, bid.price, "bid")
+          }
+        });
+      });
+    });
+
+    return opportunities.sort((a, b) => b.score - a.score).slice(0, 4);
   }
 
   private estimateMakerFillProbability(buyBook: NormalizedOrderBook, sellBook: NormalizedOrderBook, quantity: Decimal): Decimal {

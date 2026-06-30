@@ -58,13 +58,14 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
   <img alt="AET pipeline animation" src="recursos/diagrama.gif" width="820" />
 </p>
 
-### 2. Tres estrategias
+### 2. Cuatro estrategias
 
 | Estrategia | Criterio |
 |---|---|
 | `CROSS_EXCHANGE` | Compra el mejor `ask` y vende el mejor `bid` en otro venue. |
 | `TRIANGULAR` | Evalúa el ciclo `BTC/USDT -> ETH/USDT -> ETH/BTC -> BTC`. |
 | `STAT_ARB` | Busca mean reversion multi-venue con `Z-score`, estimación OU y costos de round trip. |
+| `LATENCY_ARB` | Ataca el espacio asíncrono que cross-exchange rechaza: levanta un `ask` rancio (`skew > 1800ms`) contra un `bid` fresco, cobrando una prima de riesgo de staleness y exigiendo `1.5x` el umbral. |
 
 ### 3. Motor realista y auditable
 

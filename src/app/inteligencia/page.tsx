@@ -24,6 +24,13 @@ const strategies = [
     desc: "Busca desviaciones entre dos venues usando Z-score sobre una ventana móvil de 60 segundos. Estima half-life de reversión con MLE de OU process y aplica corrección FDR (Benjamini-Hochberg, q=0.25) para controlar falsos positivos.",
     guard: "Filtros: |Z| > 1.6, calidad de reversión > 14 %, survival AET > 56 %, half-life finito.",
     tone: "violet"
+  },
+  {
+    name: "Latency / Stale-quote",
+    code: "LATENCY_ARB",
+    desc: "Ataca justo el espacio asíncrono que cross-exchange rechaza: una cotización barata que quedó rancia en un venue mientras otro imprime un bid fresco más alto. Levanta el ask rancio y vende contra el bid fresco.",
+    guard: "Solo con skew > 1800 ms y antigüedad < 6 s. Cobra una prima de riesgo de staleness que crece con la edad de la cotización y exige 1.5× el umbral de cross-exchange.",
+    tone: "amber"
   }
 ];
 
@@ -121,8 +128,8 @@ export default function IntelligencePage() {
       <section className="border-t border-sky-100 bg-white px-5 py-12">
         <div className="mx-auto max-w-7xl">
           <p className="font-mono text-[10px] font-black uppercase text-sky-700">Estrategias de arbitraje</p>
-          <h2 className="mt-2 text-3xl font-black text-zinc-950">Tres motores, un mismo pipeline de costos</h2>
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <h2 className="mt-2 text-3xl font-black text-zinc-950">Cuatro motores, un mismo pipeline de costos</h2>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {strategies.map((s) => (
               <article className={`rounded-2xl border bg-white/80 p-5 backdrop-blur-sm elev-lift ${strategyBorder(s.tone)}`} key={s.code}>
                 <span className={`font-mono text-xs font-black ${strategyText(s.tone)}`}>{s.code}</span>
@@ -199,12 +206,14 @@ function Waterfall({ label, tone, value }: { label: string; tone: "amber" | "eme
 function strategyBorder(tone: string): string {
   if (tone === "emerald") return "border-emerald-100";
   if (tone === "violet") return "border-violet-100";
+  if (tone === "amber") return "border-amber-100";
   return "border-sky-100";
 }
 
 function strategyText(tone: string): string {
   if (tone === "emerald") return "text-emerald-700";
   if (tone === "violet") return "text-violet-700";
+  if (tone === "amber") return "text-amber-700";
   return "text-sky-700";
 }
 

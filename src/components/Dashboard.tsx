@@ -34,12 +34,13 @@ import type {
 import { btcBookKey, useArbitrageStore } from "@/store/useArbitrageStore";
 
 const exchanges: ExchangeId[] = EXCHANGE_IDS;
-const opportunityTypes: OpportunityType[] = ["CROSS_EXCHANGE", "STAT_ARB", "TRIANGULAR"];
+const opportunityTypes: OpportunityType[] = ["CROSS_EXCHANGE", "STAT_ARB", "TRIANGULAR", "LATENCY_ARB"];
 
 const strategyLabel: Record<OpportunityType, string> = {
   CROSS_EXCHANGE: "Cross",
   STAT_ARB: "Stat Arb",
-  TRIANGULAR: "Triangular"
+  TRIANGULAR: "Triangular",
+  LATENCY_ARB: "Latencia"
 };
 
 export function Dashboard() {
@@ -676,9 +677,9 @@ function ActiveEdgePanel({
 
 function StrategyMatrix({ stats }: { stats: StrategyStat[] }) {
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {stats.map((stat) => {
-        const tone = stat.type === "CROSS_EXCHANGE" ? "sky" : stat.type === "STAT_ARB" ? "emerald" : "amber";
+        const tone = opportunityTone(stat.type);
         return (
           <Panel key={stat.type} className="p-3">
             <div className="flex items-start justify-between gap-3">
@@ -1660,6 +1661,7 @@ function regimeLabel(regime: MarketIntel["regime"]): string {
 function opportunityTone(type: OpportunityType): Tone {
   if (type === "STAT_ARB") return "emerald";
   if (type === "TRIANGULAR") return "amber";
+  if (type === "LATENCY_ARB") return "violet";
   return "sky";
 }
 

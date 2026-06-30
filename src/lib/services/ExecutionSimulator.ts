@@ -40,7 +40,7 @@ export class ExecutionSimulator {
     const latencyMs = Math.round(baseLatencyMs * this.latencyMultiplier());
     await new Promise((resolve) => windowOrNodeSetTimeout(resolve, latencyMs));
 
-    if (opportunity.type === "CROSS_EXCHANGE" && opportunity.buyExchange && opportunity.sellExchange) {
+    if (isTwoVenue(opportunity) && opportunity.buyExchange && opportunity.sellExchange) {
       return this.executeCrossExchange(opportunity, latencyMs);
     }
 
@@ -67,7 +67,7 @@ export class ExecutionSimulator {
   }
 
   preflight(opportunity: Opportunity): { ok: boolean; reason: string } {
-    if (opportunity.type !== "CROSS_EXCHANGE") {
+    if (!isTwoVenue(opportunity)) {
       return { ok: true, reason: "Synthetic strategy inventory model is available." };
     }
     const buyExchange = opportunity.buyExchange;
@@ -218,6 +218,12 @@ export class ExecutionSimulator {
       highImpact: opportunity.highImpact
     };
   }
+}
+
+// Strategies that fill across two real venue wallets (buy leg + sell leg) and
+// therefore use the depth-aware, inventory-checked execution path.
+function isTwoVenue(opportunity: Opportunity): boolean {
+  return opportunity.type === "CROSS_EXCHANGE" || opportunity.type === "LATENCY_ARB";
 }
 
 function fillRatioFor(opportunity: Opportunity): Decimal {

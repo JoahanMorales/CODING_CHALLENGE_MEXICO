@@ -6,7 +6,7 @@ export type QuoteAsset = "USD" | "USDT" | "BTC";
 
 export type BookIntegrityStatus = "VERIFIED" | "SEQUENCED" | "SNAPSHOT" | "STREAMING" | "DEGRADED";
 
-export type OpportunityType = "CROSS_EXCHANGE" | "TRIANGULAR" | "STAT_ARB";
+export type OpportunityType = "CROSS_EXCHANGE" | "TRIANGULAR" | "STAT_ARB" | "LATENCY_ARB";
 
 export type OpportunityStatus = "DETECTED" | "EVALUATING" | "EXECUTED" | "REJECTED" | "EXPIRED";
 
