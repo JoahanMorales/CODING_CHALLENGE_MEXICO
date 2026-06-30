@@ -50,6 +50,8 @@ let latencyMaxNetBps = -Infinity;
 let latencyMaxStalenessMs = 0;
 let statCandidates = 0;
 let statDetected = 0;
+let statMaxNetBps = -Infinity;
+let statBestZAbs = 0;
 // Independent staleness measurement: the max inter-venue receivedAt skew seen at
 // any moment (what LATENCY_ARB compares against its 1800ms bar), regardless of
 // whether a crossed book also existed. Shows how close REST capture gets.
@@ -102,6 +104,9 @@ for (const round of rounds) {
       } else if (opportunity.type === "STAT_ARB") {
         statCandidates += 1;
         if (opportunity.status === "DETECTED") statDetected += 1;
+        statMaxNetBps = Math.max(statMaxNetBps, netBps(opportunity));
+        const zMatch = /Z (-?\d+\.\d+)/.exec(opportunity.reason);
+        if (zMatch) statBestZAbs = Math.max(statBestZAbs, Math.abs(Number(zMatch[1])));
       }
     }
   }
@@ -153,7 +158,13 @@ const analysis = {
     stalenessOver1800,
     thresholdMs: 1800
   },
-  statArb: { candidates: statCandidates, detected: statDetected },
+  statArb: {
+    candidates: statCandidates,
+    detected: statDetected,
+    maxNetBps: statCandidates ? Number(statMaxNetBps.toFixed(2)) : 0,
+    bestZAbs: Number(statBestZAbs.toFixed(2)),
+    requiredZAbs: 1.6
+  },
   verdict:
     crossProfitable === 0
       ? "A tarifas retail, ninguna dislocación cross-exchange real superó fees+base. El mercado es eficiente; el valor está en rechazarlas con precisión."
@@ -177,6 +188,7 @@ console.log(`    DETECTED           : ${latencyDetected}`);
 console.log(`    max staleness obs. : ${maxObservedStalenessMs}ms (bar: 1800ms · superado ${stalenessOver1800}x)`);
 if (latencyCandidates) console.log(`    max net edge       : ${analysis.latency.maxNetBps} bps`);
 console.log(`\n  Stat-arb: ${statCandidates} candidatas, ${statDetected} DETECTED`);
+if (statCandidates) console.log(`    mejor |z| observado: ${analysis.statArb.bestZAbs} (umbral ${analysis.statArb.requiredZAbs}) · mejor net edge: ${analysis.statArb.maxNetBps}bps`);
 console.log(`\n  Veredicto: ${analysis.verdict}`);
 console.log(`\n  Artefacto: ${outPath}\n`);
 process.exit(0);
