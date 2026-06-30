@@ -647,14 +647,24 @@ class ExchangeConnector {
 
   private async pollRealRestFallback(): Promise<void> {
     const tasks: Array<Promise<void>> = [];
-    if (this.needsFallback("binance")) tasks.push(this.pollBinanceDepth());
-    if (this.needsFallback("kraken")) tasks.push(this.pollKrakenDepth());
-    if (this.needsFallback("coinbase")) tasks.push(this.pollCoinbaseBook());
-    if (this.needsFallback("okx")) tasks.push(this.pollOkxBook());
-    if (this.needsFallback("bybit")) tasks.push(this.pollBybitBook());
-    if (this.needsFallback("bitfinex")) tasks.push(this.pollBitfinexBook());
-    if (this.needsFallback("gate")) tasks.push(this.pollGateBook());
+    if (this.needsFallback("binance")) tasks.push(this.guardedPoll("binance", this.pollBinanceDepth()));
+    if (this.needsFallback("kraken")) tasks.push(this.guardedPoll("kraken", this.pollKrakenDepth()));
+    if (this.needsFallback("coinbase")) tasks.push(this.guardedPoll("coinbase", this.pollCoinbaseBook()));
+    if (this.needsFallback("okx")) tasks.push(this.guardedPoll("okx", this.pollOkxBook()));
+    if (this.needsFallback("bybit")) tasks.push(this.guardedPoll("bybit", this.pollBybitBook()));
+    if (this.needsFallback("bitfinex")) tasks.push(this.guardedPoll("bitfinex", this.pollBitfinexBook()));
+    if (this.needsFallback("gate")) tasks.push(this.guardedPoll("gate", this.pollGateBook()));
     await Promise.allSettled(tasks);
+  }
+
+  private async guardedPoll(exchange: ExchangeId, poll: Promise<void>): Promise<void> {
+    try {
+      await poll;
+    } catch (error) {
+      const reason = `REST fallback failed: ${errorMessage(error)}`;
+      console.error(`[${exchange}] ${reason}`);
+      this.mark(exchange, "rest-polling", "error", reason);
+    }
   }
 
   private needsFallback(exchange: ExchangeId): boolean {
@@ -969,6 +979,10 @@ function truncateMap(levels: Map<string, string>, side: "bid" | "ask", limit: nu
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown error";
 }
 
 function readRecord(source: unknown, key: string): Record<string, unknown> | null {
