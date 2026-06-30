@@ -471,6 +471,7 @@ export class ArbitrageEngine {
       const { leftBook, rightBook, zScore, mean, spread } = rawSignals[index];
       const values = this.spreadWindows.get([leftBook.exchange, rightBook.exchange].sort().join(":"))?.values(now) ?? [];
       const reversion = estimateOuMle(values);
+      const adfStat = dickeyFullerStat(values);
       const expectedMoveUsd = d(Math.abs(spread - mean)).mul("0.54").mul(d(reversion.quality).plus("0.25"));
       const size = d("0.06");
       const leftMid = midPrice(leftBook);
@@ -502,12 +503,15 @@ export class ArbitrageEngine {
         netSpreadPct,
         quantityBtc: size
       });
+      // Only trade spreads that reject the unit root (stationary / cointegrated).
+      const stationary = adfStat < -2.0;
       const status =
         conservativeProfit.greaterThan("0.10") &&
         tensor.expectedValueUsd.greaterThan("0.05") &&
         tensor.survivalProbability > 0.56 &&
         reversion.quality > 0.14 &&
-        Math.abs(zScore) > 1.6
+        Math.abs(zScore) > 1.6 &&
+        stationary
           ? "DETECTED"
           : "REJECTED";
 
@@ -547,7 +551,7 @@ export class ArbitrageEngine {
         confidence: Math.min(99, Math.round(28 + Math.abs(zScore) * 10 + reversion.quality * 24 + tensor.survivalProbability * 28)),
         highImpact: false,
         impactRatio: 0.08,
-        reason: `Stat arb multi-venue: Z ${zScore.toFixed(2)}, OU half-life ${reversion.halfLifeSamples.toFixed(1)} samples, reversion quality ${(reversion.quality * 100).toFixed(0)}%, round-trip costs ${(totalCostRate.mul(10000)).toFixed(2)}bps.`,
+        reason: `Stat arb multi-venue: Z ${zScore.toFixed(2)}, ADF t ${adfStat.toFixed(2)} (${stationary ? "stationary" : "unit-root"}), OU half-life ${reversion.halfLifeSamples.toFixed(1)} samples, reversion quality ${(reversion.quality * 100).toFixed(0)}%, round-trip costs ${(totalCostRate.mul(10000)).toFixed(2)}bps.`,
         edgeModel: serializeEdgeTensor(tensor)
       });
     }
@@ -780,6 +784,49 @@ function estimateOuMle(values: number[]): { halfLifeSamples: number; quality: nu
   const halfLifeSamples = kappa > 0 ? Math.log(2) / kappa : 999;
   const quality = Math.max(0, Math.min(1, (80 - halfLifeSamples) / 80));
   return { halfLifeSamples, quality };
+}
+
+// Augmented Dickey-Fuller style stationarity test on the spread series.
+// Regresses the first difference on the lagged level with a drift term
+//   Δy_t = α + ρ·y_{t-1} + ε
+// and returns the t-statistic of ρ. A unit root (ρ = 0) means the spread is a
+// non-mean-reverting random walk and must NOT be traded; a sufficiently
+// negative t-statistic rejects the unit root, confirming a stationary,
+// cointegrated relationship between the two venues (Dickey-Fuller 1979;
+// Engle & Granger 1987). For the same asset across venues the spread is
+// stationary by arbitrage, so this mainly vetoes decoupled/depegged regimes.
+export function dickeyFullerStat(values: number[]): number {
+  const m = values.length - 1;
+  if (m < 6) return 0;
+  const x: number[] = []; // lagged level y_{t-1}
+  const delta: number[] = []; // Δy_t
+  for (let i = 1; i < values.length; i += 1) {
+    x.push(values[i - 1]);
+    delta.push(values[i] - values[i - 1]);
+  }
+  const meanX = x.reduce((s, v) => s + v, 0) / m;
+  const meanD = delta.reduce((s, v) => s + v, 0) / m;
+  let sxx = 0;
+  let sxd = 0;
+  for (let i = 0; i < m; i += 1) {
+    const dx = x[i] - meanX;
+    sxx += dx * dx;
+    sxd += dx * (delta[i] - meanD);
+  }
+  if (sxx < 1e-12) return 0;
+  const rho = sxd / sxx;
+  const alpha = meanD - rho * meanX;
+  let sse = 0;
+  for (let i = 0; i < m; i += 1) {
+    const residual = delta[i] - alpha - rho * x[i];
+    sse += residual * residual;
+  }
+  const dof = m - 2;
+  if (dof <= 0) return 0;
+  const sigma2 = sse / dof;
+  const seRho = Math.sqrt(sigma2 / sxx);
+  if (!Number.isFinite(seRho) || seRho < 1e-12) return 0;
+  return rho / seRho;
 }
 
 function normalCdf(x: number): number {
