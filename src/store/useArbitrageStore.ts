@@ -337,8 +337,27 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
 function startDemo(set: StoreSet, walletSeed: WalletSeed): void {
   localKernel = new ArbitrAIKernel(walletSeed);
   localKernel.bus.on("gateway:message", (message) => applyGatewayMessage(set, message));
+  warmStartKernel(localKernel);
   localKernel.startDemo();
   set({ connected: true, connectionError: "", lastGatewayMessageAt: Date.now(), risk: localKernel.snapshot().risk, wallets: localKernel.snapshot().wallets });
+}
+
+// Warm-start the demo kernel from the offline-trained snapshot (npm run train),
+// so route calibration (and a validated ML ensemble, when present) is loaded
+// from tick zero instead of starting cold. Fire-and-forget; cold fallback if the
+// file is absent.
+function warmStartKernel(kernel: ArbitrAIKernel): void {
+  if (typeof fetch === "undefined") return;
+  void fetch("/model/edge-model.json")
+    .then((response) => (response.ok ? response.json() : null))
+    .then((bundle: { aet?: Record<string, unknown>; ml?: unknown } | null) => {
+      if (!bundle || kernel !== localKernel) return;
+      if (bundle.aet) kernel.engine.importCalibration(bundle.aet as Parameters<typeof kernel.engine.importCalibration>[0]);
+      if (bundle.ml) kernel.engine.mlEdgeTensor.importModel(bundle.ml as Parameters<typeof kernel.engine.mlEdgeTensor.importModel>[0]);
+    })
+    .catch(() => {
+      // No snapshot deployed: the kernel simply learns online from scratch.
+    });
 }
 
 function startGateway(set: StoreSet, walletSeed: WalletSeed): void {

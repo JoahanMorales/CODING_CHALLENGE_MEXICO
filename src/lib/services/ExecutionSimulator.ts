@@ -8,6 +8,8 @@ interface WalletInternal {
   usdt: Decimal;
 }
 
+const SIM_SLEEP_SCALE = Number(process.env.ARBITRAI_SIM_SLEEP_SCALE ?? 1);
+
 export class ExecutionSimulator {
   private readonly wallets = new Map<ExchangeId, WalletInternal>();
   private seed: WalletSeed;
@@ -38,7 +40,12 @@ export class ExecutionSimulator {
       ? 120 + Math.floor(Math.random() * 231)
       : 50 + Math.floor(Math.random() * 151);
     const latencyMs = Math.round(baseLatencyMs * this.latencyMultiplier());
-    await new Promise((resolve) => windowOrNodeSetTimeout(resolve, latencyMs));
+    // The modeled latency (above) always feeds the realistic cost model. Only the
+    // wall-clock wait can be compressed via ARBITRAI_SIM_SLEEP_SCALE so the
+    // offline training harness can drain thousands of paper trades quickly;
+    // unset (=1) in tests and production, leaving real-time behavior unchanged.
+    const sleepMs = Math.max(0, Math.round(latencyMs * SIM_SLEEP_SCALE));
+    await new Promise((resolve) => windowOrNodeSetTimeout(resolve, sleepMs));
 
     if (isTwoVenue(opportunity) && opportunity.buyExchange && opportunity.sellExchange) {
       return this.executeCrossExchange(opportunity, latencyMs);

@@ -24,7 +24,7 @@ interface FeatureVector {
   sellImbalance: number;
 }
 
-interface TreeNode {
+export interface TreeNode {
   featureIndex: number;
   threshold: number;
   leftScore: number;
@@ -34,6 +34,19 @@ interface TreeNode {
 interface GradientBoostingEnsemble {
   trees: TreeNode[];
   learningRate: number;
+}
+
+// Bumped whenever the feature layout or training scheme changes, so a persisted
+// model trained under an incompatible schema is rejected rather than misread.
+export const ML_MODEL_VERSION = 1;
+
+export interface MlModelSnapshot {
+  version: number;
+  trees: TreeNode[];
+  learningRate: number;
+  calibration: Record<string, MlCalibration>;
+  trainedAt?: string;
+  observations?: number;
 }
 
 interface StumpObservation {
@@ -60,6 +73,43 @@ export class MlEdgeTensor {
   // outcomes. Callers gate on this so the model stays a no-op until it can help.
   isTrained(): boolean {
     return this.ensemble.trees.length > 0;
+  }
+
+  treeCount(): number {
+    return this.ensemble.trees.length;
+  }
+
+  exportModel(): MlModelSnapshot {
+    return {
+      version: ML_MODEL_VERSION,
+      trees: this.ensemble.trees.map((tree) => ({ ...tree })),
+      learningRate: this.ensemble.learningRate,
+      calibration: Object.fromEntries([...this.calibration.entries()].map(([route, cal]) => [route, { ...cal }])),
+      trainedAt: new Date().toISOString(),
+      observations: this.calibrationSummary().observations
+    };
+  }
+
+  importModel(snapshot: MlModelSnapshot | null | undefined): boolean {
+    if (!snapshot || snapshot.version !== ML_MODEL_VERSION || !Array.isArray(snapshot.trees)) return false;
+    const trees = snapshot.trees.filter(isValidTreeNode);
+    this.ensemble = {
+      trees,
+      learningRate: Number.isFinite(snapshot.learningRate) ? snapshot.learningRate : 0.3
+    };
+    this.calibration.clear();
+    if (snapshot.calibration) {
+      Object.entries(snapshot.calibration).forEach(([route, cal]) => {
+        if (cal && Number.isFinite(cal.observations)) {
+          this.calibration.set(route, {
+            observations: Math.max(0, cal.observations),
+            brierScore: Number.isFinite(cal.brierScore) ? Math.max(0, cal.brierScore) : 0,
+            wins: Number.isFinite(cal.wins) ? Math.max(0, cal.wins) : 0
+          });
+        }
+      });
+    }
+    return trees.length > 0;
   }
 
   extractFeatures(
@@ -279,6 +329,17 @@ export class MlEdgeTensor {
     const weightedBrier = routes.reduce((s, r) => s + r.brierScore * r.observations, 0);
     return { observations: Math.round(observations), brierScore: observations ? weightedBrier / observations : 0 };
   }
+}
+
+function isValidTreeNode(tree: unknown): tree is TreeNode {
+  if (typeof tree !== "object" || tree === null) return false;
+  const node = tree as Record<string, unknown>;
+  return (
+    Number.isFinite(node.featureIndex) &&
+    Number.isFinite(node.threshold) &&
+    Number.isFinite(node.leftScore) &&
+    Number.isFinite(node.rightScore)
+  );
 }
 
 function sigmoid(x: number): number {

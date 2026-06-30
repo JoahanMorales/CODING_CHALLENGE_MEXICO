@@ -52,7 +52,15 @@ npm run test         # vitest run (all tests in tests/)
 npm run check        # typecheck + lint + test
 npm run start        # Next.js production server
 npm run start:ws     # WS backend production
+npm run train        # offline ML/AET training harness -> public/model/edge-model.json
 ```
+
+`npm run train [seconds]` drives the engine + simulator directly (compressed
+wall-clock latency via `ARBITRAI_SIM_SLEEP_SCALE`) and cycles stress scenarios to
+generate paper-trade outcomes, then persists the AET route calibration (and a
+validated ML ensemble, if the run produced a discriminative one) to
+`public/model/edge-model.json`. The demo (client) and the gateway (backend)
+warm-start from that file so they begin pre-calibrated instead of cold.
 
 ### Running a single test
 

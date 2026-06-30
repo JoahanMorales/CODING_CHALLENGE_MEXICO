@@ -34,8 +34,28 @@ const allowedOrigins = new Set(
 );
 const kernel = new ArbitrAIKernel();
 const journal = new PersistentJournal();
-kernel.engine.importCalibration(journal.loadCalibration());
+const journalCalibration = journal.loadCalibration();
+kernel.engine.importCalibration(journalCalibration);
 kernel.sandboxExecution.restoreLedger(journal.loadSandboxLedger());
+warmStartFromSnapshot();
+
+// Warm-start the gateway from the offline-trained snapshot (npm run train): load
+// the ML ensemble, and seed AET route calibration only when the live journal has
+// none yet (never clobber calibration already learned from real markets).
+function warmStartFromSnapshot(): void {
+  try {
+    const path = "public/model/edge-model.json";
+    if (!existsSync(path)) return;
+    const bundle = safeParse(readFileSync(path, "utf8"));
+    if (!isRecord(bundle)) return;
+    if (bundle.ml) kernel.engine.mlEdgeTensor.importModel(bundle.ml as Parameters<typeof kernel.engine.mlEdgeTensor.importModel>[0]);
+    if (isRecord(bundle.aet) && Object.keys(journalCalibration).length === 0) {
+      kernel.engine.importCalibration(bundle.aet as Parameters<typeof kernel.engine.importCalibration>[0]);
+    }
+  } catch {
+    // No snapshot or unreadable: cold start, learn online.
+  }
+}
 interface SocketContext {
   socket: WebSocket;
   adminAuthenticated: boolean;

@@ -176,6 +176,26 @@ npm run check
 npm run build
 ```
 
+## Entrenamiento del modelo
+
+```bash
+npm run train          # 45s por defecto
+npm run train -- 90    # entrena 90s
+```
+
+El harness conduce el motor + simulador directamente (latencia de reloj
+comprimida, costo de latencia intacto) y cicla escenarios de estrés para generar
+outcomes de paper trading. Reporta en vivo la dinámica de entrenamiento (señales,
+Brier, supervivencia) y persiste la **calibración AET por ruta** —y un ensemble
+ML validado, si el run produjo uno discriminativo— en
+`public/model/edge-model.json`. La demo (cliente) y el gateway (backend)
+hacen *warm-start* desde ese archivo, así arrancan pre-calibrados en vez de en frío.
+
+> Nota honesta: el simulador GBM determinista produce edges cross-exchange
+> casi siempre rentables, por lo que rara vez ofrece la diversidad de clases que
+> un ensemble ML discriminativo necesita; en ese caso el harness persiste solo la
+> calibración AET (sí entrenada) y deja que el ML se reentrene con datos `LIVE`.
+
 ## Live y Demo
 
 | Modo | Fuente | Uso |
