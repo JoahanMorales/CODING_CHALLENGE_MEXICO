@@ -140,28 +140,35 @@ export class ArbitrAIKernel {
     if (this.executing) return;
     this.executing = true;
 
-    while (this.executionQueue.length && !this.riskManager.shouldHalt()) {
-      const opportunity = this.executionQueue.shift();
-      if (!opportunity) continue;
-      if (Date.now() > opportunity.expiresAt) {
-        this.transition(opportunity, "EXPIRED", "Signal exceeded its 500ms execution budget.");
-        this.publish({ type: "OPPORTUNITY", opportunity: { ...opportunity, status: "EXPIRED" }, queue: [...this.executionQueue] });
-        continue;
+    try {
+      while (this.executionQueue.length && !this.riskManager.shouldHalt()) {
+        const opportunity = this.executionQueue.shift();
+        if (!opportunity) continue;
+        if (Date.now() > opportunity.expiresAt) {
+          this.transition(opportunity, "EXPIRED", "Signal exceeded its 500ms execution budget.");
+          this.publish({ type: "OPPORTUNITY", opportunity: { ...opportunity, status: "EXPIRED" }, queue: [...this.executionQueue] });
+          continue;
+        }
+        try {
+          this.transition(opportunity, "RESERVED", "Paper inventory reserved for both legs.");
+          this.transition(opportunity, "LEG_A", `Buying on ${opportunity.buyExchange ?? opportunity.exchange ?? "synthetic venue"}.`);
+          const trade = await this.simulator.execute(opportunity);
+          this.transition(opportunity, "LEG_B", `Selling on ${opportunity.sellExchange ?? opportunity.exchange ?? "synthetic venue"}.`);
+          const risk = this.riskManager.recordTrade(trade);
+          const metrics = this.pnlTracker.recordTrade(trade);
+          this.engine.recordExecutionOutcome(opportunity, Number(trade.pnlUsd));
+          this.publish({ type: "TRADE", trade, wallets: this.simulator.balances(), metrics, risk, queue: [...this.executionQueue] });
+          this.transition(opportunity, trade.status === "REJECTED" ? "UNWIND_REQUIRED" : "RECONCILED", trade.status === "REJECTED" ? "Paper fill failed preflight; no wallet mutation applied." : "Both paper legs reconciled.");
+          const sandboxReport = await this.sandboxExecution.execute(opportunity);
+          if (sandboxReport) this.publish({ type: "EXECUTION_RUNTIME", runtime: this.sandboxExecution.status(), report: sandboxReport });
+        } catch (error) {
+          this.transition(opportunity, "UNWIND_REQUIRED", `Execution threw before reconciliation: ${errorMessage(error)}`);
+          this.publish({ type: "OPPORTUNITY", opportunity: { ...opportunity, status: "REJECTED", reason: `Execution error: ${errorMessage(error)}` }, queue: [...this.executionQueue] });
+        }
       }
-      this.transition(opportunity, "RESERVED", "Paper inventory reserved for both legs.");
-      this.transition(opportunity, "LEG_A", `Buying on ${opportunity.buyExchange ?? opportunity.exchange ?? "synthetic venue"}.`);
-      const trade = await this.simulator.execute(opportunity);
-      this.transition(opportunity, "LEG_B", `Selling on ${opportunity.sellExchange ?? opportunity.exchange ?? "synthetic venue"}.`);
-      const risk = this.riskManager.recordTrade(trade);
-      const metrics = this.pnlTracker.recordTrade(trade);
-      this.engine.recordExecutionOutcome(opportunity, Number(trade.pnlUsd));
-      this.publish({ type: "TRADE", trade, wallets: this.simulator.balances(), metrics, risk, queue: [...this.executionQueue] });
-      this.transition(opportunity, trade.status === "REJECTED" ? "UNWIND_REQUIRED" : "RECONCILED", trade.status === "REJECTED" ? "Paper fill failed preflight; no wallet mutation applied." : "Both paper legs reconciled.");
-      const sandboxReport = await this.sandboxExecution.execute(opportunity);
-      if (sandboxReport) this.publish({ type: "EXECUTION_RUNTIME", runtime: this.sandboxExecution.status(), report: sandboxReport });
+    } finally {
+      this.executing = false;
     }
-
-    this.executing = false;
   }
 
   private publish(message: GatewayMessage): void {
@@ -194,4 +201,8 @@ export class ArbitrAIKernel {
     this.executionTransitions.splice(60);
     this.publish({ type: "EXECUTION_STATE", transition });
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown error";
 }
