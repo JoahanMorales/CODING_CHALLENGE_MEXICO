@@ -183,6 +183,7 @@ npm run train               # 45s, generador sintético enriquecido (camino 2)
 npm run train -- 90         # entrena 90s
 npm run record -- 120       # graba 120s de los 7 exchanges reales -> data/tape-*.jsonl (camino 1)
 npm run train -- --tape data/tape-XXXX.jsonl   # entrena sobre datos reales grabados
+npm run analyze:tape data/tape-XXXX.jsonl      # analiza el tape -> public/data/tape-analysis.json
 ```
 
 **Camino 2 — generador sintético.** El harness conduce el motor + simulador
@@ -207,6 +208,10 @@ el AET calibra con esos outcomes reales), no en un edge inexistente.
 La **calibración AET por ruta** y el **ensemble ML validado** se persisten en
 `public/model/edge-model.json`; la demo (cliente) y el gateway (backend) hacen
 *warm-start* desde ese archivo, así arrancan pre-calibrados en vez de en frío.
+`npm run analyze:tape` escribe `public/data/tape-analysis.json`, que la página
+`/resultados` renderiza como **evidencia de mercado real**: la distribución de
+net-spreads cross-exchange reales (todas las barras a la izquierda del break-even).
+`/inteligencia` muestra el Brier del AET y del ML por separado, en vivo.
 
 ## Live y Demo
 
