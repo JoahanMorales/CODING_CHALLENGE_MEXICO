@@ -57,6 +57,8 @@ npm run record       # record real 7-exchange order-book tapes -> data/tape-*.js
 npm run analyze:tape <tape>   # replay a tape -> public/data/tape-analysis.json (for /resultados)
 npm run study:reversion <tape># train spread mean-reversion on real data -> public/data/reversion-study.json
 npm run backtest             # paper-trading backtest -> public/data/backtest.json (equity curve on /resultados)
+npm run record:ws            # record independent WS feeds -> data/tape-ws-*.jsonl (latency edges)
+npm run study:triangular     # triangular edge hunt by fee tier -> public/data/triangular-study.json
 ```
 
 `npm run train [seconds]` drives the engine + simulator directly (compressed
