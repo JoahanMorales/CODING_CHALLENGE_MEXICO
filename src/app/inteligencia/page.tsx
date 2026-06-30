@@ -36,7 +36,7 @@ const innovations = [
   ["Drift risk dual calibration", "Detección usa z = 1.28 (80 % confianza) para pasar más señales; position sizing usa z = 1.96 (95 %) para riesgo controlado."],
   ["Triangular arbitrage con VWAP", "Simulación VWAP en cada una de las 3 patas del ciclo en vez de top-of-book. Capta profundidad real."],
   ["Latency kill switch", "RecordLatency trackea últimos 20 mensajes; shouldHalt frena si avg > 3000 ms; getLatencyMultiplier escala 1.5 / 2.5 / 3.2."],
-  ["XGBoost-style ML EdgeTensor", "Gradient-boosted ensemble de decision stumps (max 32 trees), 19 features del order book, entrenamiento online desde outcomes reales y shadow. Chen & Guestrin (XGBoost, 2016)."],
+  ["XGBoost-style ML EdgeTensor", "Gradient-boosted ensemble de decision stumps (max 32 trees), 19 features del order book, entrenamiento online desde outcomes reales y shadow. Una vez entrenado es la segunda opinión del ensemble: puede vetar una señal que AET admitió. Chen & Guestrin (XGBoost, 2016)."],
   ["Hybrid maker/taker execution", "Compra como maker (mejor precio, comisión menor) y vende como taker (fill garantizado). Fees menores que taker puro con mejor fill que maker puro."],
   ["Adaptive volatility threshold", "CROSS_EXCHANGE_THRESHOLD_PCT se ajusta según volatilidad: base × clamp(1.0, 2, 1 + (volBps − 1.5) / 5). Floor en 1.0 para no relajar el umbral en baja volatilidad."]
 ];
@@ -67,7 +67,7 @@ export default function IntelligencePage() {
                 El resultado es una decisión trazable: ejecutar, reducir tamaño, observar o descartar.
               </p>
             </div>
-            <div className="h-[340px] overflow-hidden rounded-3xl border border-sky-100 bg-white shadow-lg shadow-sky-100/70 sm:h-[420px]">
+            <div className="h-[340px] overflow-hidden rounded-3xl border border-sky-100 bg-white/85 backdrop-blur elev-lift sm:h-[420px]">
               <AetFlowCanvas detailed />
             </div>
           </div>
@@ -93,7 +93,7 @@ export default function IntelligencePage() {
           <h2 className="mt-2 text-3xl font-black text-zinc-950">Variables observables, decisiones auditables</h2>
           <div className="mt-6 grid gap-3 lg:grid-cols-2">
             {formulas.map(([name, formula, explanation]) => (
-              <article className="rounded-2xl border border-zinc-200 bg-[#fbfdff] p-5" key={name}>
+              <article className="rounded-2xl border border-zinc-200/70 bg-white/80 p-5 backdrop-blur-sm elev-lift" key={name}>
                 <h3 className="text-lg font-black text-zinc-950">{name}</h3>
                 <code className="mt-3 block overflow-x-auto rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 font-mono text-xs font-black text-sky-800">{formula}</code>
                 <p className="mt-3 text-sm font-semibold leading-6 text-zinc-500">{explanation}</p>
@@ -124,7 +124,7 @@ export default function IntelligencePage() {
           <h2 className="mt-2 text-3xl font-black text-zinc-950">Tres motores, un mismo pipeline de costos</h2>
           <div className="mt-6 grid gap-4 lg:grid-cols-3">
             {strategies.map((s) => (
-              <article className={`rounded-2xl border bg-white p-5 shadow-sm ${strategyBorder(s.tone)}`} key={s.code}>
+              <article className={`rounded-2xl border bg-white/80 p-5 backdrop-blur-sm elev-lift ${strategyBorder(s.tone)}`} key={s.code}>
                 <span className={`font-mono text-xs font-black ${strategyText(s.tone)}`}>{s.code}</span>
                 <h3 className="mt-3 text-lg font-black text-zinc-950">{s.name}</h3>
                 <p className="mt-2 text-sm font-semibold leading-6 text-zinc-500">{s.desc}</p>
@@ -144,7 +144,7 @@ export default function IntelligencePage() {
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {innovations.map(([title, desc], i) => (
-              <article className="rounded-2xl border border-zinc-200 bg-[#fbfdff] p-4" key={i}>
+              <article className="rounded-2xl border border-zinc-200/70 bg-white/80 p-4 backdrop-blur-sm elev-lift" key={i}>
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 font-mono text-xs font-black text-sky-700">
                   {i + 1}
                 </span>
@@ -210,7 +210,7 @@ function strategyText(tone: string): string {
 
 function Reference({ children, href, title }: { children: React.ReactNode; href: string; title: string }) {
   return (
-    <a className="rounded-2xl border border-zinc-200 bg-white p-5 transition hover:border-sky-300 hover:shadow-md" href={href} rel="noreferrer" target="_blank">
+    <a className="rounded-2xl border border-zinc-200/70 bg-white/80 p-5 backdrop-blur-sm elev-lift hover:border-sky-300" href={href} rel="noreferrer" target="_blank">
       <strong className="block text-base font-black text-zinc-950">{title}</strong>
       <span className="mt-2 block text-sm font-semibold leading-6 text-zinc-500">{children}</span>
     </a>
