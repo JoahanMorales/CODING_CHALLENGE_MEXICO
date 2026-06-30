@@ -107,8 +107,12 @@ export function computeVwapAdjustedPrices(
 }
 
 export function calculateNetProfit(input: NetProfitInput): NetProfitResult {
-  const effectiveAskPrice = input.askLevels ? simulateVwap(input.askLevels, input.quantityBtc).price : input.askPrice;
-  const effectiveBidPrice = input.bidLevels ? simulateVwap(input.bidLevels, input.quantityBtc).price : input.bidPrice;
+  const askVwap = input.askLevels ? simulateVwap(input.askLevels, input.quantityBtc) : null;
+  const bidVwap = input.bidLevels ? simulateVwap(input.bidLevels, input.quantityBtc) : null;
+  // An empty/insufficient book makes simulateVwap return a degenerate zero price; fall back
+  // to the quoted top-of-book price rather than pricing a leg at $0 (phantom "free" profit).
+  const effectiveAskPrice = askVwap && askVwap.filledQty.greaterThan(0) ? askVwap.price : input.askPrice;
+  const effectiveBidPrice = bidVwap && bidVwap.filledQty.greaterThan(0) ? bidVwap.price : input.bidPrice;
   const buyNotional = effectiveAskPrice.mul(input.quantityBtc);
   const sellNotional = effectiveBidPrice.mul(input.quantityBtc);
   const grossProfitUsd = sellNotional.minus(buyNotional);

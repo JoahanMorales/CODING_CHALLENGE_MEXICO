@@ -83,6 +83,7 @@ export class ExecutionSimulator {
     const buyWallet = this.wallets.get(buyExchange);
     const sellWallet = this.wallets.get(sellExchange);
     if (!buyWallet || !sellWallet) return { ok: false, reason: "Paper wallet is missing for one execution leg." };
+    if (!opportunity.executionPlan) return { ok: false, reason: "Execution plan has no book levels to price legs against." };
     const filledSize = d(opportunity.tradeSizeBtc).mul(fillRatioFor(opportunity));
     if (filledSize.lessThanOrEqualTo(0)) return { ok: false, reason: "Expected fill quantity is zero." };
     const execution = depthAwareQuote(opportunity.executionPlan, filledSize);
@@ -106,6 +107,9 @@ export class ExecutionSimulator {
     const buyWallet = this.wallets.get(buyExchange);
     const sellWallet = this.wallets.get(sellExchange);
     if (!buyWallet || !sellWallet) {
+      return this.rejectedTrade(opportunity, latencyMs, "0");
+    }
+    if (!opportunity.executionPlan) {
       return this.rejectedTrade(opportunity, latencyMs, "0");
     }
 
@@ -240,10 +244,11 @@ function fillRatioFor(opportunity: Opportunity): Decimal {
   return opportunity.highImpact ? Decimal.min(styleFillRatio, d("0.8")) : styleFillRatio;
 }
 
+// Both call sites guard on opportunity.executionPlan before reaching here, so plan is
+// only ever undefined for a zero/negative quantity, where the notional is moot anyway.
 function depthAwareQuote(plan: ExecutionPlan | undefined, quantity: Decimal): { buyNotional: Decimal; sellNotional: Decimal } {
   if (!plan || quantity.lessThanOrEqualTo(0)) {
-    const fallback = d("70000").mul(quantity);
-    return { buyNotional: fallback, sellNotional: fallback };
+    return { buyNotional: ZERO, sellNotional: ZERO };
   }
 
   if (plan.buyLiquidityRole === "maker" || plan.sellLiquidityRole === "maker") {
