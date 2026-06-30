@@ -18,6 +18,7 @@
     "sandbox:hedge": "tsx scripts/okxDemoHedge.ts",
     "train": "tsx scripts/trainModel.ts",
     "record": "tsx scripts/recordTape.ts",
+    "record:ws": "tsx scripts/recordTapeWs.ts",
     "analyze:tape": "tsx scripts/analyzeTape.ts",
     "study:reversion": "tsx scripts/reversionStudy.ts",
     "backtest": "tsx scripts/backtest.ts"
