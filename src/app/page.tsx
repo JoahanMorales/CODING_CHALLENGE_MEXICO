@@ -37,11 +37,17 @@ export default function Home() {
               >
                 Explorar el modelo AET
               </Link>
+              <Link
+                className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50/80 px-6 py-3.5 text-sm font-black text-violet-700 backdrop-blur transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100"
+                href="/torneo"
+              >
+                🏆 Ver torneo en vivo
+              </Link>
             </div>
             <div className="mt-10 grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-4">
               <HeroMetric label="Mercados" value="7" tone="sky" />
               <HeroMetric label="Rutas stat-arb" value="21" tone="violet" />
-              <HeroMetric label="Estrategias" value="3" tone="emerald" />
+              <HeroMetric label="Estrategias" value="4" tone="emerald" />
               <HeroMetric label="Latencia obj." value="<5ms" tone="amber" />
             </div>
           </div>
