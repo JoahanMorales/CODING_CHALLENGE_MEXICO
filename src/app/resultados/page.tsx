@@ -4,7 +4,7 @@ import { ResultsDashboard } from "@/components/ResultsDashboard";
 
 export default function ResultsPage() {
   return (
-    <main className="min-h-screen bg-[#f8fcff] text-zinc-900">
+    <main className="min-h-screen text-zinc-900">
       <PublicSiteHeader />
       <section className="px-5 py-12">
         <div className="mx-auto max-w-7xl">

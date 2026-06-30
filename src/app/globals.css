@@ -4,6 +4,18 @@
 
 :root {
   color-scheme: light;
+  /* Refined light palette tokens */
+  --surface: #f6faff;
+  --ink: #1c1f24;
+  --ink-soft: #52525b;
+  --line: rgba(15, 23, 42, 0.08);
+  --accent: #0284c7;
+  --accent-soft: rgba(2, 132, 199, 0.12);
+  --pos: #047857;
+  --neg: #be123c;
+  --ring: rgba(2, 132, 199, 0.45);
+  --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(2, 132, 199, 0.18);
+  --shadow-lift: 0 2px 4px rgba(15, 23, 42, 0.05), 0 20px 40px -20px rgba(2, 132, 199, 0.28);
 }
 
 * {
@@ -13,17 +25,51 @@
 html,
 body {
   min-height: 100%;
-  background: #f7fbff;
-  color: #27272a;
+  color: var(--ink);
 }
 
 body {
   margin: 0;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  letter-spacing: 0;
+  letter-spacing: -0.011em;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
-  text-rendering: geometricPrecision;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* Subtle premium mesh: sky -> violet -> emerald on near-white */
+  background-color: var(--surface);
+  background-image:
+    radial-gradient(1100px 560px at 8% -8%, rgba(186, 230, 253, 0.5), transparent 56%),
+    radial-gradient(1000px 680px at 104% -4%, rgba(221, 214, 254, 0.42), transparent 52%),
+    radial-gradient(900px 620px at 50% 118%, rgba(167, 243, 208, 0.22), transparent 56%);
+}
+
+/* Tabular figures keep prices and P&L columns perfectly aligned. */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "cv01" 1;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.022em;
+}
+
+::selection {
+  background: rgba(2, 132, 199, 0.18);
+  color: #0c4a6e;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+button,
+input {
+  font: inherit;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -35,11 +81,6 @@ body {
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
   }
-}
-
-button,
-input {
-  font: inherit;
 }
 
 @keyframes price-up {
@@ -68,9 +109,41 @@ input {
   }
 }
 
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.78);
+  }
+}
+
+@keyframes sheen {
+  0% {
+    background-position: -150% 0;
+  }
+  100% {
+    background-position: 250% 0;
+  }
+}
+
 * {
   scrollbar-width: thin;
-  scrollbar-color: #bae6fd transparent;
+  scrollbar-color: rgba(2, 132, 199, 0.3) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -83,8 +156,15 @@ input {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #bae6fd;
+  background: rgba(2, 132, 199, 0.28);
   border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(2, 132, 199, 0.5);
+  background-clip: padding-box;
 }
 
 .flash-up {
@@ -102,4 +182,45 @@ input {
 
 .signal-tape {
   overflow-anchor: none;
+}
+
+/* Reusable polish utilities (opt-in, used by hero/landing/terminal) */
+.fade-up {
+  animation: fade-up 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.elev {
+  box-shadow: var(--shadow-soft);
+}
+
+.elev-lift {
+  box-shadow: var(--shadow-soft);
+  transition: box-shadow 220ms ease, transform 220ms ease;
+}
+
+.elev-lift:hover {
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-2px);
+}
+
+.live-dot {
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, #0c4a6e 0%, #0284c7 42%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sheen {
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.65) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: sheen 2.4s linear infinite;
 }

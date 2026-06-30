@@ -6,7 +6,7 @@ import { PublicSiteHeader } from "@/components/PublicSiteHeader";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-[#f8fcff] text-zinc-900">
+    <main className="min-h-screen text-zinc-900">
       <PublicSiteHeader />
       <section className="border-b border-sky-100 px-5 py-12 sm:py-16">
         <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">

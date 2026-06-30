@@ -52,7 +52,7 @@ const formulas = [
 
 export default function IntelligencePage() {
   return (
-    <main className="min-h-screen bg-[#f8fcff] text-zinc-900">
+    <main className="min-h-screen text-zinc-900">
       <PublicSiteHeader />
       <section className="border-b border-sky-100 px-5 py-12">
         <div className="mx-auto max-w-7xl">
