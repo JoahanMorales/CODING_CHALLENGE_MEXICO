@@ -42,8 +42,13 @@ const args = process.argv.slice(2);
 const tapeFlagIndex = args.findIndex((a) => a === "--tape");
 const tapePath = tapeFlagIndex >= 0 ? args[tapeFlagIndex + 1] : null;
 const outFlagIndex = args.findIndex((a) => a === "--out");
-const outPath = outFlagIndex >= 0 ? args[outFlagIndex + 1] : "public/model/edge-model.json";
-const positional = args.filter((a, i) => !a.startsWith("--") && i !== tapeFlagIndex + 1 && i !== outFlagIndex + 1);
+// Generator mode writes the committed demo warm-start; tape mode (real, often
+// all-losing data) writes a separate artifact so it never clobbers the demo.
+const outPath = outFlagIndex >= 0 ? args[outFlagIndex + 1] : tapePath ? "data/tape-model.json" : "public/model/edge-model.json";
+const flagValueIndices = new Set<number>();
+if (tapeFlagIndex >= 0) flagValueIndices.add(tapeFlagIndex + 1);
+if (outFlagIndex >= 0) flagValueIndices.add(outFlagIndex + 1);
+const positional = args.filter((a, i) => !a.startsWith("--") && !flagValueIndices.has(i));
 const durationSec = Number(positional[0] ?? 45);
 
 // Settle paper fills with no wall-clock wait (the cost model still uses the full
@@ -125,10 +130,31 @@ function auc(): number {
   return concordant / (positives.length * negatives.length);
 }
 
+// Demo-safety guard: the worst ML survival the *current* model assigns to a set
+// of clearly-profitable demo-shaped winners (the big fragmentation pulse down to
+// a modest edge). A model that drops any of these below the veto floor would
+// wrongly reject the demo's genuine winners, so we only ever snapshot a model
+// that keeps them comfortably above it -- this is what makes the shipped warm-
+// start robust to the synthetic->demo distribution shift.
+function demoMinWinnerSurvival(): number {
+  let min = 1;
+  // Net edges spanning the demo's real DETECTED winners (~12-30bps) down to a
+  // modest one. A safe model keeps all of them above the 0.30 veto floor.
+  for (const netBps of [30, 22, 16, 12]) {
+    const gapUsd = (netBps + 20) / 10000 * 70000; // add ~20bps fees to recover the gross gap
+    const buy = demoShapedBook("binance", 70000 - gapUsd / 2, spreadOf(0), sizeOf(0), Date.now());
+    const sell = demoShapedBook("bybit", 70000 + gapUsd / 2, spreadOf(4), sizeOf(4), Date.now());
+    const features = engine.mlEdgeTensor.extractFeatures(buy, sell, d("0.05"), "INSTANT_TAKER", d(String(netBps / 10000)));
+    min = Math.min(min, engine.mlEdgeTensor.predict(features).survivalProbability);
+  }
+  return min;
+}
+
 function evaluateAndSnapshot(): void {
   if (!engine.mlEdgeTensor.isTrained() || valSamples.length < 40) return;
   const a = auc();
-  if (a > bestAuc) {
+  // Only accept a snapshot that both ranks well (AUC) and is demo-safe.
+  if (a > bestAuc && demoMinWinnerSurvival() > 0.45) {
     bestAuc = a;
     bestMl = engine.mlEdgeTensor.exportModel();
   }
@@ -161,8 +187,9 @@ async function settleAndLearn(
       const buyBook = opportunity.buyExchange ? bookByExchange.get(opportunity.buyExchange) : undefined;
       const sellBook = opportunity.sellExchange ? bookByExchange.get(opportunity.sellExchange) : undefined;
       if (buyBook && sellBook) {
-        // Mirror the engine's own feature extraction so validation matches training.
-        const features = engine.mlEdgeTensor.extractFeatures(buyBook, sellBook, d(opportunity.tradeSizeBtc), opportunity.executionStyle, d(opportunity.netSpreadPct));
+        // Mirror the engine's own feature extraction so validation matches training
+        // and inference (netSpreadPct is in percent units -> divide by 100).
+        const features = engine.mlEdgeTensor.extractFeatures(buyBook, sellBook, d(opportunity.tradeSizeBtc), opportunity.executionStyle, d(opportunity.netSpreadPct).div(100));
         recordValSample(features, tradePnl > 0 ? 1 : 0);
       }
     }
@@ -191,40 +218,48 @@ async function ingestTrial(books: NormalizedOrderBook[], focus: { buy: ExchangeI
   await settleAndLearn(trials, bookMap(books), mode);
 }
 
-// Tape mode: settle the would-be-executable (DETECTED) signals real markets
-// produced -- exactly the distribution the model faces at inference.
-async function ingestDetected(books: NormalizedOrderBook[], mode: "train" | "val"): Promise<void> {
-  const detected: Opportunity[] = [];
+// Tape mode: settle every real cross-exchange candidate (any status) the books
+// produced and label by realized outcome. Efficient real markets reject ~all of
+// them at retail fees, so this both calibrates the AET on real outcomes and
+// honestly reveals how much (or how little) genuine cross-exchange edge exists.
+async function ingestCandidates(books: NormalizedOrderBook[], mode: "train" | "val"): Promise<void> {
+  const candidates: Opportunity[] = [];
   for (const book of books) {
     for (const opportunity of engine.onOrderBook(book)) {
-      if (opportunity.type === "CROSS_EXCHANGE" && opportunity.status === "DETECTED") detected.push(opportunity);
+      if (opportunity.type === "CROSS_EXCHANGE") candidates.push(opportunity);
     }
   }
-  await settleAndLearn(detected, bookMap(books), mode);
+  await settleAndLearn(candidates, bookMap(books), mode);
 }
 
 // ---------------------------------------------------------------------------
-// Synthetic generator (camino 2): a Monte-Carlo of cross-exchange dislocations
-// drawn around each venue pair's break-even, plus depth/freshness variation.
+// Synthetic generator (camino 2). Critically, the books are built with the SAME
+// structure as the live demo's MarketDataService (per-venue spread/size formula,
+// 5 levels, ask size * 0.92) so the trained model transfers to the distribution
+// it will actually serve -- a model trained on differently-shaped books wrongly
+// vetoes the demo's genuine winners (distribution shift). The only thing we vary
+// is the cross-exchange dislocation: its magnitude is drawn around each pair's
+// break-even, with depth (impact) and quote-skew (freshness) variation, so the
+// realized labels split ~50/50 and the model learns the edge->profit frontier.
 // ---------------------------------------------------------------------------
 let genMid = 70000;
 function takerBps(exchange: ExchangeId): number {
   return Number(EXCHANGE_FEES[exchange].taker) * 10000;
 }
-function synthLevels(bestBid: number, bestAsk: number, topSize: number, kind: "BTC/USDT"): { bids: OrderBookLevel[]; asks: OrderBookLevel[] } {
-  void kind;
+// Per-venue spread/size match the demo's index-based formula (MarketDataService).
+const spreadOf = (index: number) => 1.2 + index * 0.35;
+const sizeOf = (index: number) => 0.72 + index * 0.11;
+// Mirrors MarketDataService.makeBook (BTC/USDT): step = spread*(level+0.5),
+// size = topSize*(1+level*0.42), ask size * 0.92.
+function demoShapedBook(exchange: ExchangeId, mid: number, spread: number, topSize: number, receivedAt: number): NormalizedOrderBook {
   const bids: OrderBookLevel[] = [];
   const asks: OrderBookLevel[] = [];
-  const tick = bestAsk * 0.00002; // ~0.2bps level spacing
   for (let level = 0; level < 5; level += 1) {
-    const size = (topSize * (1 + level * 0.42)).toFixed(8);
-    bids.push({ price: (bestBid - tick * level).toFixed(2), size });
-    asks.push({ price: (bestAsk + tick * level).toFixed(2), size: (Number(size) * 0.94).toFixed(8) });
+    const step = spread * (level + 0.5);
+    const size = topSize * (1 + level * 0.42);
+    bids.push({ price: (mid - step).toFixed(2), size: size.toFixed(8) });
+    asks.push({ price: (mid + step).toFixed(2), size: (size * 0.92).toFixed(8) });
   }
-  return { bids, asks };
-}
-function synthBook(exchange: ExchangeId, bestBid: number, bestAsk: number, topSize: number, receivedAt: number): NormalizedOrderBook {
-  const { bids, asks } = synthLevels(bestBid, bestAsk, topSize, "BTC/USDT");
   return {
     exchange,
     symbol: "BTC/USDT",
@@ -235,8 +270,8 @@ function synthBook(exchange: ExchangeId, bestBid: number, bestAsk: number, topSi
     bids,
     asks,
     receivedAt,
-    exchangeTimestamp: receivedAt - Math.floor(rng() * 30),
-    processingLatencyMs: Number((rng() * 2.5 + 0.4).toFixed(2)),
+    exchangeTimestamp: receivedAt - Math.floor(rng() * 35),
+    processingLatencyMs: Number((rng() * 2.7 + 0.4).toFixed(2)),
     integrity: { status: "VERIFIED", gapCount: 0, resyncCount: 0, checksumValidated: true, reason: "training-generator" }
   };
 }
@@ -244,15 +279,12 @@ function generateRound(): { books: NormalizedOrderBook[]; focus: { buy: Exchange
   // Gentle GBM drift on the base mid.
   genMid *= Math.exp((rng() - 0.5) * 0.0008);
   const now = Date.now();
-  const books = EXCHANGE_IDS.map((exchange: ExchangeId) => {
-    const bias = (rng() - 0.5) * 0.0004; // +/-2bps per-venue offset
-    const hs = genMid * (0.5 + rng() * 2) / 10000; // 0.5..2.5bps half-spread
-    const mid = genMid * (1 + bias);
-    const topSize = 0.4 + rng() * 2.6;
-    return synthBook(exchange, mid - hs, mid + hs, topSize, now);
+  const books = EXCHANGE_IDS.map((exchange: ExchangeId, index: number) => {
+    const bias = (rng() - 0.5) * 24; // +/-12 USD smooth-ish per-venue offset
+    return demoShapedBook(exchange, genMid + bias, spreadOf(index), sizeOf(index), now);
   });
 
-  // Inject one controlled dislocation centred on the pair's break-even.
+  // Inject one controlled dislocation drawn around the pair's break-even.
   const bi = Math.floor(rng() * EXCHANGE_IDS.length);
   let si = Math.floor(rng() * EXCHANGE_IDS.length);
   if (si === bi) si = (si + 1) % EXCHANGE_IDS.length;
@@ -260,23 +292,32 @@ function generateRound(): { books: NormalizedOrderBook[]; focus: { buy: Exchange
   const sellExchange = EXCHANGE_IDS[si];
   // Centre the spectrum a little above the pure fee break-even so trials span the
   // executable frontier: from below-bar losers, through marginal DETECTED signals
-  // (some win, some lose), up to comfortable winners -> ~50/50 realized labels and
-  // a healthy overlap with the DETECTED distribution the model faces in production.
-  const breakEvenBps = takerBps(buyExchange) + takerBps(sellExchange) + 7;
-  const grossEdgeBps = Math.max(2, breakEvenBps + 14 + (rng() * 2 - 1) * 20);
-  const thin = rng() < 0.3;
-  const depth = thin ? 0.08 + rng() * 0.12 : 1 + rng() * 3; // thin => high impact
-  const hsB = genMid * (0.5 + rng() * 1.5) / 10000;
-  const hsS = genMid * (0.5 + rng() * 1.5) / 10000;
-  const buyAsk = genMid;
-  const buyBid = buyAsk - 2 * hsB;
-  const sellBid = buyAsk * (1 + grossEdgeBps / 10000);
-  const sellAsk = sellBid + 2 * hsS;
+  // (some win, some lose), up to comfortable winners -> ~50/50 realized labels.
+  // Draw the NET edge (after the pair's round-trip fees) directly, on the same
+  // bps scale as the demo's real winners, then add fees back to get the gross
+  // dislocation. Targeting NET rather than gross-above-break-even is what makes
+  // the model's learned threshold transfer across venue pairs (a high-fee pair
+  // like Coinbase otherwise needs a huge gross edge, which would push the learned
+  // win threshold far above the demo's modest edges and wrongly veto them).
+  const roundTripFeesBps = takerBps(buyExchange) + takerBps(sellExchange);
+  const strong = rng() < 0.2;
+  const netTargetBps = strong ? 45 + rng() * 30 : -12 + rng() * 34; // bulk ~[-12,+22], tail [45,75]
+  const grossEdgeBps = Math.max(2, netTargetBps + roundTripFeesBps + 8); // +8bps for the other costs the engine models
+  const thin = !strong && rng() < 0.3;
+  // The dislocation lowers the buy venue and raises the sell venue around genMid
+  // so that sellBid - buyAsk == grossEdge. step0 = spread*0.5 is the top-level
+  // offset for each book, matching the demo's shape.
+  const step0Buy = spreadOf(bi) * 0.5;
+  const step0Sell = spreadOf(si) * 0.5;
+  const target = genMid * grossEdgeBps / 10000;
+  const x = (target + step0Buy + step0Sell) / 2;
+  const sizeBuy = thin ? sizeOf(bi) * 0.1 : sizeOf(bi);
+  const sizeSell = thin ? sizeOf(si) * 0.1 : sizeOf(si);
   // Quote skew within the 1800ms sync budget so the signal can be DETECTED, but
   // varied so the freshness feature carries information.
   const skewMs = Math.floor(rng() * 1500);
-  books[bi] = synthBook(buyExchange, buyBid, buyAsk, depth, now);
-  books[si] = synthBook(sellExchange, sellBid, sellAsk, depth, now - skewMs);
+  books[bi] = demoShapedBook(buyExchange, genMid - x, spreadOf(bi), sizeBuy, now);
+  books[si] = demoShapedBook(sellExchange, genMid + x, spreadOf(si), sizeSell, now - skewMs);
   return { books, focus: { buy: buyExchange, sell: sellExchange } };
 }
 
@@ -350,7 +391,7 @@ if (tapePath) {
   }
   console.log(`  (${rounds.length} rondas capturadas; reproduciendo en orden)\n`);
   for (let i = 0; i < rounds.length; i += 1) {
-    await ingestDetected(rebaseRound(rounds[i]), rng() < 0.2 ? "val" : "train");
+    await ingestCandidates(rebaseRound(rounds[i]), rng() < 0.2 ? "val" : "train");
     await sleep(0);
     if (!announcedTrained && engine.mlEdgeTensor.isTrained()) {
       announcedTrained = true;
@@ -408,6 +449,7 @@ const winPreds = valSamples.filter((s) => s.label === 1).map((s) => engine.mlEdg
 const lossPreds = valSamples.filter((s) => s.label === 0).map((s) => engine.mlEdgeTensor.predict(s.features).survivalProbability);
 const meanWinSurvival = winPreds.length ? winPreds.reduce((a, b) => a + b, 0) / winPreds.length : 0;
 const meanLossSurvival = lossPreds.length ? lossPreds.reduce((a, b) => a + b, 0) / lossPreds.length : 0;
+const demoSafety = bestMl.trees.length > 0 ? demoMinWinnerSurvival() : 0; // min survival on demo winners (must clear 0.30 veto floor)
 const discriminates = bestMl.trees.length > 0 && finalAuc >= 0.65 && meanWinSurvival > meanLossSurvival;
 
 const mlModel = discriminates ? bestMl : { ...bestMl, trees: [] };
@@ -439,9 +481,18 @@ console.log(`  AUC discriminación (held-out)     : ${finalAuc.toFixed(4)}  (0.5
 console.log("\n  Separación en validación (out-of-sample):");
 console.log(`    survival medio en ganadores reales -> ${(meanWinSurvival * 100).toFixed(1)}%`);
 console.log(`    survival medio en perdedores reales -> ${(meanLossSurvival * 100).toFixed(1)}%`);
+if (!tapePath) {
+  console.log(`  Demo-safety (min survival en ganadores del demo): ${(demoSafety * 100).toFixed(1)}%  (> 30% = no veta el demo)`);
+}
 console.log("\n  Artefacto persistido:");
 console.log(`    AET route calibration : ${Object.keys(bundle.aet).length} rutas (entrenado)`);
 console.log(`    ML ensemble           : ${discriminates ? `${mlModel.trees.length} arboles (validado, AUC ${finalAuc.toFixed(3)})` : "vacio (no discrimina en held-out; reentrena en LIVE)"}`);
+if (tapePath && signals > 0 && wins / signals < 0.05) {
+  console.log("\n  Hallazgo (datos reales): a tarifas retail, TODAS las dislocaciones");
+  console.log("  cross-exchange capturadas son no rentables tras fees+base+costos. El");
+  console.log("  mercado es eficiente: el valor del sistema esta en RECHAZARLAS bien (lo");
+  console.log("  que el AET ahora calibra con outcomes reales), no en un edge inexistente.");
+}
 console.log(`\n  Modelo guardado en: ${outPath}\n`);
 
 process.exit(0);
