@@ -187,6 +187,7 @@ npm run record -- 120       # graba 120s de los 7 exchanges reales -> data/tape-
 npm run train -- --tape data/tape-XXXX.jsonl   # entrena sobre datos reales grabados
 npm run analyze:tape data/tape-XXXX.jsonl      # analiza el tape -> public/data/tape-analysis.json
 npm run study:reversion data/tape-XXXX.jsonl   # entrena reversión sobre datos reales (AUC held-out)
+npm run backtest                               # backtest de paper trading -> public/data/backtest.json (curva de equity)
 ```
 
 **Camino 2 — generador sintético.** El harness conduce el motor + simulador
@@ -222,6 +223,13 @@ genuina aunque no rentable a fees retail, también surfaceada en `/resultados`.
 La página `/torneo` corre un **torneo de estrategias en vivo**: las 4 estrategias
 compiten con su P&L real de paper trading, con podio, medallas, rachas y cambios
 de ranking en tiempo real (responsive, mobile-first).
+
+`/resultados` también muestra un **backtest de paper trading** (`npm run backtest`):
+curva de equity acumulada, win rate, Sharpe-like, max drawdown y profit factor
+sobre el simulador con el modelo de costos real + *implementation shortfall*.
+**Es una simulación, no P&L en vivo** — se presenta junto a la evidencia de mercado
+real (a fees retail el arbitraje cross-exchange no es rentable), para que la página
+sea honesta: demuestra la calidad de decisión y la gestión de riesgo del motor.
 
 ## Live y Demo
 

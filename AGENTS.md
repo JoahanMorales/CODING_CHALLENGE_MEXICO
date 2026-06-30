@@ -56,6 +56,7 @@ npm run train        # offline ML/AET training harness -> public/model/edge-mode
 npm run record       # record real 7-exchange order-book tapes -> data/tape-*.jsonl
 npm run analyze:tape <tape>   # replay a tape -> public/data/tape-analysis.json (for /resultados)
 npm run study:reversion <tape># train spread mean-reversion on real data -> public/data/reversion-study.json
+npm run backtest             # paper-trading backtest -> public/data/backtest.json (equity curve on /resultados)
 ```
 
 `npm run train [seconds]` drives the engine + simulator directly (compressed
