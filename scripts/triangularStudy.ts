@@ -168,10 +168,10 @@ const result = {
   tiers: tierResults,
   takeaway:
     tierResults[0].profitablePct > 0
-      ? `Hay edge triangular incluso a taker estándar el ${tierResults[0].profitablePct}% del tiempo.`
-      : tierResults.find((t) => t.profitablePct > 0)
-        ? `No hay edge a taker estándar, pero SÍ aparece a tiers de fee más bajos — la brecha es la estructura de fees, no el mercado.`
-        : "Sin edge triangular ni siquiera sin fees en esta ventana: el venue arbitra su propio triángulo en milisegundos."
+      ? `Hay edge triangular incluso a taker estándar el ${tierResults[0].profitablePct}% del tiempo — brecha real.`
+      : tierResults.find((t, i) => tiers[i].legBps > 0 && t.profitablePct > 0)
+        ? `Sin edge a taker estándar, pero aparece a fees institucionales — la brecha sería viable solo con un tier de fee muy bajo.`
+        : `Sin edge alcanzable: el triángulo está arbitrado a ~${q(1).toFixed(1)}bps gross. Ni a maker-VIP (0.02%) es rentable; solo a fees CERO ~${tierResults.at(-1)?.profitablePct ?? 0}% del tiempo. Binance arbitra su propio triángulo en milisegundos — eficiencia intra-venue medida.`
 };
 
 mkdirSync(dirname(outPath), { recursive: true });

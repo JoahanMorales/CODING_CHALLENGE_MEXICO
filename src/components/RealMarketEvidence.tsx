@@ -25,9 +25,17 @@ interface ReversionStudy {
   params: { lookahead: number };
 }
 
+interface TriangularStudy {
+  samples: number;
+  grossEdgeBps: { median: number; max: number };
+  tiers: Array<{ tier: string; roundTripCostBps: number; profitablePct: number; bestNetBps: number }>;
+  takeaway: string;
+}
+
 export function RealMarketEvidence() {
   const [data, setData] = useState<TapeAnalysis | null>(null);
   const [study, setStudy] = useState<ReversionStudy | null>(null);
+  const [tri, setTri] = useState<TriangularStudy | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -41,6 +49,12 @@ export function RealMarketEvidence() {
       .then((response) => (response.ok ? response.json() : null))
       .then((json) => {
         if (active && json) setStudy(json as ReversionStudy);
+      })
+      .catch(() => undefined);
+    void fetch("/data/triangular-study.json")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json) => {
+        if (active && json) setTri(json as TriangularStudy);
       })
       .catch(() => undefined);
     return () => {
@@ -144,8 +158,44 @@ export function RealMarketEvidence() {
         </div>
       )}
 
+      {tri && (
+        <div className="mt-4 rounded-2xl border border-zinc-200/70 bg-zinc-50/50 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-mono text-[9px] font-black uppercase tracking-wider text-zinc-600">Edge hunt · arbitraje triangular (un solo venue)</p>
+            <span className="rounded-full border border-zinc-300 bg-white px-3 py-1 font-mono text-[11px] font-black tabular-nums text-zinc-700">
+              edge bruto tope {tri.grossEdgeBps.max} bps
+            </span>
+          </div>
+          <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">
+            Buscamos la brecha en la estrategia más alcanzable para retail —el triángulo BTC→USDT→ETH→BTC dentro de un mismo venue,
+            sin transferencias ni base USDT/USD, solo 3 fees— con {tri.samples.toLocaleString()} muestras reales de Binance. ¿Rentable por tier de fee?
+          </p>
+          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-zinc-100/70 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                  <th className="px-3 py-2">Tier de fee</th>
+                  <th className="px-3 py-2 text-right">Costo</th>
+                  <th className="px-3 py-2 text-right">% rentable</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono text-[11px] font-bold text-zinc-700">
+                {tri.tiers.map((t) => (
+                  <tr key={t.tier} className="border-t border-zinc-100">
+                    <td className="px-3 py-1.5">{t.tier}</td>
+                    <td className="px-3 py-1.5 text-right text-zinc-500">{t.roundTripCostBps} bps</td>
+                    <td className={`px-3 py-1.5 text-right font-black ${t.profitablePct > 0 ? "text-amber-600" : "text-rose-500"}`}>{t.profitablePct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] font-semibold leading-5 text-zinc-500">{tri.takeaway}</p>
+        </div>
+      )}
+
       <p className="mt-4 font-mono text-[9px] font-semibold uppercase tracking-wider text-zinc-400">
-        Captura {captured} · reproducible con npm run record → npm run analyze:tape → npm run study:reversion
+        Captura {captured} · reproducible con npm run record · record:ws · analyze:tape · study:reversion · study:triangular · backtest
       </p>
     </div>
   );

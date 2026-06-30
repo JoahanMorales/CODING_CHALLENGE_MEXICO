@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-06-30T17:35:20.743Z",
+  "venue": "binance",
+  "sizeBtc": 0.1,
+  "durationSec": 150,
+  "samples": 3203,
+  "grossEdgeBps": {
+    "min": -5.82,
+    "median": -1.27,
+    "p99": 1.53,
+    "max": 1.72
+  },
+  "tiers": [
+    {
+      "tier": "Taker estándar (0.10%)",
+      "roundTripCostBps": 30,
+      "profitablePct": 0,
+      "bestNetBps": -28.28,
+      "medianNetBps": -31.27
+    },
+    {
+      "tier": "Taker con BNB (0.075%)",
+      "roundTripCostBps": 22.5,
+      "profitablePct": 0,
+      "bestNetBps": -20.78,
+      "medianNetBps": -23.77
+    },
+    {
+      "tier": "VIP taker (0.04%)",
+      "roundTripCostBps": 12,
+      "profitablePct": 0,
+      "bestNetBps": -10.28,
+      "medianNetBps": -13.27
+    },
+    {
+      "tier": "Maker VIP (0.02%)",
+      "roundTripCostBps": 6,
+      "profitablePct": 0,
+      "bestNetBps": -4.28,
+      "medianNetBps": -7.27
+    },
+    {
+      "tier": "Sin fees (límite teórico)",
+      "roundTripCostBps": 0,
+      "profitablePct": 9.897,
+      "bestNetBps": 1.72,
+      "medianNetBps": -1.27
+    }
+  ],
+  "takeaway": "Sin edge alcanzable: el triángulo está arbitrado a ~1.7bps gross. Ni a maker-VIP (0.02%) es rentable; solo a fees CERO ~9.9% del tiempo. Binance arbitra su propio triángulo en milisegundos — eficiencia intra-venue medida."
+}
