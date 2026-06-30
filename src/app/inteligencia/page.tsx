@@ -54,7 +54,8 @@ const innovations = [
   ["Gate de cointegración (ADF)", "Stat arb solo opera spreads que rechazan raíz unitaria: t-stat de Dickey-Fuller sobre el AR(1) con deriva (t < −2.0 ⇒ estacionario/cointegrado). Engle & Granger (1987), Dickey & Fuller (1979)."],
   ["Sizing de Kelly fraccional", "Tamaño = f* = p − (1−p)/b (Kelly 1956, Thorp 2006), con p = supervivencia del ensemble y b = odds edge/downside, escalando la base de profundidad y acotado a [0.3, 1]."],
   ["Maker pricing Avellaneda-Stoikov", "La pata maker ya no usa una agresividad fija: deriva qué tan adentro del spread postar del half-spread óptimo δ = 0.5[γσ²(T−t) + (2/γ)ln(1+γ/κ)] — más pasiva en alta volatilidad, más ajustada en libros profundos — con skew por order-flow imbalance. Avellaneda & Stoikov (2008)."],
-  ["Features de order-flow imbalance", "El ensemble ML ahora consume OFI a la punta y multi-level OFI ponderado a 5 niveles (Cont-Kukanov-Stoikov 2014; Xu-Gould-Howison 2018, R²≈65 %), microprice en ambos libros y su alineación — antes eran features inertes en 0."]
+  ["Features de order-flow imbalance", "El ensemble ML ahora consume OFI a la punta y multi-level OFI ponderado a 5 niveles (Cont-Kukanov-Stoikov 2014; Xu-Gould-Howison 2018, R²≈65 %), microprice en ambos libros y su alineación — antes eran features inertes en 0."],
+  ["Búsqueda de semillas para el modelo ML", "El modelo warm-start ya no sale de un único entrenamiento: npm run train:search corre el harness sobre N seeds independientes (mercados sintéticos distintos), puntúa cada uno por AUC held-out + demo-safety, y solo promueve un modelo nuevo si supera al actual — nunca lo empeora. Última búsqueda (18 seeds): demo-safety subió de 82.6% a 96.6%."]
 ];
 
 const formulas = [
@@ -171,7 +172,7 @@ export default function IntelligencePage() {
       <section className="border-y border-sky-100 px-5 py-12">
         <div className="mx-auto max-w-7xl">
           <p className="font-mono text-[10px] font-black uppercase text-sky-700">Innovaciones implementadas</p>
-          <h2 className="mt-2 text-3xl font-black text-zinc-950">Dieciséis mejoras sobre el modelo base</h2>
+          <h2 className="mt-2 text-3xl font-black text-zinc-950">Diecisiete mejoras sobre el modelo base</h2>
           <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-zinc-500">
             Cada innovación está activa en el motor de producción y tiene cobertura de pruebas.
           </p>
