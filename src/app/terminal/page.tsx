@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { Dashboard } from "@/components/Dashboard";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
+
+export const metadata: Metadata = { title: "Terminal en vivo" };
 
 export default function TerminalPage() {
   return (

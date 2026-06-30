@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { AetFlowCanvas } from "@/components/AetFlowCanvas";
 import { AetPipelineDiagram } from "@/components/AetPipelineDiagram";
 import { IntelligenceCalibration } from "@/components/IntelligenceCalibration";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
+
+export const metadata: Metadata = { title: "Inteligencia" };
 
 const strategies = [
   {

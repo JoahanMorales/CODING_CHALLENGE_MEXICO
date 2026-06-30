@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
 import { SessionAchievements } from "@/components/SessionAchievements";
 import { StrategyTournament } from "@/components/StrategyTournament";
+
+export const metadata: Metadata = { title: "Torneo de estrategias" };
 
 export default function TournamentPage() {
   return (

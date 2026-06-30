@@ -2,8 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ArbitrAI | Institutional BTC Arbitrage Intelligence",
-  description: "Institutional-grade BTC arbitrage intelligence, accessible to any developer."
+  title: {
+    default: "ArbitrAI — Inteligencia de arbitraje BTC",
+    template: "%s · ArbitrAI"
+  },
+  description: "Detección de arbitraje BTC de grado institucional con modelo de costos real, ensemble AET+ML y ejecución gateada por riesgo.",
+  applicationName: "ArbitrAI"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
 import { RealMarketEvidence } from "@/components/RealMarketEvidence";
 import { ResultsDashboard } from "@/components/ResultsDashboard";
+
+export const metadata: Metadata = { title: "Resultados" };
 
 export default function ResultsPage() {
   return (
