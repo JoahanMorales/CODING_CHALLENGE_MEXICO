@@ -17,3 +17,9 @@ data/
 scripts/railway_keepalive.py
 
 .vercel
+
+# Personal hackathon committee submissions / source renders (kept local only)
+recursos/Respuestas_*
+recursos/generar_*.py
+recursos/render_*/
+recursos/terminalvideo.mp4

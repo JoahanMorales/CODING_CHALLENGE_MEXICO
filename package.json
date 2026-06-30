@@ -11,8 +11,9 @@
     "start": "next start",
     "start:ws": "tsx backend/server.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "next lint",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test",
+    "check": "npm run typecheck && npm run lint && npm run test",
     "sandbox:probe": "tsx scripts/sandboxProbe.ts",
     "sandbox:hedge": "tsx scripts/okxDemoHedge.ts"
   },

@@ -660,7 +660,3 @@ function benjaminiHochberg(pValues: number[], fdrLevel: number): boolean[] {
   for (let k = 0; k <= maxReject; k++) rejected[indexed[k].i] = true;
   return rejected;
 }
-
-function estimateOuReversion(values: number[]): { halfLifeSamples: number; quality: number } {
-  return estimateOuMle(values);
-}
