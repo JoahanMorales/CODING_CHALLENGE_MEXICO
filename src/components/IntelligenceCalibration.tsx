@@ -1,16 +1,45 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useArbitrageStore } from "@/store/useArbitrageStore";
+
+interface ModelCard {
+  source?: string;
+  signals?: number;
+  auc?: number;
+  mlValidated?: boolean;
+  trees?: number;
+}
 
 export function IntelligenceCalibration() {
   const init = useArbitrageStore((state) => state.init);
   const learning = useArbitrageStore((state) => state.learning);
   const mode = useArbitrageStore((state) => state.mode);
+  const [model, setModel] = useState<ModelCard | null>(null);
 
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/model/edge-model.json")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((bundle) => {
+        if (!active || !bundle) return;
+        setModel({
+          source: bundle.source,
+          signals: bundle.signals,
+          auc: bundle.auc,
+          mlValidated: bundle.mlValidated,
+          trees: Array.isArray(bundle.ml?.trees) ? bundle.ml.trees.length : 0
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const brier = Number(learning.brierScore);
   const observations = learning.calibrationObservations;
@@ -53,10 +82,24 @@ export function IntelligenceCalibration() {
         </div>
       </div>
 
+      {model && (model.trees ?? 0) > 0 && (
+        <div className="mt-5 flex flex-wrap items-center gap-2.5 rounded-2xl border border-violet-200/70 bg-violet-50/60 px-4 py-3">
+          <span className="font-mono text-[9px] font-black uppercase tracking-wider text-violet-700">Ensemble ML pre-entrenado</span>
+          <Stat label="Árboles" value={model.trees ?? 0} tone="violet" />
+          <Stat label="AUC held-out" value={(model.auc ?? 0).toFixed(3)} tone="emerald" />
+          <Stat label="Ensayos" value={model.signals ?? 0} tone="sky" />
+          <Badge tone={model.mlValidated ? "emerald" : "amber"}>{model.mlValidated ? "Validado · discrimina" : "Reentrena en LIVE"}</Badge>
+        </div>
+      )}
+
       <p className="mt-5 text-sm font-semibold leading-6 text-zinc-500">
         Cada señal —ejecutada o descartada— se reevalúa contra el mercado posterior con markouts a 100/500/2000 ms.
         El error de pronóstico recalibra el sesgo por ruta del Edge Tensor y alimenta el Brier score, de modo que el
         modelo aprende de sus aciertos <span className="text-zinc-900">y</span> de las oportunidades que dejó pasar.
+        El ensemble gradient-boosted se pre-entrena offline (<span className="font-mono text-zinc-700">npm run train</span>) y
+        se valida con AUC sobre un held-out disjunto antes de desplegarse; sobre datos reales grabados de los 7 exchanges
+        (<span className="font-mono text-zinc-700">npm run record</span>) confirma que el arbitraje cross-exchange retail no
+        sobrevive fees+base, por lo que el valor está en rechazarlo con precisión.
       </p>
     </div>
   );

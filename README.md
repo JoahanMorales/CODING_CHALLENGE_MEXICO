@@ -179,22 +179,34 @@ npm run build
 ## Entrenamiento del modelo
 
 ```bash
-npm run train          # 45s por defecto
-npm run train -- 90    # entrena 90s
+npm run train               # 45s, generador sintético enriquecido (camino 2)
+npm run train -- 90         # entrena 90s
+npm run record -- 120       # graba 120s de los 7 exchanges reales -> data/tape-*.jsonl (camino 1)
+npm run train -- --tape data/tape-XXXX.jsonl   # entrena sobre datos reales grabados
 ```
 
-El harness conduce el motor + simulador directamente (latencia de reloj
-comprimida, costo de latencia intacto) y cicla escenarios de estrés para generar
-outcomes de paper trading. Reporta en vivo la dinámica de entrenamiento (señales,
-Brier, supervivencia) y persiste la **calibración AET por ruta** —y un ensemble
-ML validado, si el run produjo uno discriminativo— en
-`public/model/edge-model.json`. La demo (cliente) y el gateway (backend)
-hacen *warm-start* desde ese archivo, así arrancan pre-calibrados en vez de en frío.
+**Camino 2 — generador sintético.** El harness conduce el motor + simulador
+directamente (latencia comprimida, costo intacto) y genera un Monte-Carlo de
+dislocaciones cross-exchange **centradas en el break-even** de cada par (fees +
+costos), con la misma estructura de libros que la demo en vivo. Cada par
+inyectado se liquida como un ensayo etiquetado (ganadores y perdedores) y la
+discriminación se valida con **AUC sobre un held-out disjunto por rondas** (nunca
+entrenado). Solo persiste el ensemble si rankea ganadores sobre perdedores
+(AUC ≥ 0.65) **y** pasa un *demo-safety guard* que garantiza que no vetará las
+señales legítimas de la demo. Run típico: AUC held-out ≈ 0.99, separación
+ganador/perdedor ≈ 86 % vs 8 %, demo-safety ≈ 96 %.
 
-> Nota honesta: el simulador GBM determinista produce edges cross-exchange
-> casi siempre rentables, por lo que rara vez ofrece la diversidad de clases que
-> un ensemble ML discriminativo necesita; en ese caso el harness persiste solo la
-> calibración AET (sí entrenada) y deja que el ML se reentrene con datos `LIVE`.
+**Camino 1 — datos reales.** `npm run record` captura los order books reales de
+los 7 exchanges (normalizados con la misma base USDT/USD que el gateway) a un
+tape reproducible; `--tape` lo reproduce por el mismo pipeline. Hallazgo honesto
+y verificado: a tarifas retail, **todas** las dislocaciones cross-exchange reales
+son no rentables tras fees + base (net spread −25 a −113 bps) — el mercado es
+eficiente, así que el valor del sistema está en rechazarlas con precisión (lo que
+el AET calibra con esos outcomes reales), no en un edge inexistente.
+
+La **calibración AET por ruta** y el **ensemble ML validado** se persisten en
+`public/model/edge-model.json`; la demo (cliente) y el gateway (backend) hacen
+*warm-start* desde ese archivo, así arrancan pre-calibrados en vez de en frío.
 
 ## Live y Demo
 

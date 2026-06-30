@@ -53,14 +53,26 @@ npm run check        # typecheck + lint + test
 npm run start        # Next.js production server
 npm run start:ws     # WS backend production
 npm run train        # offline ML/AET training harness -> public/model/edge-model.json
+npm run record       # record real 7-exchange order-book tapes -> data/tape-*.jsonl
 ```
 
 `npm run train [seconds]` drives the engine + simulator directly (compressed
-wall-clock latency via `ARBITRAI_SIM_SLEEP_SCALE`) and cycles stress scenarios to
-generate paper-trade outcomes, then persists the AET route calibration (and a
-validated ML ensemble, if the run produced a discriminative one) to
-`public/model/edge-model.json`. The demo (client) and the gateway (backend)
-warm-start from that file so they begin pre-calibrated instead of cold.
+wall-clock latency via `ARBITRAI_SIM_SLEEP_SCALE`). The synthetic generator draws
+cross-exchange dislocations centred on each pair's break-even, with the SAME book
+structure as the live demo, settles the injected pair as a labelled trial, and
+validates discrimination with AUC over a round-disjoint held-out set. It only
+persists an ML ensemble that ranks winners over losers (AUC >= 0.65) AND passes a
+demo-safety guard (won't veto the demo's genuine winners). `npm run record
+[seconds]` captures real order books from the 7 exchanges (REST, basis-adjusted)
+to `data/tape-*.jsonl`; `npm run train -- --tape <file>` replays it to train on
+real microstructure (which confirms retail cross-exchange arb is uniformly
+unprofitable, so tape mode mainly recalibrates the AET on real outcomes). Both
+persist to `public/model/edge-model.json`; the demo (client) and gateway
+(backend) warm-start from it so they begin pre-calibrated instead of cold.
+
+Note: `opportunity.netSpreadPct` is formatted in PERCENT units (`pct()` ×100);
+anything reconstructing the feature for ML training must divide by 100 to match
+the raw-decimal scale inference uses (see `tests/mlTrainingScale.test.ts`).
 
 ### Running a single test
 
