@@ -23,6 +23,7 @@
     "analyze:tape": "tsx scripts/analyzeTape.ts",
     "study:reversion": "tsx scripts/reversionStudy.ts",
     "study:triangular": "tsx scripts/triangularStudy.ts",
+    "study:portfolio": "tsx scripts/portfolioStudy.ts",
     "backtest": "tsx scripts/backtest.ts"
   },
   "dependencies": {
