@@ -191,6 +191,7 @@ npm run train -- --tape data/tape-XXXX.jsonl   # entrena sobre datos reales grab
 npm run analyze:tape data/tape-XXXX.jsonl      # analiza el tape -> public/data/tape-analysis.json
 npm run study:reversion data/tape-XXXX.jsonl   # entrena reversión sobre datos reales (AUC held-out)
 npm run study:triangular                       # edge hunt: triangular intra-venue por tier de fees (datos reales)
+npm run study:portfolio                        # síntesis: portafolio multi-estrategia en vivo, ¿diversificar gana?
 npm run record:ws                              # graba feeds WebSocket independientes (latency edges)
 npm run backtest                               # backtest de paper trading -> public/data/backtest.json (curva de equity)
 ```
