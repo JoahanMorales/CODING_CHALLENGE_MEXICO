@@ -33,9 +33,21 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getJson(url: string): Promise<unknown> {
-  const response = await fetch(url, { headers: { "User-Agent": "ArbitrAI Hackathon Recorder" } });
-  return (await response.json()) as unknown;
+// Per-fetch timeout: a venue that doesn't answer within the budget is simply
+// absent from this round, so its last book goes stale relative to the venues that
+// did answer -- which is exactly the real staleness LATENCY_ARB looks for.
+async function getJson(url: string, timeoutMs = 600): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "ArbitrAI Hackathon Recorder" },
+      signal: controller.signal
+    });
+    return (await response.json()) as unknown;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
