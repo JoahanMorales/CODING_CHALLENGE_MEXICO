@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useArbitrageStore } from "@/store/useArbitrageStore";
 import type { OpportunityType } from "@/lib/types";
+import { IconAward, IconGem, IconLock, IconShield, IconTarget, IconTrendUp, IconZap } from "@/components/icons";
+
+type IconType = (props: { className?: string }) => React.ReactNode;
 
 interface Progress {
   fills: number;
@@ -14,19 +17,19 @@ interface Progress {
 
 interface Achievement {
   id: string;
-  icon: string;
+  Icon: IconType;
   title: string;
   desc: string;
   unlocked: (p: Progress) => boolean;
 }
 
 const ACHIEVEMENTS: Achievement[] = [
-  { id: "first", icon: "🩸", title: "Primer fill", desc: "Ejecuta tu primer paper trade", unlocked: (p) => p.fills >= 1 },
-  { id: "quad", icon: "🎯", title: "Cuádruple amenaza", desc: "Las 4 estrategias logran al menos un fill", unlocked: (p) => p.typesActive >= 4 },
-  { id: "streak", icon: "🔥", title: "En racha", desc: "Una racha de 5 fills ganadores seguidos", unlocked: (p) => p.maxStreak >= 5 },
-  { id: "survivor", icon: "🛡️", title: "Sobreviviente", desc: "Ejecuta durante un escenario de estrés", unlocked: (p) => p.survivedStress },
-  { id: "edge", icon: "💎", title: "Cazador de edges", desc: "Acumula +$100 de P&L de sesión", unlocked: (p) => p.pnl >= 100 },
-  { id: "century", icon: "💯", title: "Centurión", desc: "100 fills en una sesión", unlocked: (p) => p.fills >= 100 }
+  { id: "first", Icon: IconZap, title: "Primer fill", desc: "Ejecuta tu primer paper trade", unlocked: (p) => p.fills >= 1 },
+  { id: "quad", Icon: IconTarget, title: "Cuádruple amenaza", desc: "Las 4 estrategias logran al menos un fill", unlocked: (p) => p.typesActive >= 4 },
+  { id: "streak", Icon: IconTrendUp, title: "En racha", desc: "Una racha de 5 fills ganadores seguidos", unlocked: (p) => p.maxStreak >= 5 },
+  { id: "survivor", Icon: IconShield, title: "Sobreviviente", desc: "Ejecuta durante un escenario de estrés", unlocked: (p) => p.survivedStress },
+  { id: "edge", Icon: IconGem, title: "Cazador de edges", desc: "Acumula +$100 de P&L de sesión", unlocked: (p) => p.pnl >= 100 },
+  { id: "century", Icon: IconAward, title: "Centurión", desc: "100 fills en una sesión", unlocked: (p) => p.fills >= 100 }
 ];
 
 function xpFor(p: Progress): number {
@@ -133,17 +136,20 @@ export function SessionAchievements() {
       <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {ACHIEVEMENTS.map((achievement) => {
           const got = achievement.unlocked(progress);
+          const Glyph = got ? achievement.Icon : IconLock;
           return (
             <div
               key={achievement.id}
               className={`flex items-start gap-2.5 rounded-2xl border px-3 py-3 transition-all duration-500 ${
-                got ? "border-emerald-200 bg-emerald-50/70" : "border-zinc-200/70 bg-zinc-50/40 opacity-60"
+                got ? "border-emerald-200 bg-emerald-50/70" : "border-zinc-200/70 bg-zinc-50/40"
               }`}
             >
-              <span className={`text-xl leading-none ${got ? "" : "grayscale"}`}>{got ? achievement.icon : "🔒"}</span>
+              <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border ${got ? "border-emerald-200 bg-white text-emerald-600" : "border-zinc-200 bg-white text-zinc-300"}`}>
+                <Glyph className="h-4 w-4" />
+              </span>
               <div className="min-w-0">
                 <strong className={`block text-xs font-black tracking-tight ${got ? "text-emerald-800" : "text-zinc-500"}`}>{achievement.title}</strong>
-                <span className="block text-[10px] font-semibold leading-snug text-zinc-500">{achievement.desc}</span>
+                <span className="block text-[10px] font-semibold leading-snug text-zinc-400">{achievement.desc}</span>
               </div>
             </div>
           );

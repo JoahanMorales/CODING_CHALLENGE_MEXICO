@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useArbitrageStore } from "@/store/useArbitrageStore";
 import type { OpportunityType } from "@/lib/types";
+import { IconCrown, IconTrendUp } from "@/components/icons";
 
 const STRATEGIES: OpportunityType[] = ["CROSS_EXCHANGE", "TRIANGULAR", "STAT_ARB", "LATENCY_ARB"];
 
@@ -13,7 +14,12 @@ const META: Record<OpportunityType, { label: string; blurb: string; tone: string
   LATENCY_ARB: { label: "Latencia", blurb: "Levanta una cotización rancia contra una fresca", tone: "violet", accent: "text-violet-700", bar: "from-violet-400 to-violet-300" }
 };
 
-const MEDALS = ["🥇", "🥈", "🥉", "4️⃣"];
+const RANK_STYLE = [
+  "border-amber-300 bg-gradient-to-b from-amber-100 to-amber-200 text-amber-800",
+  "border-zinc-300 bg-gradient-to-b from-zinc-100 to-zinc-200 text-zinc-700",
+  "border-orange-300 bg-gradient-to-b from-orange-100 to-orange-200 text-orange-800",
+  "border-zinc-200 bg-zinc-50 text-zinc-400"
+];
 
 interface Tally {
   trades: number;
@@ -142,7 +148,9 @@ export function StrategyTournament() {
       {/* Leader spotlight */}
       <div className={`mt-4 flex flex-col gap-3 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between ${toneBox(META[leader.type].tone)}`}>
         <div className="flex items-center gap-3">
-          <span className="text-3xl leading-none sm:text-4xl">{anyActivity ? "👑" : "⏳"}</span>
+          <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl border ${anyActivity ? "border-amber-300 bg-amber-100 text-amber-700" : "border-zinc-200 bg-zinc-100 text-zinc-400"}`}>
+            <IconCrown className="h-5 w-5" />
+          </span>
           <div>
             <span className="block font-mono text-[9px] font-black uppercase tracking-wider opacity-70">Líder de la temporada</span>
             <strong className="block text-xl font-black tracking-tight text-zinc-950 sm:text-2xl">
@@ -173,7 +181,9 @@ export function StrategyTournament() {
               }`}
             >
               <div className="flex w-10 flex-col items-center">
-                <span className="text-2xl leading-none">{MEDALS[entry.rank - 1]}</span>
+                <span className={`grid h-8 w-8 place-items-center rounded-lg border font-mono text-sm font-black ${RANK_STYLE[entry.rank - 1]}`}>
+                  {entry.rank}
+                </span>
                 {entry.delta !== 0 && (
                   <span className={`mt-0.5 font-mono text-[9px] font-black ${entry.delta > 0 ? "text-emerald-600" : "text-rose-500"}`}>
                     {entry.delta > 0 ? `▲${entry.delta}` : `▼${Math.abs(entry.delta)}`}
@@ -185,7 +195,10 @@ export function StrategyTournament() {
                 <div className="flex flex-wrap items-center gap-2">
                   <strong className={`truncate text-sm font-black tracking-tight ${meta.accent}`}>{meta.label}</strong>
                   {entry.streak >= 2 && (
-                    <span className="rounded-full bg-orange-100 px-1.5 py-0.5 font-mono text-[9px] font-black text-orange-700">🔥 {entry.streak}</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-1.5 py-0.5 font-mono text-[9px] font-black text-orange-700">
+                      <IconTrendUp className="h-2.5 w-2.5" strokeWidth={2.5} />
+                      {entry.streak}
+                    </span>
                   )}
                 </div>
                 <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-zinc-100">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { IconTrophy } from "@/components/icons";
 import { AetFlowCanvas } from "@/components/AetFlowCanvas";
 import { PublicHealthBadge } from "@/components/PublicHealthBadge";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
@@ -38,10 +39,11 @@ export default function Home() {
                 Explorar el modelo AET
               </Link>
               <Link
-                className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50/80 px-6 py-3.5 text-sm font-black text-violet-700 backdrop-blur transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100"
+                className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white/80 px-6 py-3.5 text-sm font-black text-zinc-700 backdrop-blur transition hover:-translate-y-0.5 hover:border-sky-200 hover:text-sky-700"
                 href="/torneo"
               >
-                🏆 Ver torneo en vivo
+                <IconTrophy className="h-4 w-4" />
+                Torneo en vivo
               </Link>
             </div>
             <div className="mt-10 grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-4">
