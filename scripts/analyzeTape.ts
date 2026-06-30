@@ -44,6 +44,7 @@ const engine = new ArbitrageEngine();
 const crossNetBps: number[] = [];
 let crossTotal = 0;
 let crossProfitable = 0;
+let crossDetected = 0;
 let latencyCandidates = 0;
 let latencyDetected = 0;
 let latencyMaxNetBps = -Infinity;
@@ -94,7 +95,15 @@ for (const round of rounds) {
         crossTotal += 1;
         const bps = netBps(opportunity);
         crossNetBps.push(bps);
-        if (bps > 0) crossProfitable += 1;
+        if (bps > 0) {
+          crossProfitable += 1;
+          // A positive raw net spread (after fees) doesn't mean the engine would
+          // actually trade it -- the AET risk-adjustment (adverse selection,
+          // volatility, latency risk, calibration bias) can still reject it. Track
+          // both so we never conflate "the visible math is positive" with "the
+          // engine marked this genuinely executable".
+          if (opportunity.status === "DETECTED") crossDetected += 1;
+        }
       } else if (opportunity.type === "LATENCY_ARB") {
         latencyCandidates += 1;
         if (opportunity.status === "DETECTED") latencyDetected += 1;
@@ -126,6 +135,7 @@ for (let edge = lo; edge < hi; edge += binSize) {
 }
 
 const durationSec = Math.round((lastT - firstT) / 1000);
+const crossProfitablePct = crossTotal ? Number(((crossProfitable / crossTotal) * 100).toFixed(2)) : 0;
 const analysis = {
   generatedAt: new Date().toISOString(),
   tape: tapePath,
@@ -139,7 +149,13 @@ const analysis = {
   cross: {
     candidates: crossTotal,
     profitable: crossProfitable,
-    profitablePct: crossTotal ? Number(((crossProfitable / crossTotal) * 100).toFixed(2)) : 0,
+    profitablePct: crossProfitablePct,
+    // "profitable" only means the raw net spread (after fees) was positive -- it
+    // does NOT mean the engine would trade it. "detected" is the AET-risk-adjusted
+    // truth: did expectedValueUsd/survivalProbability/sync/health all clear the
+    // executable bar. A gap between the two (profitable > 0, detected = 0) shows
+    // the risk-adjustment gate correctly rejecting thin, risky raw-positive spreads.
+    detected: crossDetected,
     netSpreadBps: {
       min: Number(quantile(0).toFixed(2)),
       p25: Number(quantile(0.25).toFixed(2)),
@@ -166,9 +182,11 @@ const analysis = {
     requiredZAbs: 1.6
   },
   verdict:
-    crossProfitable === 0
-      ? "A tarifas retail, ninguna dislocación cross-exchange real superó fees+base. El mercado es eficiente; el valor está en rechazarlas con precisión."
-      : `${crossProfitable} de ${crossTotal} dislocaciones cross superaron costos (${((crossProfitable / crossTotal) * 100).toFixed(2)}%).`
+    crossDetected > 0
+      ? `${crossDetected} de ${crossTotal} dislocaciones cross fueron DETECTED (ejecutables) por el motor.`
+      : crossProfitable === 0
+        ? "A tarifas retail, ninguna dislocación cross-exchange real superó fees+base. El mercado es eficiente; el valor está en rechazarlas con precisión."
+        : `${crossProfitable} de ${crossTotal} (${crossProfitablePct}%) tuvieron spread neto positivo tras fees, pero 0 fueron DETECTED: el ajuste por riesgo del Edge Tensor (supervivencia, P&L ajustado a riesgo) rechazó correctamente todas -- el edge visible es real pero demasiado delgado para sobrevivir el riesgo de ejecución de dos patas no simultáneas.`
 };
 
 mkdirSync(dirname(outPath), { recursive: true });
@@ -180,7 +198,8 @@ console.log(`  Captura           : ${rounds.length} rondas · ${bookCount} libro
 console.log(`  Base USDT/USD     : ${basisBps} bps`);
 console.log(`\n  Cross-exchange:`);
 console.log(`    candidatas      : ${crossTotal}`);
-console.log(`    rentables       : ${crossProfitable} (${analysis.cross.profitablePct}%)`);
+console.log(`    spread neto>0   : ${crossProfitable} (${analysis.cross.profitablePct}%) -- NO implica ejecutable, ver DETECTED`);
+console.log(`    DETECTED        : ${crossDetected} (ejecutable según el motor: sync + salud + supervivencia + EV)`);
 console.log(`    net spread bps  : min ${analysis.cross.netSpreadBps.min} · mediana ${analysis.cross.netSpreadBps.median} · max ${analysis.cross.netSpreadBps.max}`);
 console.log(`\n  Latency-arb (stale-quote):`);
 console.log(`    candidatas         : ${latencyCandidates}`);

@@ -1,90 +1,105 @@
 {
-  "generatedAt": "2026-06-30T19:27:54.319Z",
-  "tape": "data/tape-long.jsonl",
+  "generatedAt": "2026-06-30T21:50:43.883Z",
+  "tape": "data/tape-ws-1h.jsonl",
   "capture": {
-    "rounds": 766,
-    "books": 5244,
+    "rounds": 5107,
+    "books": 25534,
     "venues": [
       "binance",
-      "kraken",
       "coinbase",
-      "okx",
+      "gate",
       "bybit",
-      "bitfinex",
-      "gate"
+      "okx"
     ],
-    "durationSec": 539,
-    "usdtUsdBasisBps": "-16.200"
+    "durationSec": 3598,
+    "usdtUsdBasisBps": "-14.300"
   },
   "cross": {
-    "candidates": 31203,
-    "profitable": 0,
-    "profitablePct": 0,
+    "candidates": 139799,
+    "profitable": 3476,
+    "profitablePct": 2.49,
+    "detected": 0,
     "netSpreadBps": {
-      "min": -111.2,
-      "p25": -88.9,
-      "median": -57.54,
-      "p75": -42.09,
-      "max": -21.19
+      "min": -113.06,
+      "p25": -98.28,
+      "median": -35,
+      "p75": -26.14,
+      "max": 16.34
     },
     "histogram": [
       {
         "binBps": -120,
-        "count": 581
+        "count": 9832
       },
       {
         "binBps": -110,
-        "count": 5355
+        "count": 20842
       },
       {
         "binBps": -100,
-        "count": 1527
+        "count": 11993
       },
       {
         "binBps": -90,
-        "count": 1271
+        "count": 3176
       },
       {
         "binBps": -80,
-        "count": 3335
+        "count": 2831
       },
       {
         "binBps": -70,
-        "count": 2627
+        "count": 1318
       },
       {
         "binBps": -60,
-        "count": 6881
+        "count": 147
       },
       {
         "binBps": -50,
-        "count": 2234
+        "count": 9561
       },
       {
         "binBps": -40,
-        "count": 5459
+        "count": 32655
       },
       {
         "binBps": -30,
-        "count": 1933
+        "count": 23294
+      },
+      {
+        "binBps": -20,
+        "count": 11925
+      },
+      {
+        "binBps": -10,
+        "count": 8745
+      },
+      {
+        "binBps": 0,
+        "count": 3285
+      },
+      {
+        "binBps": 10,
+        "count": 195
       }
     ]
   },
   "latency": {
-    "candidates": 0,
+    "candidates": 144,
     "detected": 0,
-    "maxNetBps": 0,
-    "maxStalenessMs": 0,
-    "maxObservedStalenessMs": 844,
-    "stalenessOver1800": 0,
+    "maxNetBps": -19.42,
+    "maxStalenessMs": 3784,
+    "maxObservedStalenessMs": 3773,
+    "stalenessOver1800": 165,
     "thresholdMs": 1800
   },
   "statArb": {
-    "candidates": 461,
+    "candidates": 1069,
     "detected": 0,
-    "maxNetBps": -39.63,
-    "bestZAbs": 6.66,
+    "maxNetBps": -33.17,
+    "bestZAbs": 6.18,
     "requiredZAbs": 1.6
   },
-  "verdict": "A tarifas retail, ninguna dislocación cross-exchange real superó fees+base. El mercado es eficiente; el valor está en rechazarlas con precisión."
+  "verdict": "3476 de 139799 (2.49%) tuvieron spread neto positivo tras fees, pero 0 fueron DETECTED: el ajuste por riesgo del Edge Tensor (supervivencia, P&L ajustado a riesgo) rechazó correctamente todas -- el edge visible es real pero demasiado delgado para sobrevivir el riesgo de ejecución de dos patas no simultáneas."
 }
