@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-06-30T22:55:39.575Z",
+  "durationSec": 1200,
+  "rounds": 1703,
+  "strategies": {
+    "cross": {
+      "meanBps": -26.1477,
+      "stdevBps": 4.385,
+      "sharpeLike": -246.079
+    },
+    "statArb": {
+      "meanBps": -42.4548,
+      "stdevBps": 43.628,
+      "sharpeLike": -40.158
+    },
+    "triangular": {
+      "meanBps": -12.8163,
+      "stdevBps": 4.3347,
+      "sharpeLike": -122.014
+    }
+  },
+  "portfolio": {
+    "meanBps": -81.4189,
+    "stdevBps": 44.1224,
+    "sharpeLike": -76.151
+  },
+  "linearityCheck": {
+    "sumOfIndividualMeansBps": -81.4189,
+    "portfolioMeanBps": -81.4189,
+    "differenceBps": 0,
+    "confirms": true
+  },
+  "correlations": {
+    "crossVsStatArb": 0.017,
+    "crossVsTriangular": -0.069,
+    "statArbVsTriangular": 0.004
+  },
+  "bestSingleStrategy": "triangular",
+  "portfolioBeatsBestSingle": false,
+  "takeaway": "EV del portafolio = -81.4189bps/ronda (negativo), e identico a la suma de los EVs individuales (-81.4189bps, diferencia 0bps) -- la expectativa es lineal por definicion matematica: sumar apuestas de EV negativo nunca produce un portafolio de EV positivo, sin importar como se combinen o diversifiquen. La diversificacion (correlaciones cross-statArb=0.017, cross-triangular=-0.069) puede reducir la VARIANZA del resultado, pero no puede cambiar el signo de la expectativa. No hay combinacion de las senales que tenemos que le gane a un mercado eficiente -- esa es la conclusion matematica, no una falta de esfuerzo."
+}
