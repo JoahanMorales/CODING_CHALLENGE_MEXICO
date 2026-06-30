@@ -41,4 +41,13 @@ describe("RiskManager.shouldHalt", () => {
     expect(risk.shouldHalt()).toBe(true);
     expect(risk.getState().haltedReason).toBe("daily loss limit breached");
   });
+
+  it("halts and reports the latency kill switch when feeds slow down", () => {
+    const risk = new RiskManager();
+    for (let i = 0; i < 20; i += 1) risk.recordLatency(4000);
+    expect(risk.shouldHalt()).toBe(true);
+    const state = risk.getState();
+    expect(state.circuitBreakerActive).toBe(true);
+    expect(state.haltedReason).toContain("feed latency kill switch");
+  });
 });

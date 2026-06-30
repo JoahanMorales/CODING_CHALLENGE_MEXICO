@@ -94,16 +94,20 @@ export class RiskManager {
     this.refreshScenario();
     const halted = this.shouldHalt();
     const lossLimited = this.dailyPnlUsd.lessThanOrEqualTo(this.dailyLossLimitUsd);
+    const avgLatencyMs = this.averageLatency();
+    const latencyHalted = avgLatencyMs > RiskManager.LATENCY_HALT_THRESHOLD_MS;
     const status = halted ? "CIRCUIT_BREAKER" : this.dailyPnlUsd.lessThan("-150") ? "HALTED" : "SCANNING";
     const riskColor = halted || lossLimited ? "RED" : this.consecutiveLosses > 0 || this.activeScenario ? "AMBER" : "GREEN";
     const haltedReason =
       this.consecutiveLosses >= 3
         ? "3 consecutive losing trades"
-          : lossLimited
-            ? "daily loss limit breached"
-          : this.activeScenario
-            ? `${scenarioLabel(this.activeScenario)} scenario active`
-            : "none";
+        : lossLimited
+          ? "daily loss limit breached"
+          : latencyHalted
+            ? `feed latency kill switch (avg ${Math.round(avgLatencyMs)}ms)`
+            : this.activeScenario
+              ? `${scenarioLabel(this.activeScenario)} scenario active`
+              : "none";
 
     return {
       status,
