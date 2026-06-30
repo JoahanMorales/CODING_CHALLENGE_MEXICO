@@ -42,12 +42,15 @@ const args = process.argv.slice(2);
 const tapeFlagIndex = args.findIndex((a) => a === "--tape");
 const tapePath = tapeFlagIndex >= 0 ? args[tapeFlagIndex + 1] : null;
 const outFlagIndex = args.findIndex((a) => a === "--out");
+const seedFlagIndex = args.findIndex((a) => a === "--seed");
 // Generator mode writes the committed demo warm-start; tape mode (real, often
 // all-losing data) writes a separate artifact so it never clobbers the demo.
 const outPath = outFlagIndex >= 0 ? args[outFlagIndex + 1] : tapePath ? "data/tape-model.json" : "public/model/edge-model.json";
+const rngSeed = seedFlagIndex >= 0 ? Number(args[seedFlagIndex + 1]) : 0x9e3779b9;
 const flagValueIndices = new Set<number>();
 if (tapeFlagIndex >= 0) flagValueIndices.add(tapeFlagIndex + 1);
 if (outFlagIndex >= 0) flagValueIndices.add(outFlagIndex + 1);
+if (seedFlagIndex >= 0) flagValueIndices.add(seedFlagIndex + 1);
 const positional = args.filter((a, i) => !a.startsWith("--") && !flagValueIndices.has(i));
 const durationSec = Number(positional[0] ?? 45);
 
@@ -78,7 +81,7 @@ function mulberry32(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-const rng = mulberry32(0x9e3779b9);
+const rng = mulberry32(rngSeed);
 
 // Deep wallets so counterfactual settlement never runs dry during training.
 const seed = Object.fromEntries(
@@ -376,7 +379,7 @@ function reportRow(startedAt: number, phase: string): void {
 }
 
 const sourceLabel = tapePath ? `tape real (${tapePath})` : "generador sintetico enriquecido";
-console.log(`\nArbitrAI - entrenando el ensemble AET+ML | fuente: ${sourceLabel}\n`);
+console.log(`\nArbitrAI - entrenando el ensemble AET+ML | fuente: ${sourceLabel} | seed: ${rngSeed}\n`);
 header();
 
 const startedAt = Date.now();
@@ -459,9 +462,12 @@ const bundle = {
   trainedForSec: tapePath ? undefined : durationSec,
   source: tapePath ? "tape" : "generator",
   tape: tapePath ?? undefined,
+  seed: rngSeed,
   signals,
   winRate: signals ? Number(((wins / signals) * 100).toFixed(1)) : 0,
   auc: Number(finalAuc.toFixed(4)),
+  valSamples: valSamples.length,
+  demoSafety: Number(demoSafety.toFixed(4)),
   mlValidated: discriminates,
   ml: mlModel,
   aet: engine.exportCalibration()

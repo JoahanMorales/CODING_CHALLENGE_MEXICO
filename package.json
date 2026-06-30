@@ -17,6 +17,7 @@
     "sandbox:probe": "tsx scripts/sandboxProbe.ts",
     "sandbox:hedge": "tsx scripts/okxDemoHedge.ts",
     "train": "tsx scripts/trainModel.ts",
+    "train:search": "tsx scripts/trainSeedSearch.ts",
     "record": "tsx scripts/recordTape.ts",
     "record:ws": "tsx scripts/recordTapeWs.ts",
     "analyze:tape": "tsx scripts/analyzeTape.ts",
