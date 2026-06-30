@@ -55,7 +55,8 @@ const innovations = [
   ["Sizing de Kelly fraccional", "Tamaño = f* = p − (1−p)/b (Kelly 1956, Thorp 2006), con p = supervivencia del ensemble y b = odds edge/downside, escalando la base de profundidad y acotado a [0.3, 1]."],
   ["Maker pricing Avellaneda-Stoikov", "La pata maker ya no usa una agresividad fija: deriva qué tan adentro del spread postar del half-spread óptimo δ = 0.5[γσ²(T−t) + (2/γ)ln(1+γ/κ)] — más pasiva en alta volatilidad, más ajustada en libros profundos — con skew por order-flow imbalance. Avellaneda & Stoikov (2008)."],
   ["Features de order-flow imbalance", "El ensemble ML ahora consume OFI a la punta y multi-level OFI ponderado a 5 niveles (Cont-Kukanov-Stoikov 2014; Xu-Gould-Howison 2018, R²≈65 %), microprice en ambos libros y su alineación — antes eran features inertes en 0."],
-  ["Búsqueda de semillas para el modelo ML", "El modelo warm-start ya no sale de un único entrenamiento: npm run train:search corre el harness sobre N seeds independientes (mercados sintéticos distintos), puntúa cada uno por AUC held-out + demo-safety, y solo promueve un modelo nuevo si supera al actual — nunca lo empeora. Última búsqueda (18 seeds): demo-safety subió de 82.6% a 96.6%."]
+  ["Búsqueda de semillas para el modelo ML", "El modelo warm-start ya no sale de un único entrenamiento: npm run train:search corre el harness sobre N seeds independientes (mercados sintéticos distintos), puntúa cada uno por AUC held-out + demo-safety, y solo promueve un modelo nuevo si supera al actual — nunca lo empeora. Última búsqueda (18 seeds): demo-safety subió de 82.6% a 96.6%."],
+  ["Aislamiento de fallos en la cola de ejecución", "drainQueue() envuelve cada trade en su propio try/catch y el loop completo en try/finally: si una pierna lanza una excepción, esa señal se rechaza pero la cola sigue viva — antes, cualquier throw dejaba el motor de ejecución congelado para siempre. Un React error boundary (error.tsx) evita además la pantalla blanca si un panel de la terminal falla al renderizar."]
 ];
 
 const formulas = [
@@ -172,7 +173,7 @@ export default function IntelligencePage() {
       <section className="border-y border-sky-100 px-5 py-12">
         <div className="mx-auto max-w-7xl">
           <p className="font-mono text-[10px] font-black uppercase text-sky-700">Innovaciones implementadas</p>
-          <h2 className="mt-2 text-3xl font-black text-zinc-950">Diecisiete mejoras sobre el modelo base</h2>
+          <h2 className="mt-2 text-3xl font-black text-zinc-950">Dieciocho mejoras sobre el modelo base</h2>
           <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-zinc-500">
             Cada innovación está activa en el motor de producción y tiene cobertura de pruebas.
           </p>

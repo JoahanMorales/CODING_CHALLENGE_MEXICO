@@ -103,6 +103,7 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 | 15 | **Maker pricing Avellaneda-Stoikov** | La pata maker deriva su agresividad del half-spread óptimo `δ = ½[γσ²(T−t) + (2/γ)ln(1+γ/κ)]` — más pasiva en alta volatilidad, más ajustada en libros profundos — con skew por order-flow imbalance | Avellaneda & Stoikov (2008) |
 | 16 | **Features de order-flow imbalance** | El ML consume OFI a la punta y multi-level OFI ponderado a 5 niveles + microprice en ambos libros y su alineación (antes inertes en 0) | Cont-Kukanov-Stoikov (2014), Xu-Gould-Howison (2018) |
 | 17 | **Búsqueda de semillas del modelo ML** | `npm run train:search` entrena N seeds independientes, puntúa cada uno (AUC held-out + demo-safety) y solo promueve un modelo si supera al actual — nunca regresa | |
+| 18 | **Aislamiento de fallos en la cola de ejecución** | `drainQueue()` envuelve cada trade en `try/catch` propio y el loop entero en `try/finally`: una excepción en una pierna rechaza esa señal sin congelar `executing` ni el resto de la cola. React boundary (`error.tsx`) evita pantalla blanca si un panel falla al renderizar | |
 
 <p align="center">
   <img alt="Innovaciones implementadas" src="recursos/11mejoras.png" width="820" />
