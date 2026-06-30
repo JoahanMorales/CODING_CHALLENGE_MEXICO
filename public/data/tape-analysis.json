@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-30T07:39:24.412Z",
+  "generatedAt": "2026-06-30T16:57:15.430Z",
   "tape": "data/tape-long.jsonl",
   "capture": {
     "rounds": 766,
@@ -75,12 +75,12 @@
     "detected": 0,
     "maxNetBps": 0,
     "maxStalenessMs": 0,
-    "maxObservedStalenessMs": 802,
+    "maxObservedStalenessMs": 774,
     "stalenessOver1800": 0,
     "thresholdMs": 1800
   },
   "statArb": {
-    "candidates": 408,
+    "candidates": 369,
     "detected": 0
   },
   "verdict": "A tarifas retail, ninguna dislocación cross-exchange real superó fees+base. El mercado es eficiente; el valor está en rechazarlas con precisión."
