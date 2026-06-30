@@ -53,6 +53,7 @@ npm run check        # typecheck + lint + test
 npm run start        # Next.js production server
 npm run start:ws     # WS backend production
 npm run train        # offline ML/AET training harness -> public/model/edge-model.json
+npm run train:search [seeds] [perRunSec]  # best-of-N seed search; only promotes if it beats current
 npm run record       # record real 7-exchange order-book tapes -> data/tape-*.jsonl
 npm run analyze:tape <tape>   # replay a tape -> public/data/tape-analysis.json (for /resultados)
 npm run study:reversion <tape># train spread mean-reversion on real data -> public/data/reversion-study.json

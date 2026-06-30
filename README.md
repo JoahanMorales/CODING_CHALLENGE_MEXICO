@@ -183,6 +183,8 @@ npm run build
 ```bash
 npm run train               # 45s, generador sintético enriquecido (camino 2)
 npm run train -- 90         # entrena 90s
+npm run train:search                      # busca el mejor modelo entre 12 seeds x 90s (~18 min)
+npm run train:search -- 20 120            # 20 seeds x 120s (~40 min) — solo promueve si mejora el actual
 npm run record -- 120       # graba 120s de los 7 exchanges reales -> data/tape-*.jsonl (camino 1)
 npm run train -- --tape data/tape-XXXX.jsonl   # entrena sobre datos reales grabados
 npm run analyze:tape data/tape-XXXX.jsonl      # analiza el tape -> public/data/tape-analysis.json
