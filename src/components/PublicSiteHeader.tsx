@@ -7,6 +7,7 @@ import { BrandMark } from "@/components/BrandMark";
 const links = [
   { href: "/", label: "Inicio" },
   { href: "/terminal", label: "Terminal" },
+  { href: "/torneo", label: "Torneo" },
   { href: "/inteligencia", label: "Inteligencia" },
   { href: "/resultados", label: "Resultados" }
 ];
