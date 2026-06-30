@@ -184,6 +184,7 @@ npm run train -- 90         # entrena 90s
 npm run record -- 120       # graba 120s de los 7 exchanges reales -> data/tape-*.jsonl (camino 1)
 npm run train -- --tape data/tape-XXXX.jsonl   # entrena sobre datos reales grabados
 npm run analyze:tape data/tape-XXXX.jsonl      # analiza el tape -> public/data/tape-analysis.json
+npm run study:reversion data/tape-XXXX.jsonl   # entrena reversión sobre datos reales (AUC held-out)
 ```
 
 **Camino 2 — generador sintético.** El harness conduce el motor + simulador
@@ -211,7 +212,14 @@ La **calibración AET por ruta** y el **ensemble ML validado** se persisten en
 `npm run analyze:tape` escribe `public/data/tape-analysis.json`, que la página
 `/resultados` renderiza como **evidencia de mercado real**: la distribución de
 net-spreads cross-exchange reales (todas las barras a la izquierda del break-even).
+`npm run study:reversion` entrena el ensemble sobre datos reales para predecir la
+reversión del spread y reporta un **AUC held-out** (~0.60, out-of-sample): señal
+genuina aunque no rentable a fees retail, también surfaceada en `/resultados`.
 `/inteligencia` muestra el Brier del AET y del ML por separado, en vivo.
+
+La página `/torneo` corre un **torneo de estrategias en vivo**: las 4 estrategias
+compiten con su P&L real de paper trading, con podio, medallas, rachas y cambios
+de ranking en tiempo real (responsive, mobile-first).
 
 ## Live y Demo
 
