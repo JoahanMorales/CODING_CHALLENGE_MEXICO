@@ -73,7 +73,12 @@ export class ArbitrageEngine {
       sellBook,
       d(opportunity.tradeSizeBtc),
       opportunity.executionStyle,
-      d(opportunity.netSpreadPct)
+      // opportunity.netSpreadPct is formatted in percent units (pct() multiplies
+      // by 100). Inference (detectCrossExchange) extracts features from the raw
+      // decimal spread, so divide by 100 here to train on the SAME scale -- without
+      // this the model learns a netEdgeBps threshold ~100x what it sees live and
+      // mis-scores every real signal.
+      d(opportunity.netSpreadPct).div(100)
     );
     const realizedWin = pnlUsd > 0 ? 1 : 0;
     this.mlEdgeTensor.train(opportunity.route, features, realizedWin, weight ?? 0.3);
