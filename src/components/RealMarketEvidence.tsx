@@ -13,7 +13,7 @@ interface TapeAnalysis {
     histogram: Array<{ binBps: number; count: number }>;
   };
   latency: { candidates: number; detected: number; maxObservedStalenessMs: number; stalenessOver1800: number; thresholdMs: number };
-  statArb: { candidates: number; detected: number };
+  statArb: { candidates: number; detected: number; maxNetBps?: number; bestZAbs?: number; requiredZAbs?: number };
   verdict: string;
 }
 
@@ -25,10 +25,23 @@ interface ReversionStudy {
   params: { lookahead: number };
 }
 
+interface MakerEvResult { meanEvBps: number; profitablePct: number }
 interface TriangularStudy {
   samples: number;
+  makerClipBtc: number;
   grossEdgeBps: { median: number; max: number };
-  tiers: Array<{ tier: string; roundTripCostBps: number; profitablePct: number; bestNetBps: number }>;
+  taker: {
+    tiers: Array<{ tier: string; roundTripCostBps: number; profitablePct: number; bestNetBps: number }>;
+    anyProfitable: boolean;
+  };
+  maker: {
+    makerGrossBps: { median: number; p99: number; max: number };
+    evScenarios: {
+      observado: { pAll3Avg: number; retail: MakerEvResult; okxVip8Rebate: MakerEvResult };
+      sensibilidad: Array<{ fillProbPerLeg: number; pAll3: number; retail: MakerEvResult; okxVip8Rebate: MakerEvResult }>;
+    };
+    anyProfitable: boolean;
+  };
   takeaway: string;
 }
 
@@ -117,13 +130,21 @@ export function RealMarketEvidence() {
         <Stat label="Rentables tras costos" value={`${data.cross.profitablePct}%`} tone={data.cross.profitable ? "emerald" : "rose"} />
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-zinc-200/70 bg-zinc-50/60 p-5">
           <p className="font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">Latency-arb (cotización rancia)</p>
           <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">
             {data.latency.candidates === 0
               ? `Cero edges de latencia. Lo medimos con feeds WebSocket independientes (npm run record:ws), no solo REST: aun así los venues BTC líquidos se refrescan sub-segundo (skew máximo observado ~690ms, lejos de la barra de ${data.latency.thresholdMs}ms). El latency-arb solo surge ante una caída/outage real o en pares ilíquidos — la estrategia está implementada y con tests, esperando esas condiciones.`
               : `${data.latency.candidates} candidatas de latencia, ${data.latency.detected} DETECTED (staleness máx. ${data.latency.maxObservedStalenessMs}ms sobre la barra de ${data.latency.thresholdMs}ms).`}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-zinc-200/70 bg-zinc-50/60 p-5">
+          <p className="font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">Stat-Arb (cointegración)</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">
+            {data.statArb.bestZAbs !== undefined
+              ? `La señal estadística sí aparece (mejor |z| observado ${data.statArb.bestZAbs}, supera el umbral ${data.statArb.requiredZAbs}) — pero la mejor candidata neta de costos quedó en ${data.statArb.maxNetBps}bps. El gate de cointegración (ADF) y el modelo de costos rechazan correctamente: hay desviación estadística, no edge ejecutable.`
+              : `${data.statArb.candidates} candidatas, ${data.statArb.detected} DETECTED.`}
           </p>
         </div>
         <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/50 p-5">
@@ -168,9 +189,13 @@ export function RealMarketEvidence() {
           </div>
           <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">
             Buscamos la brecha en la estrategia más alcanzable para retail —el triángulo BTC→USDT→ETH→BTC dentro de un mismo venue,
-            sin transferencias ni base USDT/USD, solo 3 fees— con {tri.samples.toLocaleString()} muestras reales de Binance. ¿Rentable por tier de fee?
+            sin transferencias ni base USDT/USD, solo 3 fees— con {tri.samples.toLocaleString()} muestras reales de Binance, en dos modelos
+            de ejecución: <strong className="text-zinc-800">taker</strong> (cruzar el spread) y <strong className="text-zinc-800">maker</strong> (postear
+            adentro del spread con la misma fórmula Avellaneda-Stoikov del motor, ponderada por probabilidad de fill real y riesgo de pata).
           </p>
-          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200">
+
+          <p className="mt-3 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">Taker — por tier de fee</p>
+          <div className="mt-1.5 overflow-hidden rounded-xl border border-zinc-200">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-zinc-100/70 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">
@@ -180,7 +205,7 @@ export function RealMarketEvidence() {
                 </tr>
               </thead>
               <tbody className="font-mono text-[11px] font-bold text-zinc-700">
-                {tri.tiers.map((t) => (
+                {tri.taker.tiers.map((t) => (
                   <tr key={t.tier} className="border-t border-zinc-100">
                     <td className="px-3 py-1.5">{t.tier}</td>
                     <td className="px-3 py-1.5 text-right text-zinc-500">{t.roundTripCostBps} bps</td>
@@ -190,6 +215,42 @@ export function RealMarketEvidence() {
               </tbody>
             </table>
           </div>
+
+          <p className="mt-4 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">
+            Maker — valor esperado (P(3 patas llenan) × ganancia − P(parcial) × costo de deshacer)
+          </p>
+          <div className="mt-1.5 overflow-hidden rounded-xl border border-zinc-200">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-zinc-100/70 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                  <th className="px-3 py-2">Escenario de fill</th>
+                  <th className="px-3 py-2 text-right">P(3 patas)</th>
+                  <th className="px-3 py-2 text-right">EV retail</th>
+                  <th className="px-3 py-2 text-right">EV rebate OKX VIP8</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono text-[11px] font-bold text-zinc-700">
+                <tr className="border-t border-zinc-100 bg-sky-50/40">
+                  <td className="px-3 py-1.5">Observado (microestructura real)</td>
+                  <td className="px-3 py-1.5 text-right text-zinc-500">{(tri.maker.evScenarios.observado.pAll3Avg * 100).toFixed(1)}%</td>
+                  <td className={`px-3 py-1.5 text-right ${tri.maker.evScenarios.observado.retail.meanEvBps > 0 ? "text-amber-600" : "text-rose-500"}`}>{tri.maker.evScenarios.observado.retail.meanEvBps} bps</td>
+                  <td className={`px-3 py-1.5 text-right ${tri.maker.evScenarios.observado.okxVip8Rebate.meanEvBps > 0 ? "text-amber-600" : "text-rose-500"}`}>{tri.maker.evScenarios.observado.okxVip8Rebate.meanEvBps} bps</td>
+                </tr>
+                {tri.maker.evScenarios.sensibilidad.map((s) => (
+                  <tr key={s.fillProbPerLeg} className="border-t border-zinc-100">
+                    <td className="px-3 py-1.5 text-zinc-500">{(s.fillProbPerLeg * 100).toFixed(0)}% por pata (ilustrativo)</td>
+                    <td className="px-3 py-1.5 text-right text-zinc-500">{(s.pAll3 * 100).toFixed(1)}%</td>
+                    <td className={`px-3 py-1.5 text-right ${s.retail.meanEvBps > 0 ? "text-amber-600" : "text-rose-500"}`}>{s.retail.meanEvBps} bps</td>
+                    <td className={`px-3 py-1.5 text-right ${s.okxVip8Rebate.meanEvBps > 0 ? "text-amber-600" : "text-rose-500"}`}>{s.okxVip8Rebate.meanEvBps} bps</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] font-semibold leading-5 text-zinc-500">
+            El rebate solo existe si tu orden <strong className="text-zinc-700">provee</strong> liquidez, nunca si la toma — por eso no se mezcla con
+            la tabla taker. OKX VIP8 (−0.005%/pata) es el único rebate spot real publicado, y exige ~$12M/mes de volumen: no alcanzable para retail.
+          </p>
           <p className="mt-2 text-[11px] font-semibold leading-5 text-zinc-500">{tri.takeaway}</p>
         </div>
       )}

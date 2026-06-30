@@ -1,51 +1,153 @@
 {
-  "generatedAt": "2026-06-30T17:35:20.743Z",
+  "generatedAt": "2026-06-30T20:23:53.763Z",
   "venue": "binance",
-  "sizeBtc": 0.1,
+  "headlineSizeBtc": 0.1,
+  "makerClipBtc": 0.02,
   "durationSec": 150,
-  "samples": 3203,
+  "samples": 3252,
   "grossEdgeBps": {
-    "min": -5.82,
-    "median": -1.27,
-    "p99": 1.53,
-    "max": 1.72
+    "min": -4.74,
+    "median": -1.25,
+    "p99": 1.58,
+    "max": 1.58
   },
-  "tiers": [
+  "sizeSweep": [
     {
-      "tier": "Taker estándar (0.10%)",
-      "roundTripCostBps": 30,
-      "profitablePct": 0,
-      "bestNetBps": -28.28,
-      "medianNetBps": -31.27
+      "sizeBtc": 0.01,
+      "samples": 3421,
+      "medianGrossBps": -0.99,
+      "p99GrossBps": 1.46,
+      "maxGrossBps": 1.58
     },
     {
-      "tier": "Taker con BNB (0.075%)",
-      "roundTripCostBps": 22.5,
-      "profitablePct": 0,
-      "bestNetBps": -20.78,
-      "medianNetBps": -23.77
+      "sizeBtc": 0.05,
+      "samples": 3330,
+      "medianGrossBps": -1.23,
+      "p99GrossBps": 1.46,
+      "maxGrossBps": 1.58
     },
     {
-      "tier": "VIP taker (0.04%)",
-      "roundTripCostBps": 12,
-      "profitablePct": 0,
-      "bestNetBps": -10.28,
-      "medianNetBps": -13.27
+      "sizeBtc": 0.1,
+      "samples": 3252,
+      "medianGrossBps": -1.25,
+      "p99GrossBps": 1.58,
+      "maxGrossBps": 1.58
     },
     {
-      "tier": "Maker VIP (0.02%)",
-      "roundTripCostBps": 6,
-      "profitablePct": 0,
-      "bestNetBps": -4.28,
-      "medianNetBps": -7.27
+      "sizeBtc": 0.5,
+      "samples": 1978,
+      "medianGrossBps": -1.45,
+      "p99GrossBps": 0.34,
+      "maxGrossBps": 0.8
     },
     {
-      "tier": "Sin fees (límite teórico)",
-      "roundTripCostBps": 0,
-      "profitablePct": 9.897,
-      "bestNetBps": 1.72,
-      "medianNetBps": -1.27
+      "sizeBtc": 1,
+      "samples": 847,
+      "medianGrossBps": -1.9,
+      "p99GrossBps": -0.8,
+      "maxGrossBps": -0.8
     }
   ],
-  "takeaway": "Sin edge alcanzable: el triángulo está arbitrado a ~1.7bps gross. Ni a maker-VIP (0.02%) es rentable; solo a fees CERO ~9.9% del tiempo. Binance arbitra su propio triángulo en milisegundos — eficiencia intra-venue medida."
+  "taker": {
+    "tiers": [
+      {
+        "tier": "Taker estándar (0.10%)",
+        "retailReachable": true,
+        "roundTripCostBps": 30,
+        "profitablePct": 0,
+        "bestNetBps": -28.42,
+        "medianNetBps": -31.25
+      },
+      {
+        "tier": "Taker con BNB (0.075%)",
+        "retailReachable": true,
+        "roundTripCostBps": 22.5,
+        "profitablePct": 0,
+        "bestNetBps": -20.92,
+        "medianNetBps": -23.75
+      },
+      {
+        "tier": "VIP taker (0.04%)",
+        "retailReachable": false,
+        "roundTripCostBps": 12,
+        "profitablePct": 0,
+        "bestNetBps": -10.42,
+        "medianNetBps": -13.25
+      }
+    ],
+    "anyProfitable": false
+  },
+  "maker": {
+    "makerGrossBps": {
+      "median": 0.08,
+      "p99": 2.53,
+      "max": 2.7
+    },
+    "evScenarios": {
+      "observado": {
+        "description": "Probabilidad de fill estimada de la microestructura real (spread/profundidad por pata)",
+        "pAll3Avg": 0.4667,
+        "retail": {
+          "meanEvBps": -14.273,
+          "profitablePct": 0
+        },
+        "okxVip8Rebate": {
+          "meanEvBps": 0.428,
+          "profitablePct": 96.11
+        }
+      },
+      "sensibilidad": [
+        {
+          "fillProbPerLeg": 0.9,
+          "pAll3": 0.729,
+          "retail": {
+            "meanEvBps": -21.94,
+            "profitablePct": 0
+          },
+          "okxVip8Rebate": {
+            "meanEvBps": 1.024,
+            "profitablePct": 100
+          }
+        },
+        {
+          "fillProbPerLeg": 0.7,
+          "pAll3": 0.343,
+          "retail": {
+            "meanEvBps": -10.657,
+            "profitablePct": 0
+          },
+          "okxVip8Rebate": {
+            "meanEvBps": 0.148,
+            "profitablePct": 64.73
+          }
+        },
+        {
+          "fillProbPerLeg": 0.5,
+          "pAll3": 0.125,
+          "retail": {
+            "meanEvBps": -4.285,
+            "profitablePct": 0
+          },
+          "okxVip8Rebate": {
+            "meanEvBps": -0.347,
+            "profitablePct": 0
+          }
+        },
+        {
+          "fillProbPerLeg": 0.3,
+          "pAll3": 0.027,
+          "retail": {
+            "meanEvBps": -1.42,
+            "profitablePct": 0
+          },
+          "okxVip8Rebate": {
+            "meanEvBps": -0.57,
+            "profitablePct": 0
+          }
+        }
+      ]
+    },
+    "anyProfitable": true
+  },
+  "takeaway": "Hallazgo: cotizar como maker (capturar el spread en vez de pagarlo) sube el edge bruto de -1.25bps mediana (taker) a 0.08bps (maker) -- pero exige llenar las 3 patas a la vez. Con la probabilidad de fill real observada (46.7%), el EV a fee RETAIL es fuertemente negativo (-14.273bps): el riesgo de pata domina. Solo bajo el único rebate spot real publicado (OKX VIP8, institucional, ~$12M/mes de volumen) el EV se vuelve marginalmente positivo (+0.428bps) -- y es frágil: cae negativo en escenarios de fill más conservadores (ver sensibilidad). Conclusión: el edge triangular, si existe, es exclusivo de market makers institucionales con rebates y volumen masivo que amortiza el riesgo de pata sobre miles de intentos simultáneos -- no es alcanzable para un trader retail."
 }
