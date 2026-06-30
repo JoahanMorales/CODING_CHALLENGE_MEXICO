@@ -264,6 +264,21 @@ export class ArbitrageEngine {
           : ensembleSurvival / selectedEdge.survivalProbability;
         const ensembleExpectedValueUsd = selectedEdge.expectedValueUsd.mul(ensembleEvFactor);
 
+        // Fractional Kelly position sizing. Kelly (1956) maximizes long-run
+        // log-growth by betting in proportion to edge and inversely to risk:
+        // f* = p - (1-p)/b, with p the ensemble survival, b the gain/loss odds
+        // (edge vs adverse-selection + volatility downside). We scale the
+        // already-conservative depth-based base by f* clamped to [0.3, 1], so a
+        // strong, high-survival edge trades near full base size while a marginal
+        // one is trimmed — never exceeding the cap (Kelly 1956; Thorp 2006).
+        const kellyEdgeBps = Math.max(0, selectedNetSpreadPct.mul(10000).toNumber());
+        const kellyLossBps = Math.max(2, selectedEdge.adverseSelectionBps + selectedEdge.volatilityBps);
+        const kellyScale = kellySizeFraction(ensembleSurvival, kellyEdgeBps, kellyLossBps);
+        const k = d(kellyScale);
+        const finalQty = desiredQty.mul(k);
+        const sizedProfit = selectedProfit.mul(k);
+        const sizedEv = ensembleExpectedValueUsd.mul(k);
+
         let confidence = takerExecutable
           ? Math.round(52 + selectedEdge.survivalProbability * 40)
           : makerExecutable
@@ -302,24 +317,24 @@ export class ArbitrageEngine {
           sellExchange: sellBook.exchange,
           grossSpreadPct: pct(selectedNet.grossSpreadPct),
           netSpreadPct: pct(selectedNetSpreadPct),
-          tradeSizeBtc: desiredQty.toFixed(8),
-          expectedProfitUsd: usd(selectedProfit),
-          expectedValueUsd: usd(ensembleExpectedValueUsd),
-          executionNetProfitUsd: usd(selectedNet.netProfitUsd),
-          rebalanceAdjustedProfitUsd: usd(selectedNet.rebalanceAdjustedProfitUsd),
-          grossProfitUsd: usd(selectedNet.grossProfitUsd),
-          totalFeesUsd: usd(selectedNet.buyFeeUsd.plus(selectedNet.sellFeeUsd)),
-          slippageUsd: usd(selectedNet.slippageUsd),
-          networkCostUsd: usd(selectedNet.networkCostUsd.plus(isMakerSelected ? makerRiskCost : 0)),
-          quoteConversionCostUsd: usd(selectedNet.quoteConversionCostUsd),
-          rebalanceCostUsd: usd(selectedNet.rebalanceCostUsd),
+          tradeSizeBtc: finalQty.toFixed(8),
+          expectedProfitUsd: usd(sizedProfit),
+          expectedValueUsd: usd(sizedEv),
+          executionNetProfitUsd: usd(selectedNet.netProfitUsd.mul(k)),
+          rebalanceAdjustedProfitUsd: usd(selectedNet.rebalanceAdjustedProfitUsd.mul(k)),
+          grossProfitUsd: usd(selectedNet.grossProfitUsd.mul(k)),
+          totalFeesUsd: usd(selectedNet.buyFeeUsd.plus(selectedNet.sellFeeUsd).mul(k)),
+          slippageUsd: usd(selectedNet.slippageUsd.mul(k)),
+          networkCostUsd: usd(selectedNet.networkCostUsd.plus(isMakerSelected ? makerRiskCost : 0).mul(k)),
+          quoteConversionCostUsd: usd(selectedNet.quoteConversionCostUsd.mul(k)),
+          rebalanceCostUsd: usd(selectedNet.rebalanceCostUsd.mul(k)),
           score: this.scoreOpportunity({
             route,
             netSpreadPct: selectedNetSpreadPct,
-            quantity: desiredQty,
+            quantity: finalQty,
             availableDepth: Decimal.min(ask.size, bid.size),
             exchanges: [buyBook.exchange, sellBook.exchange],
-            expectedValueUsd: ensembleExpectedValueUsd,
+            expectedValueUsd: sizedEv,
             confidenceBoost: isMakerSelected
               ? (makerExecutable ? makerFillProbability : hybridMakerFillProbability).toNumber() * 0.42 + microstructureAlignment * 0.18 + selectedEdge.modelScore / 100 * 0.4
               : microstructureAlignment * 0.24 + selectedEdge.modelScore / 100 * 0.48
@@ -763,6 +778,15 @@ function cryptoId(prefix: string): string {
 
 function sigmoid(value: number): number {
   return 1 / (1 + Math.exp(-value));
+}
+
+// Fractional Kelly: f* = p - (1-p)/b, with p the win probability and b the
+// gain/loss odds. Clamped to [0.3, 1] so a green-lit signal always trades a
+// meaningful but bounded fraction of the conservative base size.
+export function kellySizeFraction(survival: number, edgeBps: number, lossBps: number): number {
+  const b = Math.max(0.1, edgeBps / Math.max(lossBps, 1));
+  const fStar = survival - (1 - survival) / b;
+  return Math.max(0.3, Math.min(1, fStar));
 }
 
 function estimateOuMle(values: number[]): { halfLifeSamples: number; quality: number } {
