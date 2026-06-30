@@ -650,6 +650,12 @@ function ActiveEdgePanel({
             {risk.circuitBreakerActive && <StatusPill label="Circuit breaker" tone="rose" />}
             {featured && <StatusPill label={featured.executionStyle} tone={freshExecutable ? "green" : "sky"} />}
             {featured?.highImpact && <StatusPill label="Impacto alto" tone="amber" />}
+            {featured?.edgeModel?.mlSurvivalProbability && (
+              <StatusPill
+                label={`ML ${(Number(featured.edgeModel.mlSurvivalProbability) * 100).toFixed(0)}%`}
+                tone={Number(featured.edgeModel.mlSurvivalProbability) >= 0.5 ? "violet" : "amber"}
+              />
+            )}
           </div>
           <div className="mt-3 min-h-[30px] text-sm font-black text-zinc-800">
             {primaryRoute}

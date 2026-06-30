@@ -93,7 +93,7 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 | 6 | **Drift risk dual calibration** | Detección usa z=1.28 (80% confianza) para pasar más señales; position sizing usa z=1.96 (95%) para riesgo controlado | |
 | 7 | **Triangular arbitrage con VWAP** | Simulación VWAP en cada una de las 3 patas del ciclo en vez de top-of-book | |
 | 8 | **Latency kill switch** | `recordLatency()` trackea últimos 20 mensajes; `shouldHalt()` frena si avg > 3000ms; `getLatencyMultiplier()` escala 1.5/2.5/3.2 | |
-| 9 | **XGBoost-style ML EdgeTensor** | Gradient-boosted ensemble de decision stumps (max 32 trees), 19 features del order book, entrenamiento online desde outcomes reales y shadow | Chen & Guestrin (XGBoost, 2016) |
+| 9 | **XGBoost-style ML EdgeTensor (ensemble de dos modelos)** | Gradient-boosted ensemble de decision stumps (max 32 trees), 19 features del order book, entrenamiento online desde outcomes reales y shadow. Una vez entrenado actúa como segunda opinión: su `survival` se mezcla en la confianza y puede **vetar** una señal que AET admitió (nunca resucita una que AET rechazó). Inactivo hasta tener suficientes outcomes, así el hot path afinado no cambia hasta entonces. | Chen & Guestrin (XGBoost, 2016) |
 | 10 | **Hybrid maker/taker execution** | Compra como maker (mejor precio, baja fee) y vende como taker (fill garantizado) — fees menores que taker puro con mejor fill que maker puro | |
 | 11 | **Adaptive volatility threshold** | `CROSS_EXCHANGE_THRESHOLD_PCT` se ajusta según volatilidad: `base * clamp(1.0, 2, 1 + (volBps - 1.5)/5)`. Floor en 1.0 para no relajar el umbral en baja volatilidad | |
 
