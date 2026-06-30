@@ -253,6 +253,16 @@ export class ArbitrageEngine {
         const mlVeto = mlSurvival !== null && mlSurvival < 0.3;
         const finalStatus = mlVeto ? "REJECTED" : status;
 
+        // The ensemble doesn't just gate execution — it reprices the Expected
+        // Value the queue is ordered by. When the ML agrees with AET the edge is
+        // scaled up (higher priority); when it disagrees it is discounted. The
+        // factor is bounded (AET survival > 0.5 on executable signals, ML in
+        // [0,1] => ~[0.7, 1.3]) and is exactly 1 until the model is trained.
+        const ensembleEvFactor = mlSurvival === null || selectedEdge.survivalProbability <= 0
+          ? 1
+          : ensembleSurvival / selectedEdge.survivalProbability;
+        const ensembleExpectedValueUsd = selectedEdge.expectedValueUsd.mul(ensembleEvFactor);
+
         let confidence = takerExecutable
           ? Math.round(52 + selectedEdge.survivalProbability * 40)
           : makerExecutable
@@ -293,7 +303,7 @@ export class ArbitrageEngine {
           netSpreadPct: pct(selectedNetSpreadPct),
           tradeSizeBtc: desiredQty.toFixed(8),
           expectedProfitUsd: usd(selectedProfit),
-          expectedValueUsd: usd(selectedEdge.expectedValueUsd),
+          expectedValueUsd: usd(ensembleExpectedValueUsd),
           executionNetProfitUsd: usd(selectedNet.netProfitUsd),
           rebalanceAdjustedProfitUsd: usd(selectedNet.rebalanceAdjustedProfitUsd),
           grossProfitUsd: usd(selectedNet.grossProfitUsd),
@@ -308,7 +318,7 @@ export class ArbitrageEngine {
             quantity: desiredQty,
             availableDepth: Decimal.min(ask.size, bid.size),
             exchanges: [buyBook.exchange, sellBook.exchange],
-            expectedValueUsd: selectedEdge.expectedValueUsd,
+            expectedValueUsd: ensembleExpectedValueUsd,
             confidenceBoost: isMakerSelected
               ? (makerExecutable ? makerFillProbability : hybridMakerFillProbability).toNumber() * 0.42 + microstructureAlignment * 0.18 + selectedEdge.modelScore / 100 * 0.4
               : microstructureAlignment * 0.24 + selectedEdge.modelScore / 100 * 0.48
