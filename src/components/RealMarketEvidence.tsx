@@ -125,17 +125,21 @@ export function RealMarketEvidence() {
       {study && (
         <div className="mt-4 rounded-2xl border border-violet-200/70 bg-gradient-to-br from-violet-50/50 via-white to-sky-50/40 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-mono text-[9px] font-black uppercase tracking-wider text-violet-700">Señal real aprendida (no rentable, pero genuina)</p>
+            <p className="font-mono text-[9px] font-black uppercase tracking-wider text-violet-700">Señal real medida sobre datos reales</p>
             <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 font-mono text-[11px] font-black tabular-nums text-violet-700">
               AUC {study.heldOutAuc.toFixed(3)} held-out
             </span>
           </div>
           <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">
-            Aunque no haya edge rentable, el spread cross-venue <strong className="text-zinc-800">sí revierte a la media</strong> de forma
-            parcialmente predecible. Entrenamos el ensemble gradient-boosted sobre {study.candidates.toLocaleString()} desviaciones reales
-            (|z|&gt;1) etiquetadas por su markout a {study.params.lookahead} rondas, con holdout disjunto: <strong className="text-zinc-800">AUC {study.heldOutAuc.toFixed(3)}</strong> sobre
-            {" "}{study.valSamples} muestras out-of-sample (base rate {study.baseRatePct}%). El modelo extrae estructura genuina de la
-            microestructura real — pero como no cubre los fees retail, la ejecución permanece gateada. Honestidad sobre el mercado, no promesas.
+            Pusimos a prueba si la reversión del spread cross-venue es predecible desde la microestructura. Entrenamos el ensemble
+            gradient-boosted sobre <strong className="text-zinc-800">{study.candidates.toLocaleString()}</strong> desviaciones reales
+            (|z|&gt;1) etiquetadas por su markout a {study.params.lookahead} rondas, con holdout disjunto:
+            {" "}<strong className="text-zinc-800">AUC {study.heldOutAuc.toFixed(3)}</strong> sobre {study.valSamples.toLocaleString()} muestras
+            out-of-sample (base rate {study.baseRatePct}%).{" "}
+            {study.heldOutAuc >= 0.55
+              ? "El modelo extrae estructura genuina de la microestructura real."
+              : "Es una señal real pero débil (apenas supera el azar), justo lo que predice un mercado eficiente — no la sobre-vendemos."}
+            {" "}Y como no cubre los fees retail, la ejecución permanece gateada. Honestidad sobre el mercado, no promesas.
           </p>
         </div>
       )}
