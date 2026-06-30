@@ -134,11 +134,24 @@ export class ArbitrageEngine {
         });
         const buyTopBid = topBid(buyBook);
         const sellTopAsk = topAsk(sellBook);
+        // Avellaneda-Stoikov optimal maker quote: instead of a fixed aggressiveness,
+        // derive how far inside the spread to post from the optimal half-spread
+        // delta = 0.5[gamma*sigma^2*(T-t) + (2/gamma)ln(1+gamma/kappa)] -- wider in
+        // higher volatility, tighter in deeper books -- skewed by order-flow
+        // imbalance (adverse pressure => quote more passively). Avellaneda & Stoikov
+        // (2008); OFI enhancement (Cont-Kukanov-Stoikov 2014).
+        const buyQuoteSpreadBps = buyTopBid ? ask.price.minus(buyTopBid.price).div(ask.price).mul(10000).toNumber() : 8;
+        const sellQuoteSpreadBps = sellTopAsk ? sellTopAsk.price.minus(bid.price).div(bid.price).mul(10000).toNumber() : 8;
+        const asVolBps = (buyQuoteSpreadBps + sellQuoteSpreadBps) / 2;
+        const asImbalance = buyAskDepth5.plus(sellBidDepth5).greaterThan(0)
+          ? sellBidDepth5.minus(buyAskDepth5).div(buyAskDepth5.plus(sellBidDepth5)).toNumber()
+          : 0;
+        const makerFraction = avellanedaStoikovMakerFraction(asVolBps, depth5Total.toNumber(), asImbalance);
         const makerBuyPrice = buyTopBid
-          ? ask.price.minus(ask.price.minus(buyTopBid.price).mul("0.35"))
+          ? ask.price.minus(ask.price.minus(buyTopBid.price).mul(makerFraction))
           : ask.price;
         const makerSellPrice = sellTopAsk
-          ? bid.price.plus(sellTopAsk.price.minus(bid.price).mul("0.35"))
+          ? bid.price.plus(sellTopAsk.price.minus(bid.price).mul(makerFraction))
           : bid.price;
         const makerNetRaw = calculateNetProfit({
           buyExchange: buyBook.exchange,
@@ -792,6 +805,24 @@ export function kellySizeFraction(survival: number, edgeBps: number, lossBps: nu
   const b = Math.max(0.1, edgeBps / Math.max(lossBps, 1));
   const fStar = survival - (1 - survival) / b;
   return Math.max(0.3, Math.min(1, fStar));
+}
+
+// Avellaneda-Stoikov (2008) optimal market-making spread, used to set how far
+// inside the quoted spread our maker leg posts (as a fraction of bid..ask).
+// delta = 0.5[ gamma*sigma^2*(T-t) + (2/gamma)*ln(1 + gamma/kappa) ]
+//   sigma  = quoted-spread volatility proxy (bps, normalized)
+//   kappa  = order-arrival/liquidity intensity proxy (visible depth, BTC)
+//   gamma  = inventory risk aversion
+// plus an order-flow-imbalance skew (Cont-Kukanov-Stoikov 2014): adverse pressure
+// (imbalance < 0) widens our quote (more passive). Bounded to [0.2, 0.6] so a
+// degenerate input can never post outside the spread or cross the book.
+export function avellanedaStoikovMakerFraction(volBps: number, depthBtc: number, imbalance: number, gamma = 0.8): number {
+  const sigma = Math.max(0.2, volBps) / 100;
+  const kappa = Math.max(0.3, Math.min(8, depthBtc));
+  const horizon = 1;
+  const halfSpread = 0.5 * (gamma * sigma * sigma * horizon + (2 / gamma) * Math.log(1 + gamma / kappa));
+  const skew = Math.max(-0.1, Math.min(0.1, -imbalance * 0.1));
+  return Math.max(0.2, Math.min(0.6, 0.18 + halfSpread + skew));
 }
 
 function estimateOuMle(values: number[]): { halfLifeSamples: number; quality: number } {
