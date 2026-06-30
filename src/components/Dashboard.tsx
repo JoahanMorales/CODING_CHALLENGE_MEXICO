@@ -663,12 +663,14 @@ function ActiveEdgePanel({
           </div>
         </div>
 
-        <div className="grid grid-cols-5 gap-2 font-mono sm:min-w-[540px]">
-          <SignalNumber label="Score" value={freshExecutable ? String(freshExecutable.score) : featured ? String(featured.score) : "--"} tone="sky" />
-          <SignalNumber label="Net" value={freshExecutable ? `${freshExecutable.netSpreadPct}%` : featured ? `${featured.netSpreadPct}%` : "--"} tone={positive ? "emerald" : "rose"} />
-          <SignalNumber label="EV" value={freshExecutable ? `$${freshExecutable.expectedValueUsd}` : latestTrade ? `$${latestTrade.pnlUsd}` : featured ? `$${featured.expectedValueUsd}` : "$0.00"} tone={positive ? "emerald" : "rose"} />
-          <SignalNumber label="Superv." value={featured?.edgeModel ? `${(Number(featured.edgeModel.survivalProbability) * 100).toFixed(0)}%` : "--"} tone={featured?.edgeModel && Number(featured.edgeModel.survivalProbability) >= 0.55 ? "emerald" : "amber"} />
-          <SignalNumber label="Ejec." value={String(metrics.tradesExecuted)} tone="zinc" />
+        <div className="overflow-x-auto">
+          <div className="grid grid-cols-5 gap-2 font-mono sm:min-w-[540px]">
+            <SignalNumber label="Score" value={freshExecutable ? String(freshExecutable.score) : featured ? String(featured.score) : "--"} tone="sky" />
+            <SignalNumber label="Net" value={freshExecutable ? `${freshExecutable.netSpreadPct}%` : featured ? `${featured.netSpreadPct}%` : "--"} tone={positive ? "emerald" : "rose"} />
+            <SignalNumber label="EV" value={freshExecutable ? `$${freshExecutable.expectedValueUsd}` : latestTrade ? `$${latestTrade.pnlUsd}` : featured ? `$${featured.expectedValueUsd}` : "$0.00"} tone={positive ? "emerald" : "rose"} />
+            <SignalNumber label="Superv." value={featured?.edgeModel ? `${(Number(featured.edgeModel.survivalProbability) * 100).toFixed(0)}%` : "--"} tone={featured?.edgeModel && Number(featured.edgeModel.survivalProbability) >= 0.55 ? "emerald" : "amber"} />
+            <SignalNumber label="Ejec." value={String(metrics.tradesExecuted)} tone="zinc" />
+          </div>
         </div>
       </div>
     </Panel>
