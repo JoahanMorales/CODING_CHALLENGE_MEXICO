@@ -16,7 +16,8 @@
     "check": "npm run typecheck && npm run lint && npm run test",
     "sandbox:probe": "tsx scripts/sandboxProbe.ts",
     "sandbox:hedge": "tsx scripts/okxDemoHedge.ts",
-    "train": "tsx scripts/trainModel.ts"
+    "train": "tsx scripts/trainModel.ts",
+    "record": "tsx scripts/recordTape.ts"
   },
   "dependencies": {
     "decimal.js": "^10.4.3",
