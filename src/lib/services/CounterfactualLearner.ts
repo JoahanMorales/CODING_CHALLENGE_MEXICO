@@ -43,7 +43,9 @@ export class CounterfactualLearner {
     return this.evaluate(Date.now());
   }
 
-  summary(): LearningSummary {
+  // ML calibration (mlObservations/mlBrierScore) is composed by the kernel, which
+  // owns the ML model; this learner only knows the AET/counterfactual side.
+  summary(): Omit<LearningSummary, "mlObservations" | "mlBrierScore"> {
     const evaluatedSignals = this.outcomes.length;
     const missedProfits = this.outcomes.filter((outcome) => outcome.label === "MISSED_PROFIT").length;
     const avoidedLosses = this.outcomes.filter((outcome) => outcome.label === "AVOIDED_LOSS").length;

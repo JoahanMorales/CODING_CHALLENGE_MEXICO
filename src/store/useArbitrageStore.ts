@@ -122,7 +122,9 @@ const defaultLearning: LearningSummary = {
   bestMissedUsd: "0.00",
   hitRatePct: "0.00",
   calibrationObservations: 0,
-  brierScore: "0.0000"
+  brierScore: "0.0000",
+  mlObservations: 0,
+  mlBrierScore: "0.0000"
 };
 
 const defaultExecutionRuntime: ExecutionRuntimeState = {

@@ -44,6 +44,9 @@ export function IntelligenceCalibration() {
   const brier = Number(learning.brierScore);
   const observations = learning.calibrationObservations;
   const warming = observations < 5;
+  const mlBrier = Number(learning.mlBrierScore);
+  const mlObservations = learning.mlObservations;
+  const mlWarming = mlObservations < 5;
   const quality = warming ? "Calentando" : brier <= 0.18 ? "Calibrado" : brier <= 0.25 ? "Aceptable" : "Sesgado";
   const qualityTone = warming ? "zinc" : brier <= 0.18 ? "emerald" : brier <= 0.25 ? "amber" : "rose";
 
@@ -59,14 +62,24 @@ export function IntelligenceCalibration() {
         <Badge tone={qualityTone}>{quality}</Badge>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[auto_1fr] lg:items-center">
+      <div className="mt-5 grid gap-4 lg:grid-cols-[auto_auto_1fr] lg:items-center">
         <div className="rounded-2xl border border-zinc-200/70 bg-gradient-to-br from-sky-50 via-white to-violet-50 px-6 py-5">
-          <span className="block font-mono text-[9px] font-black uppercase tracking-wider text-zinc-400">Brier score</span>
+          <span className="block font-mono text-[9px] font-black uppercase tracking-wider text-zinc-400">Brier AET · rutas</span>
           <strong className="mt-1 block font-mono text-4xl font-black leading-none tracking-tight text-zinc-950">
             {warming ? "—" : brier.toFixed(4)}
           </strong>
           <span className="mt-2 block text-[11px] font-semibold text-zinc-500">
-            menor es mejor · {observations} observaciones
+            menor es mejor · {observations} obs.
+          </span>
+        </div>
+
+        <div className="rounded-2xl border border-violet-200/70 bg-gradient-to-br from-violet-50 via-white to-sky-50 px-6 py-5">
+          <span className="block font-mono text-[9px] font-black uppercase tracking-wider text-violet-400">Brier ML · ensemble</span>
+          <strong className="mt-1 block font-mono text-4xl font-black leading-none tracking-tight text-zinc-950">
+            {mlWarming ? "—" : mlBrier.toFixed(4)}
+          </strong>
+          <span className="mt-2 block text-[11px] font-semibold text-zinc-500">
+            gradient-boosted · {mlObservations} obs.
           </span>
         </div>
 

@@ -198,6 +198,8 @@ export interface LearningSummary {
   hitRatePct: string;
   calibrationObservations: number;
   brierScore: string;
+  mlObservations: number;
+  mlBrierScore: string;
   lastOutcome?: CounterfactualOutcome;
 }
 

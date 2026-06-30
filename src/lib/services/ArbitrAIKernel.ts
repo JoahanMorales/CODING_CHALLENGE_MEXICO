@@ -172,10 +172,13 @@ export class ArbitrAIKernel {
   private learningSummary(): LearningSummary {
     const learning = this.learner.summary();
     const calibration = this.engine.calibrationSummary();
+    const mlCalibration = this.engine.mlEdgeTensor.calibrationSummary();
     return {
       ...learning,
       calibrationObservations: calibration.observations,
-      brierScore: calibration.brierScore.toFixed(4)
+      brierScore: calibration.brierScore.toFixed(4),
+      mlObservations: mlCalibration.observations,
+      mlBrierScore: mlCalibration.brierScore.toFixed(4)
     };
   }
 
