@@ -9,6 +9,7 @@ interface TapeAnalysis {
     candidates: number;
     profitable: number;
     profitablePct: number;
+    detected: number;
     netSpreadBps: { min: number; p25: number; median: number; p75: number; max: number };
     histogram: Array<{ binBps: number; count: number }>;
   };
@@ -88,34 +89,39 @@ export function RealMarketEvidence() {
           <h2 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">El arbitraje cross-exchange retail no existe.</h2>
         </div>
         <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 font-mono text-[10px] font-black uppercase tracking-wider text-rose-700">
-          {data.cross.profitable}/{data.cross.candidates.toLocaleString()} rentables
+          {data.cross.detected}/{data.cross.candidates.toLocaleString()} ejecutables
         </span>
       </div>
 
       <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-zinc-500">
-        Capturamos los order books reales de los {data.capture.venues.length} exchanges
-        (<span className="font-mono text-zinc-700">npm run record</span>) durante {data.capture.durationSec}s
-        ({data.capture.rounds} rondas, {data.capture.books.toLocaleString()} libros, base USDT/USD {data.capture.usdtUsdBasisBps} bps)
-        y reprodujimos cada dislocación por el motor. Distribución del <strong className="text-zinc-800">net spread tras fees + base + costos</strong>:
+        Capturamos los order books reales de los {data.capture.venues.length} exchanges (feeds WebSocket independientes,
+        <span className="font-mono text-zinc-700"> npm run record:ws</span>) durante {Math.round(data.capture.durationSec / 60)} minutos
+        ({data.capture.rounds.toLocaleString()} rondas, {data.capture.books.toLocaleString()} libros, base USDT/USD {data.capture.usdtUsdBasisBps} bps)
+        y reprodujimos cada dislocación por el motor. {data.cross.profitable > 0 && (
+          <>El <strong className="text-zinc-800">{data.cross.profitablePct}%</strong> tuvo spread neto positivo tras fees —
+          pero el ajuste por riesgo del Edge Tensor (supervivencia, P&L ajustado a riesgo) rechazó correctamente las {data.cross.candidates.toLocaleString()}:
+          {" "}<strong className="text-zinc-800">0 fueron DETECTED</strong> (ejecutables). El edge visible es real pero demasiado delgado para sobrevivir
+          el riesgo de dos patas no simultáneas. </>
+        )}Distribución del <strong className="text-zinc-800">net spread tras fees + base + costos</strong>:
       </p>
 
       {/* Net-spread histogram: every bar sits left of the break-even line. */}
       <div className="mt-6 rounded-2xl border border-zinc-200/70 bg-gradient-to-br from-rose-50/40 via-white to-white p-5">
-        <div className="flex items-end gap-1.5" style={{ height: 180 }}>
+        <div className="flex items-end gap-1 sm:gap-1.5" style={{ height: 180 }}>
           {data.cross.histogram.map((bin) => (
-            <div key={bin.binBps} className="flex flex-1 flex-col items-center justify-end" title={`${bin.binBps} a ${bin.binBps + 10} bps · ${bin.count}`}>
-              <span className="mb-1 font-mono text-[9px] font-bold text-zinc-400">{bin.count}</span>
+            <div key={bin.binBps} className="flex min-w-0 flex-1 flex-col items-center justify-end" title={`${bin.binBps} a ${bin.binBps + 10} bps · ${bin.count.toLocaleString()}`}>
+              <span className="mb-1 truncate font-mono text-[8px] font-bold text-zinc-400 sm:text-[9px]">{compactNumber(bin.count)}</span>
               <div
                 className="w-full rounded-t bg-gradient-to-t from-rose-400 to-rose-300"
                 style={{ height: `${Math.max(2, (bin.count / maxCount) * 140)}px` }}
               />
-              <span className="mt-1.5 font-mono text-[8px] font-bold text-zinc-400">{bin.binBps}</span>
+              <span className="mt-1.5 truncate font-mono text-[7px] font-bold text-zinc-400 sm:text-[8px]">{bin.binBps}</span>
             </div>
           ))}
           {/* Break-even marker */}
           <div className="flex shrink-0 flex-col items-center justify-end self-stretch pl-1">
             <div className="h-full w-px bg-emerald-400/60" style={{ borderLeft: "1px dashed rgb(52 211 153 / 0.7)" }} />
-            <span className="mt-1.5 font-mono text-[8px] font-black text-emerald-600">0<span className="hidden sm:inline"> · break-even</span></span>
+            <span className="mt-1.5 font-mono text-[7px] font-black text-emerald-600 sm:text-[8px]">0<span className="hidden sm:inline"> · break-even</span></span>
           </div>
         </div>
         <p className="mt-3 text-center font-mono text-[9px] font-bold uppercase tracking-wider text-zinc-400">
@@ -123,11 +129,12 @@ export function RealMarketEvidence() {
         </p>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="Net spread mediano" value={`${data.cross.netSpreadBps.median} bps`} tone="rose" />
         <Stat label="Peor / mejor" value={`${data.cross.netSpreadBps.min} / ${data.cross.netSpreadBps.max}`} tone="rose" />
         <Stat label="Dislocaciones reales" value={data.cross.candidates.toLocaleString()} tone="sky" />
-        <Stat label="Rentables tras costos" value={`${data.cross.profitablePct}%`} tone={data.cross.profitable ? "emerald" : "rose"} />
+        <Stat label="Spread neto>0 (no ejecutable)" value={`${data.cross.profitable.toLocaleString()} (${data.cross.profitablePct}%)`} tone="amber" />
+        <Stat label="DETECTED (ejecutable)" value={data.cross.detected.toLocaleString()} tone={data.cross.detected ? "emerald" : "rose"} />
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
@@ -195,8 +202,8 @@ export function RealMarketEvidence() {
           </p>
 
           <p className="mt-3 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">Taker — por tier de fee</p>
-          <div className="mt-1.5 overflow-hidden rounded-xl border border-zinc-200">
-            <table className="w-full text-left">
+          <div className="mt-1.5 overflow-x-auto rounded-xl border border-zinc-200">
+            <table className="w-full min-w-[420px] text-left">
               <thead>
                 <tr className="bg-zinc-100/70 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">
                   <th className="px-3 py-2">Tier de fee</th>
@@ -219,8 +226,8 @@ export function RealMarketEvidence() {
           <p className="mt-4 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">
             Maker — valor esperado (P(3 patas llenan) × ganancia − P(parcial) × costo de deshacer)
           </p>
-          <div className="mt-1.5 overflow-hidden rounded-xl border border-zinc-200">
-            <table className="w-full text-left">
+          <div className="mt-1.5 overflow-x-auto rounded-xl border border-zinc-200">
+            <table className="w-full min-w-[560px] text-left">
               <thead>
                 <tr className="bg-zinc-100/70 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">
                   <th className="px-3 py-2">Escenario de fill</th>
@@ -262,9 +269,16 @@ export function RealMarketEvidence() {
   );
 }
 
+function compactNumber(n: number): string {
+  if (n >= 10000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
 const toneMap: Record<string, string> = {
   emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
   rose: "border-rose-200 bg-rose-50 text-rose-700",
+  amber: "border-amber-200 bg-amber-50 text-amber-700",
   sky: "border-sky-200 bg-sky-50 text-sky-700",
   zinc: "border-zinc-200 bg-zinc-50 text-zinc-700"
 };
