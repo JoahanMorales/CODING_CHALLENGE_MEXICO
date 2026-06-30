@@ -21,6 +21,7 @@
     "record:ws": "tsx scripts/recordTapeWs.ts",
     "analyze:tape": "tsx scripts/analyzeTape.ts",
     "study:reversion": "tsx scripts/reversionStudy.ts",
+    "study:triangular": "tsx scripts/triangularStudy.ts",
     "backtest": "tsx scripts/backtest.ts"
   },
   "dependencies": {
