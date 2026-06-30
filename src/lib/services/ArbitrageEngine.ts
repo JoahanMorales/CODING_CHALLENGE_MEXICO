@@ -235,11 +235,54 @@ export class ArbitrageEngine {
         const selectedNetSpreadPct = makerExecutable ? makerNetSpreadPct : hybridExecutable ? hybridNetSpreadPct : takerNet.netSpreadPct;
         const isMakerSelected = makerExecutable || hybridExecutable;
 
+        // Dual-model ensemble: the AET microstructure survival is cross-checked
+        // by the gradient-boosted ML model. Both must agree before a paper trade
+        // executes — the ML can veto a signal AET admitted, but never resurrect
+        // one AET rejected. It stays inert (mlSurvival === null) until the model
+        // has been fitted on enough realized outcomes, so the tuned hot path and
+        // the deterministic demo behave exactly as before until then. Only the
+        // would-be-executable signals pay the inference cost.
+        const mlSurvival = this.mlEdgeTensor.isTrained() && status === "DETECTED"
+          ? this.mlEdgeTensor.predict(
+              this.mlEdgeTensor.extractFeatures(buyBook, sellBook, desiredQty, executionStyle, selectedNetSpreadPct)
+            ).survivalProbability
+          : null;
+        const ensembleSurvival = mlSurvival === null
+          ? selectedEdge.survivalProbability
+          : selectedEdge.survivalProbability * 0.7 + mlSurvival * 0.3;
+        const mlVeto = mlSurvival !== null && mlSurvival < 0.3;
+        const finalStatus = mlVeto ? "REJECTED" : status;
+
+        let confidence = takerExecutable
+          ? Math.round(52 + selectedEdge.survivalProbability * 40)
+          : makerExecutable
+            ? Math.round(42 + makerFillProbability.toNumber() * 18 + selectedEdge.survivalProbability * 32)
+            : Math.round(18 + selectedEdge.survivalProbability * 28);
+        if (mlSurvival !== null) confidence = Math.round(confidence * 0.7 + ensembleSurvival * 30);
+
+        let reason =
+          !quotesSynchronized
+            ? `Rejected: quote skew ${quoteSkewMs}ms exceeds the 1800ms synchronization budget.`
+            : !booksHealthy
+              ? "Rejected: at least one order book is degraded or awaiting sequence recovery."
+            : status === "DETECTED"
+            ? takerExecutable
+              ? `Executable instant taker edge. Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, adverse-selection ${selectedEdge.adverseSelectionBps.toFixed(2)}bps.`
+              : makerExecutable
+                ? `Executable maker-assisted paper trade. Fill ${makerFillProbability.mul(100).toFixed(0)}%, Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, microstructure alignment ${(microstructureAlignment * 100).toFixed(0)}%.`
+                : `Executable hybrid trade (maker buy, taker sell). Fill ${hybridMakerFillProbability.mul(100).toFixed(0)}%, Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%.`
+            : `Rejected: Edge Tensor quality ${selectedEdge.edgeQuality}, survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, risk-adjusted P&L ${usd(selectedEdge.riskAdjustedProfitUsd)} USD.`;
+        if (mlVeto) {
+          reason = `Rejected by ML ensemble veto: gradient-boosted survival ${(mlSurvival * 100).toFixed(0)}% disagrees with Edge Tensor ${(selectedEdge.survivalProbability * 100).toFixed(0)}%.`;
+        } else if (mlSurvival !== null) {
+          reason += ` ML ensemble survival ${(mlSurvival * 100).toFixed(0)}%.`;
+        }
+
         opportunities.push({
           id: cryptoId("cross"),
           type: "CROSS_EXCHANGE",
           executionStyle,
-          status,
+          status: finalStatus,
           route,
           createdAt: Date.now(),
           expiresAt: Date.now() + 500,
@@ -270,26 +313,14 @@ export class ArbitrageEngine {
               ? (makerExecutable ? makerFillProbability : hybridMakerFillProbability).toNumber() * 0.42 + microstructureAlignment * 0.18 + selectedEdge.modelScore / 100 * 0.4
               : microstructureAlignment * 0.24 + selectedEdge.modelScore / 100 * 0.48
           }),
-          confidence: takerExecutable
-            ? Math.round(52 + selectedEdge.survivalProbability * 40)
-            : makerExecutable
-              ? Math.round(42 + makerFillProbability.toNumber() * 18 + selectedEdge.survivalProbability * 32)
-              : Math.round(18 + selectedEdge.survivalProbability * 28),
+          confidence,
           highImpact: rawImpactRatio.greaterThan("0.2"),
           impactRatio: rawImpactRatio.toNumber(),
-          reason:
-            !quotesSynchronized
-              ? `Rejected: quote skew ${quoteSkewMs}ms exceeds the 1800ms synchronization budget.`
-              : !booksHealthy
-                ? "Rejected: at least one order book is degraded or awaiting sequence recovery."
-              : status === "DETECTED"
-              ? takerExecutable
-                ? `Executable instant taker edge. Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, adverse-selection ${selectedEdge.adverseSelectionBps.toFixed(2)}bps.`
-                : makerExecutable
-                  ? `Executable maker-assisted paper trade. Fill ${makerFillProbability.mul(100).toFixed(0)}%, Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, microstructure alignment ${(microstructureAlignment * 100).toFixed(0)}%.`
-                  : `Executable hybrid trade (maker buy, taker sell). Fill ${hybridMakerFillProbability.mul(100).toFixed(0)}%, Edge Tensor survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%.`
-              : `Rejected: Edge Tensor quality ${selectedEdge.edgeQuality}, survival ${(selectedEdge.survivalProbability * 100).toFixed(0)}%, risk-adjusted P&L ${usd(selectedEdge.riskAdjustedProfitUsd)} USD.`,
-          edgeModel: serializeEdgeTensor(selectedEdge),
+          reason,
+          edgeModel: {
+            ...serializeEdgeTensor(selectedEdge),
+            mlSurvivalProbability: mlSurvival === null ? undefined : mlSurvival.toFixed(3)
+          },
           executionPlan: {
             buyLevels: buyBook.asks.slice(0, 5),
             sellLevels: sellBook.bids.slice(0, 5),

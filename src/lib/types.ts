@@ -49,6 +49,7 @@ export interface EdgeModelSignal {
   liquidityScore: string;
   micropriceSkewBps: string;
   modelScore: number;
+  mlSurvivalProbability?: string;
   orderFlowImbalance: string;
   expectedValueUsd: string;
   fillProbability: string;

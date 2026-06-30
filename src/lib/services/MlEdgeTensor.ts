@@ -52,10 +52,15 @@ interface MlCalibration {
 
 export class MlEdgeTensor {
   private ensemble: GradientBoostingEnsemble = { trees: [], learningRate: 0.3 };
-  private readonly featureBounds: [number, number][] = [];
   private readonly calibration = new Map<string, MlCalibration>();
   private readonly trainingBuffer: Array<{ features: FeatureVector; label: number; weight: number; route: string }> = [];
   private maxTrees = 32;
+
+  // The ensemble only carries signal once it has been fitted on enough realized
+  // outcomes. Callers gate on this so the model stays a no-op until it can help.
+  isTrained(): boolean {
+    return this.ensemble.trees.length > 0;
+  }
 
   extractFeatures(
     buyBook: NormalizedOrderBook,
@@ -175,8 +180,11 @@ export class MlEdgeTensor {
       const stump = this.findBestStump(data, gradients, hessians, numFeatures);
 
       if (!stump || stump.count < 4) break;
-      const leftGain = stump.gradientSum / (stump.hessianSum + 1e-8);
-      const rightGain = (totalGradient - stump.gradientSum) / ((totalHessian - stump.hessianSum) + 1e-8);
+      // XGBoost optimal leaf weight is w* = -G / (H + lambda); the negation is
+      // what points each leaf toward lower loss. Without it the ensemble learns
+      // the inverse relationship (high survival for losing patterns).
+      const leftGain = -stump.gradientSum / (stump.hessianSum + 1e-8);
+      const rightGain = -(totalGradient - stump.gradientSum) / ((totalHessian - stump.hessianSum) + 1e-8);
 
       this.ensemble.trees.push({
         featureIndex: stump.featureIndex,
