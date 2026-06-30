@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BacktestPanel } from "@/components/BacktestPanel";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
 import { RealMarketEvidence } from "@/components/RealMarketEvidence";
@@ -20,6 +21,7 @@ export default function ResultsPage() {
           <div className="mt-8">
             <ResultsDashboard />
           </div>
+          <BacktestPanel />
           <RealMarketEvidence />
         </div>
       </section>

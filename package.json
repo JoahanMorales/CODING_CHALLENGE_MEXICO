@@ -19,7 +19,8 @@
     "train": "tsx scripts/trainModel.ts",
     "record": "tsx scripts/recordTape.ts",
     "analyze:tape": "tsx scripts/analyzeTape.ts",
-    "study:reversion": "tsx scripts/reversionStudy.ts"
+    "study:reversion": "tsx scripts/reversionStudy.ts",
+    "backtest": "tsx scripts/backtest.ts"
   },
   "dependencies": {
     "decimal.js": "^10.4.3",

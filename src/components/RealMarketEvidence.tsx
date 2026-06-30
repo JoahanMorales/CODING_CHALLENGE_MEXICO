@@ -86,9 +86,9 @@ export function RealMarketEvidence() {
             </div>
           ))}
           {/* Break-even marker */}
-          <div className="flex flex-col items-center justify-end self-stretch pl-1">
+          <div className="flex shrink-0 flex-col items-center justify-end self-stretch pl-1">
             <div className="h-full w-px bg-emerald-400/60" style={{ borderLeft: "1px dashed rgb(52 211 153 / 0.7)" }} />
-            <span className="mt-1.5 whitespace-nowrap font-mono text-[8px] font-black text-emerald-600">0 · break-even</span>
+            <span className="mt-1.5 font-mono text-[8px] font-black text-emerald-600">0<span className="hidden sm:inline"> · break-even</span></span>
           </div>
         </div>
         <p className="mt-3 text-center font-mono text-[9px] font-bold uppercase tracking-wider text-zinc-400">
