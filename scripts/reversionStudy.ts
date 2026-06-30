@@ -147,7 +147,9 @@ const study = {
   takeaway:
     heldOutAuc > 0.55
       ? "El spread cross-venue revierte de forma predecible desde la microestructura: el ML supera el azar en datos reales. Es una señal genuina, aunque no rentable tras fees retail (por eso la ejecución sigue gateada)."
-      : "El spread revierte (base rate alto) pero la microestructura aporta poca señal extra en esta ventana."
+      : heldOutAuc < 0.5
+        ? `Sin señal genuina a esta escala: AUC ${heldOutAuc.toFixed(3)} (indistinguible del azar, incluso ligeramente por debajo) sobre ${val.length.toLocaleString()} muestras out-of-sample. Lecturas anteriores con muestras mucho más chicas sugerían un AUC débil pero positivo (~0.53-0.59) -- una muestra ${candidates > 10000 ? "mucho mayor" : "mayor"} revela que era ruido de muestra chica, no una señal real. El spread sí revierte (base rate ${baseRate > 0 ? (baseRate * 100).toFixed(1) : "n/d"}%), pero la microestructura no predice CUÁNDO mejor que el azar.`
+        : "El spread revierte (base rate alto) pero la microestructura aporta poca señal extra en esta ventana."
 };
 
 mkdirSync(dirname(outPath), { recursive: true });

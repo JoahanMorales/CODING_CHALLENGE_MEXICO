@@ -167,8 +167,8 @@ export function RealMarketEvidence() {
       {study && (
         <div className="mt-4 rounded-2xl border border-violet-200/70 bg-gradient-to-br from-violet-50/50 via-white to-sky-50/40 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-mono text-[9px] font-black uppercase tracking-wider text-violet-700">Señal real medida sobre datos reales</p>
-            <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 font-mono text-[11px] font-black tabular-nums text-violet-700">
+            <p className="font-mono text-[9px] font-black uppercase tracking-wider text-violet-700">¿La microestructura predice la reversión? — probado con más datos</p>
+            <span className={`rounded-full border px-3 py-1 font-mono text-[11px] font-black tabular-nums ${study.heldOutAuc >= 0.55 ? "border-violet-200 bg-violet-50 text-violet-700" : "border-zinc-300 bg-zinc-50 text-zinc-600"}`}>
               AUC {study.heldOutAuc.toFixed(3)} held-out
             </span>
           </div>
@@ -180,8 +180,10 @@ export function RealMarketEvidence() {
             out-of-sample (base rate {study.baseRatePct}%).{" "}
             {study.heldOutAuc >= 0.55
               ? "El modelo extrae estructura genuina de la microestructura real."
-              : "Es una señal real pero débil (apenas supera el azar), justo lo que predice un mercado eficiente — no la sobre-vendemos."}
-            {" "}Y como no cubre los fees retail, la ejecución permanece gateada. Honestidad sobre el mercado, no promesas.
+              : study.heldOutAuc < 0.5
+                ? "Sin señal genuina: el AUC es indistinguible del azar (incluso ligeramente por debajo) sobre una muestra grande. Una corrida anterior con muchas menos observaciones había sugerido un AUC débil pero positivo (~0.53–0.59) — más datos revelaron que era ruido de muestra chica, no una señal real. Lo reportamos así de cambiado: la honestidad estadística importa más que mantener un resultado bonito."
+                : "Es una señal real pero débil (apenas supera el azar), justo lo que predice un mercado eficiente — no la sobre-vendemos."}
+            {" "}Y como no cubre los fees retail, la ejecución permanece gateada de cualquier forma.
           </p>
         </div>
       )}

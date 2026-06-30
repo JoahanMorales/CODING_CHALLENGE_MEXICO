@@ -1,19 +1,19 @@
 {
-  "generatedAt": "2026-06-30T07:45:25.472Z",
-  "tape": "data/tape-long.jsonl",
-  "rounds": 766,
+  "generatedAt": "2026-06-30T22:09:58.148Z",
+  "tape": "data/tape-ws-1h.jsonl",
+  "rounds": 5107,
   "params": {
     "window": 24,
     "lookahead": 8,
     "zEntry": 1,
     "revertFraction": 0.4
   },
-  "candidates": 6709,
-  "reverted": 2125,
-  "baseRatePct": 31.7,
-  "trainSamples": 5345,
-  "valSamples": 1364,
-  "heldOutAuc": 0.5307,
-  "trees": 32,
-  "takeaway": "El spread revierte (base rate alto) pero la microestructura aporta poca señal extra en esta ventana."
+  "candidates": 24065,
+  "reverted": 5211,
+  "baseRatePct": 21.7,
+  "trainSamples": 19236,
+  "valSamples": 4829,
+  "heldOutAuc": 0.4881,
+  "trees": 2,
+  "takeaway": "Sin señal genuina a esta escala: AUC 0.488 (indistinguible del azar, incluso ligeramente por debajo) sobre 4,829 muestras out-of-sample. Lecturas anteriores con muestras mucho más chicas sugerían un AUC débil pero positivo (~0.53-0.59) -- una muestra mucho mayor (24,065 candidatas vs ~6,700 antes) revela que era ruido de muestra chica, no una señal real. El spread sí revierte (base rate 21.7%), pero la microestructura no predice CUÁNDO mejor que el azar."
 }
