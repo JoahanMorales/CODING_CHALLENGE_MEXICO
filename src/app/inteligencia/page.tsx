@@ -1,5 +1,6 @@
 import { AetFlowCanvas } from "@/components/AetFlowCanvas";
 import { AetPipelineDiagram } from "@/components/AetPipelineDiagram";
+import { IntelligenceCalibration } from "@/components/IntelligenceCalibration";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
 
@@ -106,6 +107,19 @@ export default function IntelligencePage() {
                 <p className="mt-3 text-sm font-semibold leading-6 text-zinc-500">{explanation}</p>
               </article>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 py-12">
+        <div className="mx-auto max-w-7xl">
+          <p className="font-mono text-[10px] font-black uppercase text-sky-700">Aprendizaje y calibración</p>
+          <h2 className="mt-2 max-w-3xl text-3xl font-black text-zinc-950">El modelo se autocalibra con cada markout</h2>
+          <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-zinc-500">
+            Datos en vivo del kernel en modo demo: supervivencia predicha vs. resultado realizado, medida con el Brier score.
+          </p>
+          <div className="mt-6">
+            <IntelligenceCalibration />
           </div>
         </div>
       </section>
