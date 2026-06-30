@@ -49,7 +49,9 @@ const innovations = [
   ["Adaptive volatility threshold", "CROSS_EXCHANGE_THRESHOLD_PCT se ajusta según volatilidad: base × clamp(1.0, 2, 1 + (volBps − 1.5) / 5). Floor en 1.0 para no relajar el umbral en baja volatilidad."],
   ["Square-root law de market impact", "El slippage escala con √(participación), no lineal — ley casi universal confirmada en Bitcoin (Donier & Bonart 2015, exponente ≈0.5). Un modelo lineal subestima el costo de consumir profundidad."],
   ["Gate de cointegración (ADF)", "Stat arb solo opera spreads que rechazan raíz unitaria: t-stat de Dickey-Fuller sobre el AR(1) con deriva (t < −2.0 ⇒ estacionario/cointegrado). Engle & Granger (1987), Dickey & Fuller (1979)."],
-  ["Sizing de Kelly fraccional", "Tamaño = f* = p − (1−p)/b (Kelly 1956, Thorp 2006), con p = supervivencia del ensemble y b = odds edge/downside, escalando la base de profundidad y acotado a [0.3, 1]."]
+  ["Sizing de Kelly fraccional", "Tamaño = f* = p − (1−p)/b (Kelly 1956, Thorp 2006), con p = supervivencia del ensemble y b = odds edge/downside, escalando la base de profundidad y acotado a [0.3, 1]."],
+  ["Maker pricing Avellaneda-Stoikov", "La pata maker ya no usa una agresividad fija: deriva qué tan adentro del spread postar del half-spread óptimo δ = 0.5[γσ²(T−t) + (2/γ)ln(1+γ/κ)] — más pasiva en alta volatilidad, más ajustada en libros profundos — con skew por order-flow imbalance. Avellaneda & Stoikov (2008)."],
+  ["Features de order-flow imbalance", "El ensemble ML ahora consume OFI a la punta y multi-level OFI ponderado a 5 niveles (Cont-Kukanov-Stoikov 2014; Xu-Gould-Howison 2018, R²≈65 %), microprice en ambos libros y su alineación — antes eran features inertes en 0."]
 ];
 
 const formulas = [
@@ -61,7 +63,8 @@ const formulas = [
   ["Supervivencia AET", "sigmoid(edge - adverse selection - latency - impact + calibration bias)", "Estima si la oportunidad seguirá existiendo al completar ambas piernas y se recalibra con markouts observados."],
   ["Market impact (√-law)", "slippage = base + c · √(tamaño / profundidad)", "Ley raíz-cuadrada validada en Bitcoin: consumir profundidad cuesta de forma cóncava, no lineal. Donier & Bonart (2015)."],
   ["Cointegración (ADF)", "Δy = α + ρ · y₋₁ + ε ⟶ t = ρ̂ / SE(ρ̂)", "Test de Dickey-Fuller sobre el spread: solo se opera si rechaza raíz unitaria (t < −2), confirmando reversión a la media."],
-  ["Kelly fraccional", "f* = p − (1 − p) / b", "Tamaño óptimo de posición proporcional al edge e inverso al riesgo; p = supervivencia, b = odds. Acotado a [0.3, 1] sobre la base de profundidad."]
+  ["Kelly fraccional", "f* = p − (1 − p) / b", "Tamaño óptimo de posición proporcional al edge e inverso al riesgo; p = supervivencia, b = odds. Acotado a [0.3, 1] sobre la base de profundidad."],
+  ["Avellaneda-Stoikov", "δ = ½[γσ²(T−t) + (2/γ)·ln(1 + γ/κ)]", "Half-spread óptimo de market making: define qué tan adentro del spread postar la pata maker; crece con volatilidad σ, se ajusta con la profundidad κ y la aversión al inventario γ."]
 ];
 
 export default function IntelligencePage() {
@@ -165,7 +168,7 @@ export default function IntelligencePage() {
       <section className="border-y border-sky-100 px-5 py-12">
         <div className="mx-auto max-w-7xl">
           <p className="font-mono text-[10px] font-black uppercase text-sky-700">Innovaciones implementadas</p>
-          <h2 className="mt-2 text-3xl font-black text-zinc-950">Catorce mejoras sobre el modelo base</h2>
+          <h2 className="mt-2 text-3xl font-black text-zinc-950">Dieciséis mejoras sobre el modelo base</h2>
           <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-zinc-500">
             Cada innovación está activa en el motor de producción y tiene cobertura de pruebas.
           </p>
@@ -203,6 +206,7 @@ export default function IntelligencePage() {
             <Reference href="https://arxiv.org/abs/1412.4503" title="Market Impact on Bitcoin (Donier & Bonart, 2015)">Confirma empíricamente la ley raíz-cuadrada de impacto de mercado en BTC (exponente ≈ 0.5).</Reference>
             <Reference href="https://www.jstor.org/stable/1913236" title="Co-integration and Error Correction (Engle & Granger, 1987)">Base del gate de estacionariedad (ADF) que filtra spreads no cointegrados en stat arb.</Reference>
             <Reference href="https://ieeexplore.ieee.org/document/6771227" title="A New Interpretation of Information Rate (Kelly, 1956)">Criterio de Kelly para el tamaño óptimo de posición proporcional al edge.</Reference>
+            <Reference href="https://arxiv.org/abs/0810.4892" title="High-frequency trading in a limit order book (Avellaneda & Stoikov, 2008)">Half-spread óptimo de market making que fija la agresividad de la pata maker según volatilidad, profundidad e inventario.</Reference>
           </div>
         </div>
       </section>

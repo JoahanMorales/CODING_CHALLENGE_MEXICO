@@ -100,6 +100,8 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 | 12 | **Square-root law de market impact** | El slippage escala con `√(participación)`, no lineal — ley casi universal confirmada específicamente en Bitcoin. Un modelo lineal subestima el costo de consumir profundidad | Donier & Bonart (2015), Tóth et al. (2011), Almgren et al. (2005) |
 | 13 | **Gate de cointegración (ADF)** | Stat arb solo opera spreads que rechazan raíz unitaria: t-stat de Dickey-Fuller sobre el AR(1) con deriva (`t < -2.0` ⇒ estacionario/cointegrado). Veta regímenes desacoplados | Dickey & Fuller (1979), Engle & Granger (1987) |
 | 14 | **Sizing de Kelly fraccional** | Tamaño = `f* = p − (1−p)/b` (Kelly), con `p` = supervivencia del ensemble y `b` = odds edge/downside, escalando la base de profundidad y acotado a `[0.3, 1]` | Kelly (1956), Thorp (2006) |
+| 15 | **Maker pricing Avellaneda-Stoikov** | La pata maker deriva su agresividad del half-spread óptimo `δ = ½[γσ²(T−t) + (2/γ)ln(1+γ/κ)]` — más pasiva en alta volatilidad, más ajustada en libros profundos — con skew por order-flow imbalance | Avellaneda & Stoikov (2008) |
+| 16 | **Features de order-flow imbalance** | El ML consume OFI a la punta y multi-level OFI ponderado a 5 niveles + microprice en ambos libros y su alineación (antes inertes en 0) | Cont-Kukanov-Stoikov (2014), Xu-Gould-Howison (2018) |
 
 <p align="center">
   <img alt="Innovaciones implementadas" src="recursos/11mejoras.png" width="820" />
