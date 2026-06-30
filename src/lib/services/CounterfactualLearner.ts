@@ -14,9 +14,15 @@ export class CounterfactualLearner {
   private readonly outcomes: CounterfactualOutcome[] = [];
   private readonly lastTrackedAt = new Map<string, number>();
 
+  // Rejected signals below this score are pure noise (a cross-exchange route
+  // already earns ~40 points from venue reliability + liquidity alone, so 30 is
+  // a low bar). Tracking the rest is what makes Shadow Learning able to surface
+  // missed profits and avoided losses on signals the engine declined.
+  private static readonly REJECTED_TRACKING_MIN_SCORE = 30;
+
   track(opportunity: Opportunity): void {
     if (opportunity.type !== "CROSS_EXCHANGE" || !opportunity.buyExchange || !opportunity.sellExchange) return;
-    if (opportunity.status === "REJECTED" && opportunity.score < 50) return;
+    if (opportunity.status === "REJECTED" && opportunity.score < CounterfactualLearner.REJECTED_TRACKING_MIN_SCORE) return;
     const sampleKey = `${opportunity.route}:${opportunity.status}`;
     const lastTrackedAt = this.lastTrackedAt.get(sampleKey) ?? 0;
     if (Date.now() - lastTrackedAt < (opportunity.status === "REJECTED" ? 1800 : 450)) return;

@@ -62,4 +62,14 @@ describe("CounterfactualLearner", () => {
     expect(outcomes.some((outcome) => outcome.label === "MISSED_PROFIT")).toBe(true);
     expect(learner.summary().missedProfits).toBeGreaterThan(0);
   });
+
+  it("ignores rejected signals below the noise score floor", () => {
+    const learner = new CounterfactualLearner();
+    learner.track({ ...rejectedOpportunity(), score: 12 });
+    learner.observeBook(book("binance", "69990", "70000"));
+    const outcomes = learner.observeBook(book("bybit", "70300", "70310"));
+
+    expect(outcomes).toHaveLength(0);
+    expect(learner.summary().evaluatedSignals).toBe(0);
+  });
 });
