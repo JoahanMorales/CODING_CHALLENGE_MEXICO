@@ -1363,9 +1363,9 @@ function SignalNumber({
   value: string;
 }) {
   return (
-    <div className={`rounded-lg border bg-white/80 ${compact ? "px-2 py-1.5" : "px-3 py-2"} ${toneBorder(tone)}`}>
-      <span className="block text-[9px] font-black uppercase text-zinc-500">{label}</span>
-      <strong className={`${compact ? "text-xs" : "text-sm"} block truncate font-mono ${toneText(tone)}`}>{value}</strong>
+    <div className={`rounded-lg border bg-white/80 transition-colors ${compact ? "px-2 py-1.5" : "px-3 py-2"} ${toneBorder(tone)}`}>
+      <span className="block text-[9px] font-black uppercase tracking-wider text-zinc-500">{label}</span>
+      <strong className={`${compact ? "text-xs" : "text-sm"} mt-0.5 block truncate font-mono font-black leading-tight tracking-tight ${toneText(tone)}`}>{value}</strong>
     </div>
   );
 }
@@ -1373,7 +1373,7 @@ function SignalNumber({
 function TinyMetric({ label, tone, value }: { label: string; tone: Tone; value: string }) {
   return (
     <div className={`rounded-lg border bg-white/80 px-2 py-2 ${toneBorder(tone)}`}>
-      <span className="block text-[9px] font-black uppercase text-zinc-500">{label}</span>
+      <span className="block text-[9px] font-black uppercase tracking-wider text-zinc-500">{label}</span>
       <strong className={`mt-1 block truncate font-mono text-xs ${toneText(tone)}`}>{value}</strong>
     </div>
   );
@@ -1382,7 +1382,7 @@ function TinyMetric({ label, tone, value }: { label: string; tone: Tone; value: 
 function HealthStat({ label, tone, value }: { label: string; tone: Tone; value: string }) {
   return (
     <div className={`rounded-xl border bg-white/75 px-3 py-2 ${toneBorder(tone)}`}>
-      <span className="block text-[9px] font-black uppercase text-zinc-500">{label}</span>
+      <span className="block text-[9px] font-black uppercase tracking-wider text-zinc-500">{label}</span>
       <strong className={`mt-1 block font-mono text-sm ${toneText(tone)}`}>{value}</strong>
     </div>
   );
@@ -1391,7 +1391,7 @@ function HealthStat({ label, tone, value }: { label: string; tone: Tone; value: 
 function TopMetric({ label, tone, value }: { label: string; tone: Tone; value: string }) {
   return (
     <div className={`w-[84px] rounded-xl border bg-white px-3 py-2 font-mono shadow-sm ${toneBorder(tone)}`}>
-      <span className="block text-[9px] font-black uppercase text-zinc-500">{label}</span>
+      <span className="block text-[9px] font-black uppercase tracking-wider text-zinc-500">{label}</span>
       <strong className={`block text-xs ${toneText(tone)}`}>{value}</strong>
     </div>
   );
@@ -1422,7 +1422,7 @@ function SegmentedMode({ mode, setMode }: { mode: "LIVE" | "DEMO"; setMode: (mod
 
 function StatusPill({ label, pulse = false, tone }: { label: string; pulse?: boolean; tone: Tone }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-black uppercase ${tonePill(tone)}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-black uppercase tracking-wider ${tonePill(tone)}`}>
       {pulse && <span className={`h-1.5 w-1.5 animate-pulse rounded-full ${toneDot(tone)}`} />}
       {label}
     </span>
@@ -1430,7 +1430,7 @@ function StatusPill({ label, pulse = false, tone }: { label: string; pulse?: boo
 }
 
 function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-sky-100/70 ${className}`}>{children}</div>;
+  return <div className={`rounded-2xl border border-zinc-200/70 bg-white/90 p-4 backdrop-blur-sm elev ${className}`}>{children}</div>;
 }
 
 function PanelTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
@@ -1443,7 +1443,7 @@ function PanelTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
 }
 
 function SectionKicker({ children }: { children: React.ReactNode }) {
-  return <span className="font-mono text-[10px] font-black uppercase tracking-normal text-sky-700">{children}</span>;
+  return <span className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-sky-700">{children}</span>;
 }
 
 function ProgressBar({ tone, value }: { tone: Tone; value: number }) {
