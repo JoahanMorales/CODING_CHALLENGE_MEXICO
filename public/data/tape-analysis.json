@@ -1,0 +1,87 @@
+{
+  "generatedAt": "2026-06-30T05:34:59.120Z",
+  "tape": "data/tape-3min.jsonl",
+  "capture": {
+    "rounds": 254,
+    "books": 1751,
+    "venues": [
+      "binance",
+      "kraken",
+      "coinbase",
+      "okx",
+      "bybit",
+      "bitfinex",
+      "gate"
+    ],
+    "durationSec": 179,
+    "usdtUsdBasisBps": "-17.800"
+  },
+  "cross": {
+    "candidates": 10430,
+    "profitable": 0,
+    "profitablePct": 0,
+    "netSpreadBps": {
+      "min": -112.77,
+      "p25": -89.64,
+      "median": -58.91,
+      "p75": -37.62,
+      "max": -20.9
+    },
+    "histogram": [
+      {
+        "binBps": -120,
+        "count": 865
+      },
+      {
+        "binBps": -110,
+        "count": 1215
+      },
+      {
+        "binBps": -100,
+        "count": 431
+      },
+      {
+        "binBps": -90,
+        "count": 409
+      },
+      {
+        "binBps": -80,
+        "count": 1070
+      },
+      {
+        "binBps": -70,
+        "count": 764
+      },
+      {
+        "binBps": -60,
+        "count": 2679
+      },
+      {
+        "binBps": -50,
+        "count": 297
+      },
+      {
+        "binBps": -40,
+        "count": 1747
+      },
+      {
+        "binBps": -30,
+        "count": 953
+      }
+    ]
+  },
+  "latency": {
+    "candidates": 0,
+    "detected": 0,
+    "maxNetBps": 0,
+    "maxStalenessMs": 0,
+    "maxObservedStalenessMs": 603,
+    "stalenessOver1800": 0,
+    "thresholdMs": 1800
+  },
+  "statArb": {
+    "candidates": 136,
+    "detected": 0
+  },
+  "verdict": "A tarifas retail, ninguna dislocación cross-exchange real superó fees+base. El mercado es eficiente; el valor está en rechazarlas con precisión."
+}

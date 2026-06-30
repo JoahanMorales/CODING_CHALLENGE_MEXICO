@@ -13,7 +13,9 @@ build/
 .vercel/
 .DS_Store
 npm-debug.log*
-data/
+# Top-level working data only (journal, recorded tapes). Committed analysis
+# artifacts live under public/data/ and must stay tracked.
+/data/
 scripts/railway_keepalive.py
 
 .vercel

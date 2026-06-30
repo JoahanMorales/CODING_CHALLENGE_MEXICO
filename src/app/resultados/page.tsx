@@ -1,5 +1,6 @@
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
+import { RealMarketEvidence } from "@/components/RealMarketEvidence";
 import { ResultsDashboard } from "@/components/ResultsDashboard";
 
 export default function ResultsPage() {
@@ -16,6 +17,7 @@ export default function ResultsPage() {
           <div className="mt-8">
             <ResultsDashboard />
           </div>
+          <RealMarketEvidence />
         </div>
       </section>
       <PublicSiteFooter />

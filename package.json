@@ -17,7 +17,8 @@
     "sandbox:probe": "tsx scripts/sandboxProbe.ts",
     "sandbox:hedge": "tsx scripts/okxDemoHedge.ts",
     "train": "tsx scripts/trainModel.ts",
-    "record": "tsx scripts/recordTape.ts"
+    "record": "tsx scripts/recordTape.ts",
+    "analyze:tape": "tsx scripts/analyzeTape.ts"
   },
   "dependencies": {
     "decimal.js": "^10.4.3",
