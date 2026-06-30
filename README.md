@@ -97,9 +97,12 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 | 9 | **XGBoost-style ML EdgeTensor (ensemble de dos modelos)** | Gradient-boosted ensemble de decision stumps (max 32 trees), 19 features del order book, entrenamiento online desde outcomes reales y shadow. Una vez entrenado actúa como segunda opinión: su `survival` se mezcla en la confianza y puede **vetar** una señal que AET admitió (nunca resucita una que AET rechazó). Inactivo hasta tener suficientes outcomes, así el hot path afinado no cambia hasta entonces. | Chen & Guestrin (XGBoost, 2016) |
 | 10 | **Hybrid maker/taker execution** | Compra como maker (mejor precio, baja fee) y vende como taker (fill garantizado) — fees menores que taker puro con mejor fill que maker puro | |
 | 11 | **Adaptive volatility threshold** | `CROSS_EXCHANGE_THRESHOLD_PCT` se ajusta según volatilidad: `base * clamp(1.0, 2, 1 + (volBps - 1.5)/5)`. Floor en 1.0 para no relajar el umbral en baja volatilidad | |
+| 12 | **Square-root law de market impact** | El slippage escala con `√(participación)`, no lineal — ley casi universal confirmada específicamente en Bitcoin. Un modelo lineal subestima el costo de consumir profundidad | Donier & Bonart (2015), Tóth et al. (2011), Almgren et al. (2005) |
+| 13 | **Gate de cointegración (ADF)** | Stat arb solo opera spreads que rechazan raíz unitaria: t-stat de Dickey-Fuller sobre el AR(1) con deriva (`t < -2.0` ⇒ estacionario/cointegrado). Veta regímenes desacoplados | Dickey & Fuller (1979), Engle & Granger (1987) |
+| 14 | **Sizing de Kelly fraccional** | Tamaño = `f* = p − (1−p)/b` (Kelly), con `p` = supervivencia del ensemble y `b` = odds edge/downside, escalando la base de profundidad y acotado a `[0.3, 1]` | Kelly (1956), Thorp (2006) |
 
 <p align="center">
-  <img alt="Once innovaciones implementadas" src="recursos/11mejoras.png" width="820" />
+  <img alt="Innovaciones implementadas" src="recursos/11mejoras.png" width="820" />
 </p>
 
 #### Papers base
@@ -110,6 +113,11 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 - Bechler y Ludkovski: [Order Flows and Limit Order Book Resiliency on the Meso-Scale](https://arxiv.org/abs/1708.02715)
 - Lokin y Yu: [Fill Probabilities in a Limit Order Book with State-Dependent Stochastic Order Flows](https://arxiv.org/abs/2403.02572)
 - Makarov y Schoar: [Trading and Arbitrage in Cryptocurrency Markets](https://doi.org/10.1016/j.jfineco.2019.07.001)
+- Donier y Bonart: [A Million Metaorder Analysis of Market Impact on Bitcoin](https://arxiv.org/abs/1412.4503) — confirma la `√`-law en BTC (exponente ≈ 0.5)
+- Tóth et al.: [Anomalous Price Impact and the Critical Nature of Liquidity](https://arxiv.org/abs/1105.1694)
+- Almgren et al.: [Direct Estimation of Equity Market Impact](https://www.cis.upenn.edu/~mkearns/finread/costestim.pdf)
+- Engle y Granger: [Co-integration and Error Correction](https://www.jstor.org/stable/1913236) (1987) · Dickey y Fuller (1979)
+- Kelly: [A New Interpretation of Information Rate](https://ieeexplore.ieee.org/document/6771227) (1956) · Thorp (2006)
 - Kraken API Center: [Spot WebSockets v2 Book Checksum](https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/)
 
 ## Arquitectura

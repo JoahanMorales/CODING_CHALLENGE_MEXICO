@@ -46,7 +46,10 @@ const innovations = [
   ["Latency kill switch", "RecordLatency trackea últimos 20 mensajes; shouldHalt frena si avg > 3000 ms; getLatencyMultiplier escala 1.5 / 2.5 / 3.2."],
   ["XGBoost-style ML EdgeTensor", "Gradient-boosted ensemble de decision stumps (max 32 trees), 19 features del order book, entrenamiento online desde outcomes reales y shadow. Una vez entrenado es la segunda opinión del ensemble: puede vetar una señal que AET admitió. Chen & Guestrin (XGBoost, 2016)."],
   ["Hybrid maker/taker execution", "Compra como maker (mejor precio, comisión menor) y vende como taker (fill garantizado). Fees menores que taker puro con mejor fill que maker puro."],
-  ["Adaptive volatility threshold", "CROSS_EXCHANGE_THRESHOLD_PCT se ajusta según volatilidad: base × clamp(1.0, 2, 1 + (volBps − 1.5) / 5). Floor en 1.0 para no relajar el umbral en baja volatilidad."]
+  ["Adaptive volatility threshold", "CROSS_EXCHANGE_THRESHOLD_PCT se ajusta según volatilidad: base × clamp(1.0, 2, 1 + (volBps − 1.5) / 5). Floor en 1.0 para no relajar el umbral en baja volatilidad."],
+  ["Square-root law de market impact", "El slippage escala con √(participación), no lineal — ley casi universal confirmada en Bitcoin (Donier & Bonart 2015, exponente ≈0.5). Un modelo lineal subestima el costo de consumir profundidad."],
+  ["Gate de cointegración (ADF)", "Stat arb solo opera spreads que rechazan raíz unitaria: t-stat de Dickey-Fuller sobre el AR(1) con deriva (t < −2.0 ⇒ estacionario/cointegrado). Engle & Granger (1987), Dickey & Fuller (1979)."],
+  ["Sizing de Kelly fraccional", "Tamaño = f* = p − (1−p)/b (Kelly 1956, Thorp 2006), con p = supervivencia del ensemble y b = odds edge/downside, escalando la base de profundidad y acotado a [0.3, 1]."]
 ];
 
 const formulas = [
@@ -55,7 +58,10 @@ const formulas = [
   ["Execution Net P&L", "gross edge - fees - slippage - quote basis - execution risk", "Separa el resultado operativo inmediato del costo periódico de rebalancear inventario entre venues."],
   ["Rebalance-adjusted P&L", "execution net - withdrawal amortization", "Permite comparar rutas prefunded sin ocultar el costo económico de recuperar la asignación inicial."],
   ["Expected Value", "P(fill A ∩ fill B) × P&L ajustado - P(leg risk) × unwind cost", "Prioriza señales por valor esperado y no por un spread que podría desaparecer antes de completar ambas piernas."],
-  ["Supervivencia AET", "sigmoid(edge - adverse selection - latency - impact + calibration bias)", "Estima si la oportunidad seguirá existiendo al completar ambas piernas y se recalibra con markouts observados."]
+  ["Supervivencia AET", "sigmoid(edge - adverse selection - latency - impact + calibration bias)", "Estima si la oportunidad seguirá existiendo al completar ambas piernas y se recalibra con markouts observados."],
+  ["Market impact (√-law)", "slippage = base + c · √(tamaño / profundidad)", "Ley raíz-cuadrada validada en Bitcoin: consumir profundidad cuesta de forma cóncava, no lineal. Donier & Bonart (2015)."],
+  ["Cointegración (ADF)", "Δy = α + ρ · y₋₁ + ε ⟶ t = ρ̂ / SE(ρ̂)", "Test de Dickey-Fuller sobre el spread: solo se opera si rechaza raíz unitaria (t < −2), confirmando reversión a la media."],
+  ["Kelly fraccional", "f* = p − (1 − p) / b", "Tamaño óptimo de posición proporcional al edge e inverso al riesgo; p = supervivencia, b = odds. Acotado a [0.3, 1] sobre la base de profundidad."]
 ];
 
 export default function IntelligencePage() {
@@ -159,7 +165,7 @@ export default function IntelligencePage() {
       <section className="border-y border-sky-100 px-5 py-12">
         <div className="mx-auto max-w-7xl">
           <p className="font-mono text-[10px] font-black uppercase text-sky-700">Innovaciones implementadas</p>
-          <h2 className="mt-2 text-3xl font-black text-zinc-950">Once mejoras sobre el modelo base</h2>
+          <h2 className="mt-2 text-3xl font-black text-zinc-950">Catorce mejoras sobre el modelo base</h2>
           <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-zinc-500">
             Cada innovación está activa en el motor de producción y tiene cobertura de pruebas.
           </p>
@@ -194,6 +200,9 @@ export default function IntelligencePage() {
             <Reference href="https://arxiv.org/abs/1011.6402" title="Price Impact of Order Book Events">Fundamento para usar desequilibrio del flujo de órdenes como señal de impacto a corto horizonte.</Reference>
             <Reference href="https://arxiv.org/abs/1907.06230" title="Multi-Level Order-Flow Imbalance">Motivación para incorporar varios niveles de profundidad y no depender únicamente del mejor bid y ask.</Reference>
             <Reference href="https://arxiv.org/abs/1812.00595" title="Limits to Arbitrage for Blockchain-Based Assets">Marco para considerar costos, capital, latencia y fricciones operativas antes de ejecutar.</Reference>
+            <Reference href="https://arxiv.org/abs/1412.4503" title="Market Impact on Bitcoin (Donier & Bonart, 2015)">Confirma empíricamente la ley raíz-cuadrada de impacto de mercado en BTC (exponente ≈ 0.5).</Reference>
+            <Reference href="https://www.jstor.org/stable/1913236" title="Co-integration and Error Correction (Engle & Granger, 1987)">Base del gate de estacionariedad (ADF) que filtra spreads no cointegrados en stat arb.</Reference>
+            <Reference href="https://ieeexplore.ieee.org/document/6771227" title="A New Interpretation of Information Rate (Kelly, 1956)">Criterio de Kelly para el tamaño óptimo de posición proporcional al edge.</Reference>
           </div>
         </div>
       </section>
