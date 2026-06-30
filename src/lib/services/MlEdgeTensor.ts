@@ -38,7 +38,10 @@ interface GradientBoostingEnsemble {
 
 // Bumped whenever the feature layout or training scheme changes, so a persisted
 // model trained under an incompatible schema is rejected rather than misread.
-export const ML_MODEL_VERSION = 1;
+// v2: populated the previously-dead features (alignment, volatilityBps,
+// orderFlowImbalance, multiLevelOfi) with real microstructure (Cont-Kukanov OFI,
+// Xu-Gould MLOFI, Stoikov microprice), so v1 models must not be reused.
+export const ML_MODEL_VERSION = 2;
 
 export interface MlModelSnapshot {
   version: number;
@@ -157,18 +160,44 @@ export class MlEdgeTensor {
       0.58 * (1 - ageMs / 2800) + 0.42 * (1 - skewMs / 1800)
     ));
 
-    const microSkewBps = buyBid && buyAsk ? (() => {
-      const total = buyBid.size.plus(buyAsk.size);
-      if (total.lessThanOrEqualTo(0)) return 0;
-      const mp = buyBid.price.plus(buyAsk.price).div(2);
-      const micro = buyBid.price.mul(buyAsk.size).plus(buyAsk.price.mul(buyBid.size)).div(total);
-      return micro.minus(mp).div(mp).mul(10000).toNumber();
-    })() : 0;
+    // Microprice skew (Stoikov): size-weighted fair price vs mid. Computed on both
+    // books so we can measure whether they agree (alignment) on short-term drift.
+    const buyMicroSkewBps = micropriceSkewBps(buyBid, buyAsk);
+    const sellMicroSkewBps = micropriceSkewBps(sellBid, sellAsk);
+
+    // Order-flow imbalance (Cont-Kukanov-Stoikov 2014): signed queue imbalance at
+    // the touch between the side we hit on each venue (we lift buyBook.ask and hit
+    // sellBook.bid). Positive => more bid liquidity to sell into than ask to buy
+    // from, i.e. book pressure favours the arb direction.
+    const topBuyAsk = buyAsk ? buyAsk.size : d(0);
+    const topSellBid = sellBid ? sellBid.size : d(0);
+    const touchTotal = topBuyAsk.plus(topSellBid);
+    const orderFlowImbalance = touchTotal.greaterThan(0)
+      ? topSellBid.minus(topBuyAsk).div(touchTotal).toNumber()
+      : 0;
+
+    // Multi-level OFI (Xu-Gould-Howison 2018): the same imbalance but depth-weighted
+    // across 5 levels (weight 1/(level+1)), which adds explanatory power for short-
+    // horizon mid-price moves beyond the top of book.
+    const weightedSellBid = weightedDepth(sellBook.bids);
+    const weightedBuyAsk = weightedDepth(buyBook.asks);
+    const weightedTotal = weightedSellBid + weightedBuyAsk;
+    const multiLevelOfi = weightedTotal > 0 ? (weightedSellBid - weightedBuyAsk) / weightedTotal : 0;
+
+    // Alignment: do both books' microprices lean the same way? Agreement (same sign)
+    // is a stronger, less noisy directional signal than either book alone.
+    const sameDirection = buyMicroSkewBps * sellMicroSkewBps > 0 ? 1 : -1;
+    const alignment = Math.max(-1, Math.min(1, sameDirection * Math.min(1, (Math.abs(buyMicroSkewBps) + Math.abs(sellMicroSkewBps)) / 4)));
+
+    // Instantaneous volatility proxy: the average quoted half-spread (bps). Wider
+    // quotes accompany higher short-term uncertainty when a true realized-vol series
+    // is unavailable from a single snapshot.
+    const volatilityBps = (buySpreadBps + sellSpreadBps) / 2;
 
     return {
-      netEdgeBps, alignment: 0, liquidityScore, freshnessScore,
-      volatilityBps: 0, micropriceSkewBps: microSkewBps,
-      orderFlowImbalance: 0, multiLevelOfi: 0,
+      netEdgeBps, alignment, liquidityScore, freshnessScore,
+      volatilityBps, micropriceSkewBps: buyMicroSkewBps,
+      orderFlowImbalance, multiLevelOfi,
       buySpreadBps, sellSpreadBps,
       buyDepth5: buyDepth5Amt, sellDepth5: sellDepth5Amt,
       quoteSkewMs: skewMs, ageMs,
@@ -348,4 +377,25 @@ function sigmoid(x: number): number {
 
 function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
+}
+
+// Size-weighted microprice vs mid, in bps (Stoikov). Positive => fair price above
+// mid (upward short-term pressure).
+function micropriceSkewBps(bid?: { price: Decimal; size: Decimal } | null, ask?: { price: Decimal; size: Decimal } | null): number {
+  if (!bid || !ask) return 0;
+  const total = bid.size.plus(ask.size);
+  if (total.lessThanOrEqualTo(0)) return 0;
+  const mp = bid.price.plus(ask.price).div(2);
+  if (mp.lessThanOrEqualTo(0)) return 0;
+  const micro = bid.price.mul(ask.size).plus(ask.price.mul(bid.size)).div(total);
+  return micro.minus(mp).div(mp).mul(10000).toNumber();
+}
+
+// Depth across the top 5 levels weighted by 1/(level+1) (MLOFI weighting).
+function weightedDepth(levels: Array<{ size: string }>): number {
+  let sum = 0;
+  for (let level = 0; level < Math.min(5, levels.length); level += 1) {
+    sum += Number(levels[level].size) / (level + 1);
+  }
+  return sum;
 }

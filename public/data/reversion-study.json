@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-30T07:14:00.578Z",
+  "generatedAt": "2026-06-30T07:26:26.048Z",
   "tape": "data/tape-3min.jsonl",
   "rounds": 254,
   "params": {
@@ -13,7 +13,7 @@
   "baseRatePct": 40.4,
   "trainSamples": 1391,
   "valSamples": 392,
-  "heldOutAuc": 0.5948,
+  "heldOutAuc": 0.5868,
   "trees": 32,
   "takeaway": "El spread cross-venue revierte de forma predecible desde la microestructura: el ML supera el azar en datos reales. Es una señal genuina, aunque no rentable tras fees retail (por eso la ejecución sigue gateada)."
 }
