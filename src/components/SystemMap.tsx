@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { EXCHANGE_IDS, EXCHANGE_LABELS } from "@/lib/config/exchanges";
 
-const FEATURES = ["MLOFI", "Microprice", "Profundidad", "Volatilidad", "Quote age"];
-const STRATEGIES = ["Cross-Exchange", "Triangular", "Stat-Arb", "Latencia"];
-
-const MIND_X = 460;
-const MIND_Y = 300;
-const FEATURE_R = 132;
-const STRATEGY_R = 178;
+const CORE_X = 560;
+const CORE_Y = 290;
+const CORE_R = 128;
+const EXEC_X = 1000;
+const EXEC_Y = 290;
+const CLUSTER_X = 168;
+const CLUSTER_Y = 290;
 
 export function SystemMap({ compact = false }: { compact?: boolean }) {
   const [animated, setAnimated] = useState(true);
@@ -20,301 +20,184 @@ export function SystemMap({ compact = false }: { compact?: boolean }) {
 
   return (
     <svg
-      aria-label="Mapa del sistema ArbitrAI: siete venues, el Edge Tensor, filtrado de riesgo, ejecución y aprendizaje"
+      aria-label="Mapa del sistema ArbitrAI: mercados en vivo, el Edge Tensor filtrando oportunidades, ejecución validada y aprendizaje continuo"
       className="h-full w-full"
       preserveAspectRatio={compact ? "xMidYMid meet" : "xMidYMid slice"}
-      viewBox="0 0 1200 600"
+      viewBox="0 0 1160 680"
     >
       <defs>
-        <radialGradient id="mindGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#34D399" stopOpacity="0.16" />
-          <stop offset="100%" stopColor="#34D399" stopOpacity="0" />
+        <filter height="300%" id="softGlow" width="300%" x="-100%" y="-100%">
+          <feGaussianBlur stdDeviation="20" />
+        </filter>
+        <radialGradient id="coreFill" cx="38%" cy="32%" r="75%">
+          <stop offset="0%" stopColor="#ECFDF5" />
+          <stop offset="55%" stopColor="#D1FAE5" />
+          <stop offset="100%" stopColor="#A7F3D0" />
         </radialGradient>
-        <linearGradient id="feederGradient" x1="0%" x2="100%">
-          <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#38BDF8" stopOpacity="0.08" />
+        <linearGradient id="wingFill" x1="0%" x2="100%">
+          <stop offset="0%" stopColor="#34D399" stopOpacity="0.32" />
+          <stop offset="100%" stopColor="#2DD4BF" stopOpacity="0.16" />
         </linearGradient>
-        <linearGradient id="riverGradient" x1="0%" x2="100%">
-          <stop offset="0%" stopColor="#F472B6" stopOpacity="0.55" />
-          <stop offset="100%" stopColor="#A78BFA" stopOpacity="0.55" />
+        <linearGradient id="inflowStroke" x1="0%" x2="100%">
+          <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.75" />
+          <stop offset="100%" stopColor="#34D399" stopOpacity="0.55" />
         </linearGradient>
-        <marker id="ledgerDone" markerWidth="8" markerHeight="8" orient="auto" refX="4" refY="4" viewBox="0 0 8 8">
-          <circle cx="4" cy="4" fill="#0D9488" r="3" />
-        </marker>
+        <linearGradient id="loopStroke" x1="0%" x2="100%">
+          <stop offset="0%" stopColor="#2DD4BF" stopOpacity="0.6" />
+          <stop offset="100%" stopColor="#A78BFA" stopOpacity="0.6" />
+        </linearGradient>
       </defs>
 
-      <BackgroundGrid />
-      <IntakeFan animated={animated} />
-      <Mind animated={animated} />
-      <Funnel animated={animated} />
-      <RiskGate />
-      <ExecutionLedger animated={animated} />
-      <LearningRiver animated={animated} />
+      <BackgroundBloom />
+      <InflowRibbon animated={animated} />
+      <Cluster animated={animated} />
+      <Core />
+      <FlowWing animated={animated} />
+      <Execution />
+      <LearningLoop animated={animated} />
     </svg>
   );
 }
 
-function Caption({ children, color, x, y }: { children: React.ReactNode; color: string; x: number; y: number }) {
+function BackgroundBloom() {
   return (
-    <text
-      fill={color}
-      fontFamily="ui-monospace, monospace"
-      fontSize={10}
-      fontWeight={800}
-      letterSpacing="0.06em"
-      paintOrder="stroke"
-      stroke="white"
-      strokeWidth={4}
-      textAnchor="middle"
-      x={x}
-      y={y}
-    >
-      {children}
-    </text>
+    <g filter="url(#softGlow)" opacity={0.55}>
+      <circle cx={190} cy={140} fill="#BAE6FD" r={140} />
+      <circle cx={980} cy={560} fill="#DDD6FE" r={170} />
+      <circle cx={520} cy={600} fill="#A7F3D0" r={150} />
+    </g>
   );
 }
 
-function BackgroundGrid() {
-  const lines = [];
-  for (let x = 0; x <= 1200; x += 48) lines.push(<line key={`v${x}`} stroke="rgba(186,230,253,0.16)" x1={x} x2={x} y1={0} y2={600} />);
-  for (let y = 0; y <= 600; y += 48) lines.push(<line key={`h${y}`} stroke="rgba(186,230,253,0.16)" x1={0} x2={1200} y1={y} y2={y} />);
-  return <g strokeWidth={1}>{lines}</g>;
-}
-
-function IntakeFan({ animated }: { animated: boolean }) {
-  const converge = { x: 322, y: MIND_Y };
-  const step = 480 / (EXCHANGE_IDS.length - 1);
+function Cluster({ animated }: { animated: boolean }) {
+  const ringDots = 6;
+  const dotR = 46;
+  const names = EXCHANGE_IDS.map((id) => EXCHANGE_LABELS[id]).join(" · ");
   return (
     <g>
-      {EXCHANGE_IDS.map((exchange, index) => {
-        const y = 60 + index * step;
-        const controlX = (78 + converge.x) / 2;
-        const path = `M 78 ${y} Q ${controlX} ${y} ${converge.x} ${converge.y}`;
-        return (
-          <g key={exchange}>
-            <path d={path} fill="none" stroke="url(#feederGradient)" strokeWidth={1.4} />
-            {animated && (
-              <circle fill="#38BDF8" r={2.6}>
-                <animateMotion begin={`${index * 0.5}s`} dur="3.4s" path={path} repeatCount="indefinite" />
-              </circle>
-            )}
-            <circle className={animated ? "live-dot" : undefined} cx={78} cy={y} fill="#0EA5E9" r={4.5} style={{ animationDelay: `${index * 0.18}s` }} />
-            <text fill="#0369A1" fontFamily="ui-monospace, monospace" fontSize={12} fontWeight={800} x={92} y={y + 4}>
-              {EXCHANGE_LABELS[exchange]}
-            </text>
-          </g>
-        );
+      <circle cx={CLUSTER_X} cy={CLUSTER_Y} fill="#38BDF8" opacity={0.08} r={92} />
+      <circle className={animated ? "live-dot" : undefined} cx={CLUSTER_X} cy={CLUSTER_Y} fill="#0284C7" r={9} />
+      {Array.from({ length: ringDots }, (_, index) => {
+        const angle = (index / ringDots) * Math.PI * 2;
+        const x = CLUSTER_X + dotR * Math.cos(angle);
+        const y = CLUSTER_Y + dotR * Math.sin(angle);
+        return <circle cx={x} cy={y} fill="#0EA5E9" key={index} r={5.5} style={{ animation: animated ? `live-pulse 1.8s ease-in-out ${index * 0.22}s infinite` : undefined }} />;
       })}
-      <Caption color="#0284C7" x={90} y={40}>7 VENUES EN VIVO</Caption>
-    </g>
-  );
-}
-
-// 9 orbit slots (5 features + 4 strategies) spaced 40deg apart so no two labels
-// ever land at nearly the same angle, regardless of which ring they sit on.
-const ORBIT_SLOTS: Array<{ label: string; tone: "feature" | "strategy" }> = [
-  { label: STRATEGIES[0], tone: "strategy" },
-  { label: FEATURES[0], tone: "feature" },
-  { label: STRATEGIES[1], tone: "strategy" },
-  { label: FEATURES[1], tone: "feature" },
-  { label: STRATEGIES[2], tone: "strategy" },
-  { label: FEATURES[2], tone: "feature" },
-  { label: STRATEGIES[3], tone: "strategy" },
-  { label: FEATURES[3], tone: "feature" },
-  { label: FEATURES[4], tone: "feature" }
-];
-
-function Mind({ animated }: { animated: boolean }) {
-  const slotAngleStep = 360 / ORBIT_SLOTS.length;
-  return (
-    <g>
-      <circle cx={MIND_X} cy={MIND_Y} fill="url(#mindGlow)" r={210} />
-
-      {ORBIT_SLOTS.map((slot, index) => (
-        <OrbitTag
-          angleDeg={index * slotAngleStep - 90}
-          centerX={MIND_X}
-          centerY={MIND_Y}
-          color={slot.tone === "feature" ? "#38BDF8" : "#818CF8"}
-          key={slot.label}
-          label={slot.label}
-          radius={slot.tone === "feature" ? FEATURE_R : STRATEGY_R}
-          tone={slot.tone}
-        />
-      ))}
-
-      <circle cx={MIND_X} cy={MIND_Y} fill="none" r={STRATEGY_R} stroke="#C7D2FE" strokeDasharray="1 10" strokeWidth={1} />
-      <circle cx={MIND_X} cy={MIND_Y} fill="none" r={FEATURE_R} stroke="#BAE6FD" strokeDasharray="1 8" strokeWidth={1} />
-
-      {animated && (
-        <g>
-          <path d={`M ${MIND_X} ${MIND_Y} L ${MIND_X} ${MIND_Y - STRATEGY_R - 6}`} stroke="#A7F3D0" strokeWidth={2} opacity={0.55}>
-            <animateTransform attributeName="transform" dur="26s" from={`0 ${MIND_X} ${MIND_Y}`} repeatCount="indefinite" to={`360 ${MIND_X} ${MIND_Y}`} type="rotate" />
-          </path>
-        </g>
-      )}
-
-      <circle cx={MIND_X} cy={MIND_Y} fill="#ECFDF5" r={96} stroke="#34D399" strokeWidth={1.75} />
-      <circle cx={MIND_X + 38} cy={MIND_Y + 38} fill="#F5F3FF" fillOpacity={0.94} r={54} stroke="#A78BFA" strokeWidth={1.75} />
-
-      <text fill="#065F46" fontFamily="ui-sans-serif, system-ui" fontSize={22} fontWeight={900} textAnchor="middle" x={MIND_X - 14} y={MIND_Y - 12}>
-        AET
+      <text fill="#0C4A6E" fontFamily="ui-sans-serif, system-ui" fontSize={17} fontWeight={800} textAnchor="middle" x={CLUSTER_X} y={CLUSTER_Y + 128}>
+        7 mercados en vivo
       </text>
-      <text fill="#047857" fontFamily="ui-monospace, monospace" fontSize={9} fontWeight={800} letterSpacing="0.04em" textAnchor="middle" x={MIND_X - 14} y={MIND_Y + 6}>
-        EDGE TENSOR
-      </text>
-      <text fill="#6D28D9" fontFamily="ui-monospace, monospace" fontSize={10} fontWeight={900} textAnchor="middle" x={MIND_X + 38} y={MIND_Y + 42}>
-        + ML
-      </text>
-      <Caption color="#0284C7" x={MIND_X} y={MIND_Y - 196}>LA MENTE · SOBREVIVE COSTOS + RIESGO</Caption>
-    </g>
-  );
-}
-
-function OrbitTag({
-  angleDeg,
-  centerX,
-  centerY,
-  color,
-  label,
-  radius,
-  tone
-}: {
-  angleDeg: number;
-  centerX: number;
-  centerY: number;
-  color: string;
-  label: string;
-  radius: number;
-  tone: "feature" | "strategy";
-}) {
-  const angle = (angleDeg * Math.PI) / 180;
-  const x = centerX + radius * Math.cos(angle);
-  const y = centerY + radius * Math.sin(angle);
-  const anchor = Math.cos(angle) > 0.15 ? "start" : Math.cos(angle) < -0.15 ? "end" : "middle";
-  const dx = anchor === "start" ? 8 : anchor === "end" ? -8 : 0;
-  const dy = anchor === "middle" ? (Math.sin(angle) < 0 ? -10 : 17) : 3.5;
-  return (
-    <g>
-      <circle cx={x} cy={y} fill={color} r={tone === "feature" ? 3.4 : 4} />
-      <text
-        fill={tone === "feature" ? "#0369A1" : "#4338CA"}
-        fontFamily="ui-monospace, monospace"
-        fontSize={10}
-        fontWeight={800}
-        paintOrder="stroke"
-        stroke="white"
-        strokeWidth={3}
-        textAnchor={anchor}
-        x={x + dx}
-        y={y + dy}
-      >
-        {label}
+      <text fill="#64748B" fontFamily="ui-sans-serif, system-ui" fontSize={11} fontWeight={600} textAnchor="middle" x={CLUSTER_X} y={CLUSTER_Y + 148}>
+        {names}
       </text>
     </g>
   );
 }
 
-const FUNNEL_MOUTH_X = 660;
-const FUNNEL_NECK_X = 820;
-const FUNNEL_TOP_MOUTH_Y = 176;
-const FUNNEL_TOP_NECK_Y = 272;
-const FUNNEL_BOTTOM_MOUTH_Y = 424;
-const FUNNEL_BOTTOM_NECK_Y = 328;
-const SURVIVE_PATH = `M ${FUNNEL_MOUTH_X} ${MIND_Y} L ${FUNNEL_NECK_X} ${MIND_Y}`;
-const REJECT_PATH = `M ${FUNNEL_MOUTH_X + 30} ${MIND_Y + 40} Q ${FUNNEL_MOUTH_X + 90} ${FUNNEL_BOTTOM_MOUTH_Y + 40} ${FUNNEL_MOUTH_X + 130} 520 T 900 560`;
-
-function Funnel({ animated }: { animated: boolean }) {
-  const topWall = `M ${FUNNEL_MOUTH_X} ${FUNNEL_TOP_MOUTH_Y} Q ${(FUNNEL_MOUTH_X + FUNNEL_NECK_X) / 2} ${FUNNEL_TOP_MOUTH_Y} ${FUNNEL_NECK_X} ${FUNNEL_TOP_NECK_Y}`;
-  const bottomWall = `M ${FUNNEL_MOUTH_X} ${FUNNEL_BOTTOM_MOUTH_Y} Q ${(FUNNEL_MOUTH_X + FUNNEL_NECK_X) / 2} ${FUNNEL_BOTTOM_MOUTH_Y} ${FUNNEL_NECK_X} ${FUNNEL_BOTTOM_NECK_Y}`;
+function InflowRibbon({ animated }: { animated: boolean }) {
+  const path = `M ${CLUSTER_X + 92} ${CLUSTER_Y} C ${CLUSTER_X + 220} ${CLUSTER_Y}, ${CORE_X - 220} ${CORE_Y}, ${CORE_X - CORE_R + 6} ${CORE_Y}`;
   return (
     <g>
-      <path d={topWall} fill="none" stroke="#FDBA74" strokeWidth={2} />
-      <path d={bottomWall} fill="none" stroke="#FDBA74" strokeWidth={2} />
-      <path d={REJECT_PATH} fill="none" stroke="#FDA4AF" strokeDasharray="2 5" strokeWidth={1.4} />
-
+      <path d={path} fill="none" stroke="url(#inflowStroke)" strokeLinecap="round" strokeWidth={10} />
       {animated && (
         <>
-          {[0, 1].map((lane) => (
-            <circle fill="#34D399" key={`survive-${lane}`} r={3}>
-              <animateMotion begin={`${lane * 1.6}s`} dur="2.2s" path={SURVIVE_PATH} repeatCount="indefinite" />
-            </circle>
-          ))}
-          {[0, 1, 2, 3].map((lane) => (
-            <circle fill="#FB7185" key={`reject-${lane}`} r={2.4}>
-              <animateMotion begin={`${lane * 0.9}s`} dur="3.6s" path={REJECT_PATH} repeatCount="indefinite" />
-            </circle>
-          ))}
+          <circle fill="#F0F9FF" r={5}>
+            <animateMotion dur="3.2s" path={path} repeatCount="indefinite" />
+          </circle>
+          <circle fill="#ECFDF5" r={4}>
+            <animateMotion begin="1.6s" dur="3.2s" path={path} repeatCount="indefinite" />
+          </circle>
         </>
       )}
-
-      <Caption color="#C2410C" x={760} y={150}>EL EMBUDO · LA MAYORÍA NO SOBREVIVE</Caption>
-      <Caption color="#BE123C" x={790} y={498}>filtrado</Caption>
     </g>
   );
 }
 
-function RiskGate() {
-  const tags = ["Kelly sizing", "Circuit breaker", "Preflight 2 piernas"];
+function Core() {
   return (
     <g>
-      <rect fill="#FFF7ED" height={140} rx={12} stroke="#FDBA74" strokeWidth={1.5} width={60} x={FUNNEL_NECK_X} y={MIND_Y - 70} />
-      <Caption color="#9A3412" x={FUNNEL_NECK_X + 30} y={MIND_Y - 78}>PUERTA DE RIESGO</Caption>
-      {tags.map((tag, index) => (
-        <text fill="#B45309" fontFamily="ui-monospace, monospace" fontSize={8.5} fontWeight={700} key={tag} textAnchor="middle" x={FUNNEL_NECK_X + 30} y={MIND_Y - 20 + index * 22}>
-          {tag}
-        </text>
-      ))}
+      <circle cx={CORE_X} cy={CORE_Y} fill="#34D399" filter="url(#softGlow)" opacity={0.25} r={CORE_R + 30} />
+      <circle cx={CORE_X} cy={CORE_Y} fill="url(#coreFill)" r={CORE_R} stroke="#10B981" strokeWidth={2} />
+      <circle cx={CORE_X} cy={CORE_Y} fill="none" r={CORE_R - 16} stroke="#6EE7B7" strokeDasharray="1 9" strokeWidth={1.5} />
+
+      <text fill="#064E3B" fontFamily="ui-sans-serif, system-ui" fontSize={30} fontWeight={900} textAnchor="middle" x={CORE_X} y={CORE_Y - 8}>
+        Edge Tensor
+      </text>
+      <text fill="#047857" fontFamily="ui-sans-serif, system-ui" fontSize={13} fontWeight={700} letterSpacing="0.01em" textAnchor="middle" x={CORE_X} y={CORE_Y + 16}>
+        AET · segunda opinión de un ensemble ML
+      </text>
+
+      <RoundedTag color="#0369A1" fillColor="#E0F2FE" text="MLOFI · microprice · profundidad · latencia" x={CORE_X} y={CORE_Y + 48} />
+      <RoundedTag color="#6D28D9" fillColor="#F5F3FF" text="Cross-Exchange · Triangular · Stat-Arb · Latencia" x={CORE_X} y={CORE_Y + 76} />
     </g>
   );
 }
 
-const LEDGER_STATES = ["DETECTED", "VALIDATED", "LEG A", "LEG B", "RECONCILED"];
-
-function ExecutionLedger({ animated }: { animated: boolean }) {
-  const startX = FUNNEL_NECK_X + 85;
-  const gap = 48;
+function RoundedTag({ color, fillColor, text, x, y }: { color: string; fillColor: string; text: string; x: number; y: number }) {
+  const width = text.length * 5.6 + 28;
   return (
     <g>
-      <line stroke="#5EEAD4" strokeWidth={1.5} x1={startX} x2={startX + gap * (LEDGER_STATES.length - 1)} y1={MIND_Y} y2={MIND_Y} />
-      {LEDGER_STATES.map((state, index) => {
-        const x = startX + index * gap;
-        const isLast = index === LEDGER_STATES.length - 1;
-        return (
-          <g key={state}>
-            <circle cx={x} cy={MIND_Y} fill={isLast ? "#0D9488" : "#99F6E4"} r={isLast ? 6 : 4} stroke="#0D9488" strokeWidth={isLast ? 0 : 1.4} />
-            <text fill="#0F766E" fontFamily="ui-monospace, monospace" fontSize={8} fontWeight={800} textAnchor="middle" x={x} y={MIND_Y - 14}>
-              {state}
-            </text>
-          </g>
-        );
-      })}
+      <rect fill={fillColor} height={22} rx={11} width={width} x={x - width / 2} y={y - 15} />
+      <text fill={color} fontFamily="ui-monospace, monospace" fontSize={10.5} fontWeight={700} textAnchor="middle" x={x} y={y + 1}>
+        {text}
+      </text>
+    </g>
+  );
+}
+
+function FlowWing({ animated }: { animated: boolean }) {
+  const wing = `M ${CORE_X + 96} ${CORE_Y - 58} C ${CORE_X + 260} ${CORE_Y - 86}, ${EXEC_X - 150} ${EXEC_Y - 34}, ${EXEC_X - 54} ${EXEC_Y - 10}
+                L ${EXEC_X - 54} ${EXEC_Y + 10} C ${EXEC_X - 150} ${EXEC_Y + 34}, ${CORE_X + 260} ${CORE_Y + 86}, ${CORE_X + 96} ${CORE_Y + 58} Z`;
+  const spine = `M ${CORE_X + 110} ${CORE_Y} C ${CORE_X + 300} ${CORE_Y}, ${EXEC_X - 220} ${EXEC_Y}, ${EXEC_X - 50} ${EXEC_Y}`;
+  const discard = `M ${CORE_X + 210} ${CORE_Y + 44} Q ${CORE_X + 270} ${CORE_Y + 110} ${CORE_X + 190} ${CORE_Y + 148}`;
+  return (
+    <g>
+      <path d={wing} fill="url(#wingFill)" />
+      <path d={discard} fill="none" stroke="#FDA4AF" strokeLinecap="round" strokeWidth={3} />
+      <circle cx={CORE_X + 186} cy={CORE_Y + 156} fill="#FFF1F2" r={13} stroke="#FB7185" strokeWidth={1.75} />
+      <text fill="#E11D48" fontFamily="ui-sans-serif, system-ui" fontSize={16} fontWeight={800} textAnchor="middle" x={CORE_X + 186} y={CORE_Y + 161}>
+        –
+      </text>
+      <text fill="#9F1239" fontFamily="ui-sans-serif, system-ui" fontSize={12} fontWeight={700} textAnchor="middle" x={CORE_X + 186} y={CORE_Y + 184}>
+        se descarta
+      </text>
+
       {animated && (
-        <circle fill="#0D9488" r={3}>
-          <animateMotion dur="2.6s" path={`M ${startX} ${MIND_Y} L ${startX + gap * (LEDGER_STATES.length - 1)} ${MIND_Y}`} repeatCount="indefinite" />
+        <circle fill="#10B981" r={4.5}>
+          <animateMotion dur="2.8s" path={spine} repeatCount="indefinite" />
         </circle>
       )}
-      <Caption color="#0D9488" x={startX + gap * 2} y={MIND_Y + 34}>LEDGER DE EJECUCIÓN</Caption>
     </g>
   );
 }
 
-function LearningRiver({ animated }: { animated: boolean }) {
-  const path = "M 1097 320 Q 1040 430 900 500 Q 700 560 500 555 Q 380 552 460 400";
+function Execution() {
   return (
     <g>
-      <path d={path} fill="none" stroke="url(#riverGradient)" strokeDasharray="3 7" strokeWidth={1.8} />
+      <circle cx={EXEC_X} cy={EXEC_Y} fill="#F0FDFA" r={58} stroke="#14B8A6" strokeWidth={2} />
+      <path d={`M ${EXEC_X - 20} ${EXEC_Y} l 13 13 l 26 -28`} fill="none" stroke="#0D9488" strokeLinecap="round" strokeLinejoin="round" strokeWidth={5} />
+      <text fill="#115E59" fontFamily="ui-sans-serif, system-ui" fontSize={15} fontWeight={800} textAnchor="middle" x={EXEC_X} y={EXEC_Y + 82}>
+        Ejecución validada
+      </text>
+      <text fill="#64748B" fontFamily="ui-sans-serif, system-ui" fontSize={11} fontWeight={600} textAnchor="middle" x={EXEC_X} y={EXEC_Y + 100}>
+        preflight · Kelly sizing · circuit breaker
+      </text>
+    </g>
+  );
+}
+
+function LearningLoop({ animated }: { animated: boolean }) {
+  const path = `M ${EXEC_X - 20} ${EXEC_Y + 58} C ${EXEC_X - 60} ${EXEC_Y + 260}, ${CORE_X + 140} ${CORE_Y + 340}, ${CORE_X - 20} ${CORE_Y + 300} S ${CORE_X - 90} ${CORE_Y + 80} ${CORE_X - 46} ${CORE_Y + 8}`;
+  return (
+    <g>
+      <path d={path} fill="none" stroke="url(#loopStroke)" strokeDasharray="1 10" strokeLinecap="round" strokeWidth={3} />
       {animated && (
-        <>
-          <circle fill="#A78BFA" r={3}>
-            <animateMotion dur="5.4s" keyPoints="1;0" keyTimes="0;1" path={path} repeatCount="indefinite" />
-          </circle>
-          <circle fill="#F472B6" r={2.4}>
-            <animateMotion begin="2.4s" dur="5.4s" keyPoints="1;0" keyTimes="0;1" path={path} repeatCount="indefinite" />
-          </circle>
-        </>
+        <circle fill="#7C3AED" r={4}>
+          <animateMotion dur="6s" keyPoints="1;0" keyTimes="0;1" path={path} repeatCount="indefinite" />
+        </circle>
       )}
-      <Caption color="#7C3AED" x={780} y={575}>SHADOW LEARNING · RECALIBRA EL EDGE TENSOR CON CADA RESULTADO</Caption>
+      <text fill="#6D28D9" fontFamily="ui-sans-serif, system-ui" fontSize={14} fontWeight={700} textAnchor="middle" x={CORE_X + 60} y={CORE_Y + 360}>
+        Shadow learning: recalibra con cada resultado, gane o pierda
+      </text>
     </g>
   );
 }
