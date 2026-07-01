@@ -1,105 +1,121 @@
 {
-  "generatedAt": "2026-06-30T21:50:43.883Z",
-  "tape": "data/tape-ws-1h.jsonl",
+  "generatedAt": "2026-07-01T14:13:01.227Z",
+  "tape": "data/tape-ws-overnight.jsonl",
   "capture": {
-    "rounds": 5107,
-    "books": 25534,
+    "rounds": 30710,
+    "books": 153549,
     "venues": [
-      "binance",
       "coinbase",
       "gate",
+      "binance",
       "bybit",
       "okx"
     ],
-    "durationSec": 3598,
-    "usdtUsdBasisBps": "-14.300"
+    "durationSec": 21598,
+    "usdtUsdBasisBps": "-13.200"
   },
   "cross": {
-    "candidates": 139799,
-    "profitable": 3476,
-    "profitablePct": 2.49,
-    "detected": 0,
+    "candidates": 835484,
+    "profitable": 103153,
+    "profitablePct": 12.35,
+    "detected": 61847,
     "netSpreadBps": {
-      "min": -113.06,
-      "p25": -98.28,
-      "median": -35,
-      "p75": -26.14,
-      "max": 16.34
+      "min": -111.52,
+      "p25": -92.01,
+      "median": -34.74,
+      "p75": -25.23,
+      "max": 170.71
     },
     "histogram": [
       {
         "binBps": -120,
-        "count": 9832
+        "count": 88
       },
       {
         "binBps": -110,
-        "count": 20842
+        "count": 120174
       },
       {
         "binBps": -100,
-        "count": 11993
+        "count": 105406
       },
       {
         "binBps": -90,
-        "count": 3176
+        "count": 23754
       },
       {
         "binBps": -80,
-        "count": 2831
+        "count": 9716
       },
       {
         "binBps": -70,
-        "count": 1318
+        "count": 7692
       },
       {
         "binBps": -60,
-        "count": 147
+        "count": 7017
       },
       {
         "binBps": -50,
-        "count": 9561
+        "count": 68472
       },
       {
         "binBps": -40,
-        "count": 32655
+        "count": 212047
       },
       {
         "binBps": -30,
-        "count": 23294
+        "count": 108045
       },
       {
         "binBps": -20,
-        "count": 11925
+        "count": 40995
       },
       {
         "binBps": -10,
-        "count": 8745
+        "count": 28904
       },
       {
         "binBps": 0,
-        "count": 3285
+        "count": 19767
       },
       {
         "binBps": 10,
-        "count": 195
+        "count": 20108
+      },
+      {
+        "binBps": 20,
+        "count": 18609
+      },
+      {
+        "binBps": 30,
+        "count": 8875
+      },
+      {
+        "binBps": 40,
+        "count": 10491
+      },
+      {
+        "binBps": 50,
+        "count": 8046
       }
     ]
   },
   "latency": {
-    "candidates": 144,
-    "detected": 0,
-    "maxNetBps": -19.42,
-    "maxStalenessMs": 3784,
-    "maxObservedStalenessMs": 3773,
-    "stalenessOver1800": 165,
+    "candidates": 244,
+    "detected": 7,
+    "maxNetBps": 14.95,
+    "maxStalenessMs": 5843,
+    "maxObservedStalenessMs": 6539,
+    "stalenessOver1800": 218,
     "thresholdMs": 1800
   },
   "statArb": {
-    "candidates": 1069,
+    "candidates": 7972,
     "detected": 0,
-    "maxNetBps": -33.17,
-    "bestZAbs": 6.18,
+    "maxNetBps": -17.44,
+    "bestZAbs": 8.95,
     "requiredZAbs": 1.6
   },
-  "verdict": "3476 de 139799 (2.49%) tuvieron spread neto positivo tras fees, pero 0 fueron DETECTED: el ajuste por riesgo del Edge Tensor (supervivencia, P&L ajustado a riesgo) rechazó correctamente todas -- el edge visible es real pero demasiado delgado para sobrevivir el riesgo de ejecución de dos patas no simultáneas."
+  "verdict": "61847 de 835484 dislocaciones cross fueron DETECTED (ejecutables) por el motor."
 }

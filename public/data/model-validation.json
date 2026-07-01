@@ -1,0 +1,27 @@
+{
+  "generatedAt": "2026-07-01T20:39:14.761Z",
+  "source": "npm run train -- --tape data/tape-ws-overnight.jsonl",
+  "tape": {
+    "file": "data/tape-ws-overnight.jsonl",
+    "rounds": 30710,
+    "books": 153549,
+    "venues": 5,
+    "durationSec": 21598
+  },
+  "trialsSettled": 828722,
+  "detectedByGate": 66419,
+  "realizedWinRatePct": 11.6,
+  "counterfactualPnlUsd": -1713141.13,
+  "heldOutAuc": 0.9971,
+  "valSamples": 800,
+  "brierScore": 0.1258,
+  "survivalSeparation": {
+    "meanOnRealWinnersPct": 49.3,
+    "meanOnRealLosersPct": 5.7
+  },
+  "ensemble": {
+    "trees": 32,
+    "aetRoutesCalibrated": 20
+  },
+  "note": "Artefacto diagnóstico separado (data/tape-model-overnight.json); el warm-start del demo en public/model/edge-model.json no se toca."
+}
