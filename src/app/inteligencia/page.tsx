@@ -89,7 +89,7 @@ export default function IntelligencePage() {
                 El resultado es una decisión trazable: ejecutar, reducir tamaño, observar o descartar.
               </p>
             </div>
-            <div className="h-[340px] overflow-hidden rounded-3xl border border-sky-100 bg-white/85 backdrop-blur elev-lift sm:h-[420px]">
+            <div className="h-[460px] overflow-hidden rounded-3xl border border-sky-100 bg-white/85 backdrop-blur elev-lift sm:h-[560px] lg:h-[640px]">
               <SystemMap />
             </div>
           </div>

@@ -71,11 +71,11 @@ const LAYERS: Layer[] = [
   }
 ];
 
-const VIEW_W = 1500;
-const VIEW_H = 700;
-const COL_X = [170, 402, 634, 866, 1098, 1330];
-const ROW_CENTER = 350;
-const ROW_GAP = 62;
+const VIEW_W = 1220;
+const VIEW_H = 660;
+const COL_X = [140, 328, 516, 704, 892, 1080];
+const ROW_CENTER = 340;
+const ROW_GAP = 64;
 
 function nodeY(count: number, index: number): number {
   return ROW_CENTER + (index - (count - 1) / 2) * ROW_GAP;
@@ -127,17 +127,17 @@ export function SystemMap() {
           <text
             fill={layer.color}
             fontFamily="ui-monospace, monospace"
-            fontSize={13}
+            fontSize={17}
             fontWeight={800}
-            letterSpacing="0.05em"
+            letterSpacing="0.04em"
             textAnchor="middle"
             x={COL_X[layerIndex]}
-            y={34}
+            y={36}
           >
             {layer.title}
           </text>
           {layer.subtitle && (
-            <text fill="#94A3B8" fontFamily="ui-sans-serif, system-ui" fontSize={10.5} fontWeight={600} textAnchor="middle" x={COL_X[layerIndex]} y={50}>
+            <text fill="#94A3B8" fontFamily="ui-sans-serif, system-ui" fontSize={12.5} fontWeight={600} textAnchor="middle" x={COL_X[layerIndex]} y={55}>
               {layer.subtitle}
             </text>
           )}
@@ -188,7 +188,7 @@ function EdgeGroup({ animated, hovered, layerIndex }: { animated: boolean; hover
             key={i}
             opacity={dimmed ? 0.03 : touchesHover ? 0.85 : baseOpacity}
             stroke={touchesHover ? to.color : from.color}
-            strokeWidth={touchesHover ? 1.8 : 0.7}
+            strokeWidth={touchesHover ? 2.2 : 0.9}
             style={{ transition: "opacity 160ms ease, stroke-width 160ms ease" }}
             x1={edge.x1}
             x2={edge.x2}
@@ -228,9 +228,9 @@ function Node({
   x: number;
   y: number;
 }) {
-  const r = node.label === "Ejecutar" || node.label === "Descartar" ? 17 : 12;
-  const labelX = labelSide === "left" ? x - r - 10 : labelSide === "right" ? x + r + 10 : x;
-  const labelY = labelSide === "below" ? y + r + 16 : y + 4;
+  const r = node.label === "Ejecutar" || node.label === "Descartar" ? 21 : 15;
+  const labelX = labelSide === "left" ? x - r - 11 : labelSide === "right" ? x + r + 11 : x;
+  const labelY = labelSide === "below" ? y + r + 20 : y + 5;
   const anchor = labelSide === "left" ? "end" : labelSide === "right" ? "start" : "middle";
 
   return (
@@ -250,18 +250,18 @@ function Node({
         strokeWidth={1.5}
         style={{ transition: "r 160ms ease, opacity 160ms ease" }}
       />
-      {node.label === "Ejecutar" && <polyline fill="none" points={`${x - 7},${y} ${x - 2},${y + 5} ${x + 8},${y - 7}`} stroke="white" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />}
+      {node.label === "Ejecutar" && <polyline fill="none" points={`${x - 9},${y} ${x - 2},${y + 7} ${x + 10},${y - 9}`} stroke="white" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.6} />}
       {node.label === "Descartar" && (
         <>
-          <line stroke="white" strokeLinecap="round" strokeWidth={2} x1={x - 6} x2={x + 6} y1={y - 6} y2={y + 6} />
-          <line stroke="white" strokeLinecap="round" strokeWidth={2} x1={x - 6} x2={x + 6} y1={y + 6} y2={y - 6} />
+          <line stroke="white" strokeLinecap="round" strokeWidth={2.6} x1={x - 8} x2={x + 8} y1={y - 8} y2={y + 8} />
+          <line stroke="white" strokeLinecap="round" strokeWidth={2.6} x1={x - 8} x2={x + 8} y1={y + 8} y2={y - 8} />
         </>
       )}
       {node.label && (
         <text
           fill={hovered ? "#0F172A" : "#334155"}
           fontFamily="ui-sans-serif, system-ui"
-          fontSize={12.5}
+          fontSize={15.5}
           fontWeight={hovered ? 800 : 700}
           textAnchor={anchor}
           x={labelX}
