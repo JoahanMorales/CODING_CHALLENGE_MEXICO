@@ -1,40 +1,105 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { EXCHANGE_IDS, EXCHANGE_LABELS } from "@/lib/config/exchanges";
 
-const CX = 480;
-const CY = 320;
-const RADIUS = 185;
-const NODE_R = 48;
-const LABEL_R = RADIUS + 68;
-
-interface Stage {
-  angle: number;
+interface NetNode {
+  label?: string;
   color: string;
-  glow: string;
-  title: string;
-  subtitle: string;
-  icon: "markets" | "brain" | "risk" | "check" | "loop";
 }
 
-const STAGES: Stage[] = [
-  { angle: -90, color: "#0EA5E9", glow: "#7DD3FC", title: "7 mercados", subtitle: "Order books en vivo", icon: "markets" },
-  { angle: -18, color: "#10B981", glow: "#6EE7B7", title: "Edge Tensor", subtitle: "AET + ML ensemble", icon: "brain" },
-  { angle: 54, color: "#F59E0B", glow: "#FCD34D", title: "Riesgo", subtitle: "Kelly · circuit breaker", icon: "risk" },
-  { angle: 126, color: "#14B8A6", glow: "#5EEAD4", title: "Ejecución", subtitle: "Preflight en 2 piernas", icon: "check" },
-  { angle: 198, color: "#8B5CF6", glow: "#C4B5FD", title: "Aprendizaje", subtitle: "Recalibra el modelo", icon: "loop" }
+interface Layer {
+  title: string;
+  subtitle?: string;
+  color: string;
+  nodes: NetNode[];
+  labelSide: "left" | "right" | "below";
+}
+
+const SKY = "#0EA5E9";
+const CYAN = "#0891B2";
+const INDIGO = "#6366F1";
+const EMERALD = "#10B981";
+const AMBER = "#F59E0B";
+const ROSE = "#F43F5E";
+
+const LAYERS: Layer[] = [
+  {
+    title: "MERCADOS",
+    subtitle: "order books en vivo",
+    color: SKY,
+    labelSide: "left",
+    nodes: EXCHANGE_IDS.map((id) => ({ label: EXCHANGE_LABELS[id], color: SKY }))
+  },
+  {
+    title: "MICROESTRUCTURA",
+    subtitle: "features del order book",
+    color: CYAN,
+    labelSide: "below",
+    nodes: ["MLOFI", "Microprice", "Profundidad", "Volatilidad", "Quote age"].map((label) => ({ label, color: CYAN }))
+  },
+  {
+    title: "ESTRATEGIAS",
+    subtitle: "4 detectores en paralelo",
+    color: INDIGO,
+    labelSide: "below",
+    nodes: ["Cross-Exchange", "Triangular", "Stat-Arb", "Latencia"].map((label) => ({ label, color: INDIGO }))
+  },
+  {
+    title: "ENSEMBLE ML",
+    subtitle: "hasta 32 árboles · AET",
+    color: EMERALD,
+    labelSide: "below",
+    nodes: Array.from({ length: 7 }, () => ({ color: EMERALD }))
+  },
+  {
+    title: "RIESGO",
+    subtitle: "gates antes de operar",
+    color: AMBER,
+    labelSide: "below",
+    nodes: ["Kelly sizing", "Circuit breaker", "Preflight 2 piernas"].map((label) => ({ label, color: AMBER }))
+  },
+  {
+    title: "DECISIÓN",
+    subtitle: "traza completa por señal",
+    color: EMERALD,
+    labelSide: "right",
+    nodes: [
+      { label: "Ejecutar", color: EMERALD },
+      { label: "Descartar", color: ROSE }
+    ]
+  }
 ];
 
-function point(angle: number, radius: number): { x: number; y: number } {
-  const rad = (angle * Math.PI) / 180;
-  return { x: CX + radius * Math.cos(rad), y: CY + radius * Math.sin(rad) };
+const VIEW_W = 1500;
+const VIEW_H = 700;
+const COL_X = [170, 402, 634, 866, 1098, 1330];
+const ROW_CENTER = 350;
+const ROW_GAP = 62;
+
+function nodeY(count: number, index: number): number {
+  return ROW_CENTER + (index - (count - 1) / 2) * ROW_GAP;
 }
 
-const RING_PATH = `M ${CX + RADIUS} ${CY} A ${RADIUS} ${RADIUS} 0 1 1 ${CX - RADIUS} ${CY} A ${RADIUS} ${RADIUS} 0 1 1 ${CX + RADIUS} ${CY}`;
+// Integer-only hash (no transcendental functions) so the deterministic "weight"
+// per edge renders identically on the server and the client -- Math.sin's last
+// bit of precision isn't guaranteed to match across Node's and the browser's V8,
+// which was causing a real hydration mismatch warning here.
+function hash(a: number, b: number): number {
+  let h = (a * 374761393 + b * 668265263) | 0;
+  h = (h ^ (h >>> 13)) * 1274126177;
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 4294967295;
+}
+
+interface HoverKey {
+  layer: number;
+  index: number;
+}
 
 export function SystemMap() {
   const [animated, setAnimated] = useState(true);
-  const [hovered, setHovered] = useState<number | null>(null);
+  const [hovered, setHovered] = useState<HoverKey | null>(null);
 
   useEffect(() => {
     setAnimated(!window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -42,239 +107,169 @@ export function SystemMap() {
 
   return (
     <svg
-      aria-label="El ciclo de ArbitrAI: mercados, Edge Tensor, riesgo, ejecución y aprendizaje que recalibra el modelo"
+      aria-label="Red de decisión de ArbitrAI: mercados, microestructura, estrategias, ensemble ML, riesgo y decisión final"
       className="h-full w-full"
       preserveAspectRatio="xMidYMid meet"
-      viewBox="0 0 960 640"
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
     >
       <defs>
         <filter height="240%" id="softBlur" width="240%" x="-70%" y="-70%">
-          <feGaussianBlur stdDeviation="14" />
+          <feGaussianBlur stdDeviation="10" />
         </filter>
-        <filter height="300%" id="bigBlur" width="300%" x="-100%" y="-100%">
-          <feGaussianBlur stdDeviation="26" />
-        </filter>
-        {STAGES.map((stage, index) => {
-          const next = STAGES[(index + 1) % STAGES.length];
-          const from = point(stage.angle, RADIUS);
-          const to = point(next.angle, RADIUS);
-          return (
-            <linearGradient gradientUnits="userSpaceOnUse" id={`seg-${index}`} key={index} x1={from.x} x2={to.x} y1={from.y} y2={to.y}>
-              <stop offset="0%" stopColor={stage.color} />
-              <stop offset="100%" stopColor={next.color} />
-            </linearGradient>
-          );
-        })}
-        {STAGES.map((stage, index) => (
-          <radialGradient cx="35%" cy="30%" id={`node-${index}`} key={index} r="75%">
-            <stop offset="0%" stopColor="#FFFFFF" />
-            <stop offset="55%" stopColor="#FFFFFF" />
-            <stop offset="100%" stopColor={stage.glow} stopOpacity={0.55} />
-          </radialGradient>
-        ))}
       </defs>
 
-      <circle cx={CX} cy={CY} fill="#38BDF8" filter="url(#bigBlur)" opacity={0.1} r={RADIUS + 20} />
-      <RingSegments />
-      <ArrowTicks />
-
-      {animated && <FlowDots />}
-
-      {STAGES.map((stage, index) => (
-        <Node hovered={hovered === index} index={index} key={stage.title} onHover={setHovered} stage={stage} />
+      {LAYERS.slice(0, -1).map((layer, layerIndex) => (
+        <EdgeGroup animated={animated} hovered={hovered} key={layerIndex} layerIndex={layerIndex} />
       ))}
 
-      <circle cx={CX} cy={CY} fill="none" opacity={0.5} r={RADIUS - 92} stroke="#CBD5E1" strokeDasharray="1 7" strokeWidth={1.25} />
-      <text fill="#1E293B" fontFamily="ui-sans-serif, system-ui" fontSize={20} fontWeight={900} textAnchor="middle" x={CX} y={CY - 6}>
-        Un ciclo,
-      </text>
-      <text fill="#1E293B" fontFamily="ui-sans-serif, system-ui" fontSize={20} fontWeight={900} textAnchor="middle" x={CX} y={CY + 19}>
-        no una fila
-      </text>
-      <text fill="#94A3B8" fontFamily="ui-sans-serif, system-ui" fontSize={11.5} fontWeight={700} textAnchor="middle" x={CX} y={CY + 42}>
-        cada resultado recalibra el siguiente
-      </text>
+      {LAYERS.map((layer, layerIndex) => (
+        <g key={layer.title}>
+          <text
+            fill={layer.color}
+            fontFamily="ui-monospace, monospace"
+            fontSize={13}
+            fontWeight={800}
+            letterSpacing="0.05em"
+            textAnchor="middle"
+            x={COL_X[layerIndex]}
+            y={34}
+          >
+            {layer.title}
+          </text>
+          {layer.subtitle && (
+            <text fill="#94A3B8" fontFamily="ui-sans-serif, system-ui" fontSize={10.5} fontWeight={600} textAnchor="middle" x={COL_X[layerIndex]} y={50}>
+              {layer.subtitle}
+            </text>
+          )}
+          {layer.nodes.map((node, nodeIndex) => (
+            <Node
+              hovered={hovered?.layer === layerIndex && hovered.index === nodeIndex}
+              key={nodeIndex}
+              labelSide={layer.labelSide}
+              node={node}
+              onHover={(state) => setHovered(state ? { layer: layerIndex, index: nodeIndex } : null)}
+              x={COL_X[layerIndex]}
+              y={nodeY(layer.nodes.length, nodeIndex)}
+            />
+          ))}
+        </g>
+      ))}
     </svg>
   );
 }
 
-function RingSegments() {
+function EdgeGroup({ animated, hovered, layerIndex }: { animated: boolean; hovered: HoverKey | null; layerIndex: number }) {
+  const from = LAYERS[layerIndex];
+  const to = LAYERS[layerIndex + 1];
+  const fromX = COL_X[layerIndex];
+  const toX = COL_X[layerIndex + 1];
+
+  const edges: Array<{ x1: number; y1: number; x2: number; y2: number; fromIdx: number; toIdx: number }> = [];
+  from.nodes.forEach((_, i) => {
+    to.nodes.forEach((__, j) => {
+      edges.push({ x1: fromX, y1: nodeY(from.nodes.length, i), x2: toX, y2: nodeY(to.nodes.length, j), fromIdx: i, toIdx: j });
+    });
+  });
+
+  // Keep this small: each pulse is one SMIL animation, and too many running at
+  // once (e.g. one per edge) is enough concurrent SMIL work to keep the tab from
+  // ever reaching an idle frame, which breaks headless screenshot capture.
+  const activePulses = animated ? [edges[Math.floor(edges.length * 0.22)], edges[Math.floor(edges.length * 0.68)]] : [];
+
   return (
-    <>
-      <g opacity={0.45}>
-        {STAGES.map((stage, index) => {
-          const next = STAGES[(index + 1) % STAGES.length];
-          const from = point(stage.angle, RADIUS);
-          const to = point(next.angle, RADIUS);
-          return (
-            <path
-              d={`M ${from.x} ${from.y} A ${RADIUS} ${RADIUS} 0 0 1 ${to.x} ${to.y}`}
-              fill="none"
-              filter="url(#softBlur)"
-              key={index}
-              stroke={`url(#seg-${index})`}
-              strokeWidth={16}
-            />
-          );
-        })}
-      </g>
-      {STAGES.map((stage, index) => {
-        const next = STAGES[(index + 1) % STAGES.length];
-        const from = point(stage.angle, RADIUS);
-        const to = point(next.angle, RADIUS);
+    <g>
+      {edges.map((edge, i) => {
+        const touchesHover =
+          hovered && ((hovered.layer === layerIndex && hovered.index === edge.fromIdx) || (hovered.layer === layerIndex + 1 && hovered.index === edge.toIdx));
+        const dimmed = hovered && !touchesHover;
+        const baseOpacity = 0.08 + hash(edge.fromIdx, edge.toIdx + layerIndex * 11) * 0.22;
         return (
-          <path
-            d={`M ${from.x} ${from.y} A ${RADIUS} ${RADIUS} 0 0 1 ${to.x} ${to.y}`}
-            fill="none"
-            key={index}
-            stroke={`url(#seg-${index})`}
-            strokeLinecap="round"
-            strokeWidth={5}
+          <line
+            key={i}
+            opacity={dimmed ? 0.03 : touchesHover ? 0.85 : baseOpacity}
+            stroke={touchesHover ? to.color : from.color}
+            strokeWidth={touchesHover ? 1.8 : 0.7}
+            style={{ transition: "opacity 160ms ease, stroke-width 160ms ease" }}
+            x1={edge.x1}
+            x2={edge.x2}
+            y1={edge.y1}
+            y2={edge.y2}
           />
         );
       })}
-    </>
-  );
-}
-
-// Points tangent to the ring in the direction of travel (angle + 90deg, since the
-// ring is parameterized clockwise as the angle increases).
-function ArrowTicks() {
-  return (
-    <>
-      {STAGES.map((stage) => {
-        const midAngle = stage.angle + 36;
-        const tip = point(midAngle, RADIUS);
-        return (
-          <polygon
-            fill="#FFFFFF"
-            key={stage.title}
-            points="-5,-4.5 5.5,0 -5,4.5"
-            stroke="#94A3B8"
-            strokeLinejoin="round"
-            strokeWidth={1}
-            transform={`translate(${tip.x} ${tip.y}) rotate(${midAngle + 90})`}
+      {activePulses.map((edge, i) => (
+        <circle fill={to.color} key={i} r={2.6}>
+          <animateMotion
+            begin={`${i * 1.1}s`}
+            dur="2.8s"
+            keyPoints="0;1;1"
+            keyTimes="0;0.85;1"
+            path={`M ${edge.x1} ${edge.y1} L ${edge.x2} ${edge.y2}`}
+            repeatCount="indefinite"
           />
-        );
-      })}
-    </>
-  );
-}
-
-function FlowDots() {
-  const trail = [0, 1, 2, 3];
-  return (
-    <>
-      {STAGES.map((stage, stageIndex) => (
-        <g key={stage.title}>
-          {trail.map((echo) => (
-            <circle fill={stage.color} key={echo} opacity={1 - echo * 0.24} r={7 - echo * 1.3}>
-              <animateMotion begin={`${stageIndex * 2.9 - echo * 0.16}s`} dur="14.6s" path={RING_PATH} repeatCount="indefinite" />
-            </circle>
-          ))}
-        </g>
+        </circle>
       ))}
-    </>
+    </g>
   );
 }
 
 function Node({
   hovered,
-  index,
+  labelSide,
+  node,
   onHover,
-  stage
+  x,
+  y
 }: {
   hovered: boolean;
-  index: number;
-  onHover: (index: number | null) => void;
-  stage: Stage;
+  labelSide: Layer["labelSide"];
+  node: NetNode;
+  onHover: (state: boolean) => void;
+  x: number;
+  y: number;
 }) {
-  const nodeCenter = point(stage.angle, RADIUS);
-  const labelCenter = point(stage.angle, LABEL_R);
-  const cosA = Math.cos((stage.angle * Math.PI) / 180);
-  const anchor = cosA > 0.35 ? "start" : cosA < -0.35 ? "end" : "middle";
-  const dx = anchor === "start" ? 4 : anchor === "end" ? -4 : 0;
+  const r = node.label === "Ejecutar" || node.label === "Descartar" ? 17 : 12;
+  const labelX = labelSide === "left" ? x - r - 10 : labelSide === "right" ? x + r + 10 : x;
+  const labelY = labelSide === "below" ? y + r + 16 : y + 4;
+  const anchor = labelSide === "left" ? "end" : labelSide === "right" ? "start" : "middle";
 
   return (
     <g
-      onMouseEnter={() => onHover(index)}
-      onMouseLeave={() => onHover(null)}
-      style={{
-        cursor: "pointer",
-        transformBox: "fill-box",
-        transformOrigin: "center",
-        transform: hovered ? "scale(1.14)" : "scale(1)",
-        transition: "transform 220ms cubic-bezier(0.22,1,0.36,1)"
-      }}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+      style={{ cursor: node.label ? "pointer" : "default" }}
     >
-      <circle cx={nodeCenter.x} cy={nodeCenter.y} fill={stage.color} filter="url(#softBlur)" opacity={hovered ? 0.55 : 0.32} r={NODE_R + 14} />
-      <circle cx={nodeCenter.x} cy={nodeCenter.y} fill={`url(#node-${index})`} r={NODE_R} stroke={stage.color} strokeWidth={3} />
-      <g stroke={stage.color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.6} transform={`translate(${nodeCenter.x} ${nodeCenter.y})`}>
-        <StageIcon icon={stage.icon} />
-      </g>
-      <text
-        fill="#0F172A"
-        fontFamily="ui-sans-serif, system-ui"
-        fontSize={17}
-        fontWeight={900}
-        textAnchor={anchor}
-        x={labelCenter.x + dx}
-        y={labelCenter.y - 3}
-      >
-        {stage.title}
-      </text>
-      <text
-        fill="#64748B"
-        fontFamily="ui-sans-serif, system-ui"
-        fontSize={11.5}
-        fontWeight={700}
-        textAnchor={anchor}
-        x={labelCenter.x + dx}
-        y={labelCenter.y + 16}
-      >
-        {stage.subtitle}
-      </text>
+      {hovered && <circle cx={x} cy={y} fill={node.color} filter="url(#softBlur)" opacity={0.5} r={r + 14} />}
+      <circle
+        cx={x}
+        cy={y}
+        fill={node.color}
+        opacity={hovered ? 1 : 0.88}
+        r={hovered ? r + 3 : r}
+        stroke="white"
+        strokeWidth={1.5}
+        style={{ transition: "r 160ms ease, opacity 160ms ease" }}
+      />
+      {node.label === "Ejecutar" && <polyline fill="none" points={`${x - 7},${y} ${x - 2},${y + 5} ${x + 8},${y - 7}`} stroke="white" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />}
+      {node.label === "Descartar" && (
+        <>
+          <line stroke="white" strokeLinecap="round" strokeWidth={2} x1={x - 6} x2={x + 6} y1={y - 6} y2={y + 6} />
+          <line stroke="white" strokeLinecap="round" strokeWidth={2} x1={x - 6} x2={x + 6} y1={y + 6} y2={y - 6} />
+        </>
+      )}
+      {node.label && (
+        <text
+          fill={hovered ? "#0F172A" : "#334155"}
+          fontFamily="ui-sans-serif, system-ui"
+          fontSize={12.5}
+          fontWeight={hovered ? 800 : 700}
+          textAnchor={anchor}
+          x={labelX}
+          y={labelY}
+        >
+          {node.label}
+        </text>
+      )}
     </g>
-  );
-}
-
-function StageIcon({ icon }: { icon: Stage["icon"] }) {
-  if (icon === "markets") {
-    return (
-      <>
-        <line x1={-11} x2={-11} y1={6} y2={-6} />
-        <line x1={0} x2={0} y1={9} y2={-11} />
-        <line x1={11} x2={11} y1={9} y2={0} />
-      </>
-    );
-  }
-  if (icon === "brain") {
-    return (
-      <>
-        <circle cx={0} cy={-9} fill="currentColor" r={2.8} stroke="none" />
-        <circle cx={-9} cy={8} fill="currentColor" r={2.8} stroke="none" />
-        <circle cx={9} cy={8} fill="currentColor" r={2.8} stroke="none" />
-        <line x1={0} x2={-9} y1={-9} y2={8} />
-        <line x1={0} x2={9} y1={-9} y2={8} />
-        <line x1={-9} x2={9} y1={8} y2={8} />
-      </>
-    );
-  }
-  if (icon === "risk") {
-    return (
-      <>
-        <circle cx={0} cy={0} fill="none" r={13} />
-        <circle cx={0} cy={0} fill="currentColor" r={4} stroke="none" />
-      </>
-    );
-  }
-  if (icon === "check") {
-    return <polyline fill="none" points="-11,0 -3,9 12,-10" />;
-  }
-  return (
-    <>
-      <path d="M 10 -10 A 14 14 0 1 0 12 6" fill="none" />
-      <polygon fill="currentColor" points="12,6 12,-3 20,2" stroke="none" />
-    </>
   );
 }
