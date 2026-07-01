@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { AetFlowCanvas } from "@/components/AetFlowCanvas";
 import { AetPipelineDiagram } from "@/components/AetPipelineDiagram";
 import { IntelligenceCalibration } from "@/components/IntelligenceCalibration";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
+import { SystemMap } from "@/components/SystemMap";
 
 export const metadata: Metadata = { title: "Inteligencia" };
 
@@ -90,7 +90,7 @@ export default function IntelligencePage() {
               </p>
             </div>
             <div className="h-[340px] overflow-hidden rounded-3xl border border-sky-100 bg-white/85 backdrop-blur elev-lift sm:h-[420px]">
-              <AetFlowCanvas detailed />
+              <SystemMap />
             </div>
           </div>
         </div>

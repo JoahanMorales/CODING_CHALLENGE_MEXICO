@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { IconTrophy } from "@/components/icons";
-import { AetFlowCanvas } from "@/components/AetFlowCanvas";
 import { PublicHealthBadge } from "@/components/PublicHealthBadge";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
+import { SystemMap } from "@/components/SystemMap";
 import { EXCHANGE_IDS, EXCHANGE_LABELS } from "@/lib/config/exchanges";
 
 export default function Home() {
@@ -55,21 +55,7 @@ export default function Home() {
           </div>
 
           <div className="fade-up relative min-h-[400px] overflow-hidden rounded-3xl border border-sky-100 bg-white/85 backdrop-blur elev-lift">
-            <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between border-b border-sky-100 bg-gradient-to-r from-sky-50/90 via-white/80 to-violet-50/80 px-5 py-4">
-              <span className="flex items-center gap-2 font-mono text-[10px] font-black uppercase tracking-wider text-sky-700">
-                <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-sky-500" />
-                ArbitrAI Edge Tensor
-              </span>
-              <span className="font-mono text-[10px] font-black uppercase tracking-wider text-emerald-700">mapa de supervivencia</span>
-            </div>
-            <div className="absolute inset-x-0 bottom-0 z-10 grid grid-cols-3 gap-px border-t border-sky-100 bg-sky-100/70">
-              <CanvasMetric label="MLOFI" value="top-5" />
-              <CanvasMetric label="Supervivencia" value="72%" />
-              <CanvasMetric label="Cola" value="exp. value" />
-            </div>
-            <div className="absolute inset-x-0 bottom-16 top-14">
-              <AetFlowCanvas />
-            </div>
+            <SystemMap compact />
           </div>
         </div>
 
@@ -167,14 +153,6 @@ function HeroMetric({ label, value, tone }: { label: string; value: string; tone
   );
 }
 
-function CanvasMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-white/85 px-4 py-3 text-center backdrop-blur">
-      <span className="block font-mono text-[9px] font-black uppercase tracking-wider text-zinc-400">{label}</span>
-      <strong className="mt-1 block font-mono text-xs font-black text-sky-700">{value}</strong>
-    </div>
-  );
-}
 
 const blockTone: Record<string, string> = {
   sky: "border-sky-200 text-sky-600",
