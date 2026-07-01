@@ -55,7 +55,7 @@ export default function Home() {
           </div>
 
           <div className="fade-up relative min-h-[400px] overflow-hidden rounded-3xl border border-sky-100 bg-white/85 backdrop-blur elev-lift">
-            <SystemMap compact />
+            <SystemMap />
           </div>
         </div>
 
