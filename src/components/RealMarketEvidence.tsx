@@ -13,9 +13,22 @@ interface TapeAnalysis {
     netSpreadBps: { min: number; p25: number; median: number; p75: number; max: number };
     histogram: Array<{ binBps: number; count: number }>;
   };
-  latency: { candidates: number; detected: number; maxObservedStalenessMs: number; stalenessOver1800: number; thresholdMs: number };
+  latency: { candidates: number; detected: number; maxNetBps?: number; maxObservedStalenessMs: number; stalenessOver1800: number; thresholdMs: number };
   statArb: { candidates: number; detected: number; maxNetBps?: number; bestZAbs?: number; requiredZAbs?: number };
   verdict: string;
+}
+
+interface ModelValidation {
+  tape: { rounds: number; durationSec: number; venues: number };
+  trialsSettled: number;
+  detectedByGate: number;
+  realizedWinRatePct: number;
+  counterfactualPnlUsd: number;
+  heldOutAuc: number;
+  valSamples: number;
+  brierScore: number;
+  survivalSeparation: { meanOnRealWinnersPct: number; meanOnRealLosersPct: number };
+  ensemble: { trees: number; aetRoutesCalibrated: number };
 }
 
 interface ReversionStudy {
@@ -50,6 +63,7 @@ export function RealMarketEvidence() {
   const [data, setData] = useState<TapeAnalysis | null>(null);
   const [study, setStudy] = useState<ReversionStudy | null>(null);
   const [tri, setTri] = useState<TriangularStudy | null>(null);
+  const [model, setModel] = useState<ModelValidation | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -57,6 +71,12 @@ export function RealMarketEvidence() {
       .then((response) => (response.ok ? response.json() : null))
       .then((json) => {
         if (active && json) setData(json as TapeAnalysis);
+      })
+      .catch(() => undefined);
+    void fetch("/data/model-validation.json")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json) => {
+        if (active && json) setModel(json as ModelValidation);
       })
       .catch(() => undefined);
     void fetch("/data/reversion-study.json")
@@ -80,28 +100,37 @@ export function RealMarketEvidence() {
 
   const maxCount = Math.max(1, ...data.cross.histogram.map((b) => b.count));
   const captured = new Date(data.generatedAt).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" });
+  const anyDetected = data.cross.detected > 0;
+  const detectedPct = ((data.cross.detected / Math.max(1, data.cross.candidates)) * 100).toFixed(1);
 
   return (
     <div className="mt-8 rounded-3xl border border-zinc-200/70 bg-white/80 p-6 backdrop-blur-sm elev sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-sky-700">Evidencia de mercado real</p>
-          <h2 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">El arbitraje cross-exchange retail no existe.</h2>
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">
+            {anyDetected ? "Detectar la dislocación es fácil. Sobrevivir la ejecución, no." : "El arbitraje cross-exchange retail no existe."}
+          </h2>
         </div>
-        <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 font-mono text-[10px] font-black uppercase tracking-wider text-rose-700">
-          {data.cross.detected}/{data.cross.candidates.toLocaleString()} ejecutables
+        <span className={`rounded-full border px-3 py-1 font-mono text-[10px] font-black uppercase tracking-wider ${anyDetected ? "border-amber-200 bg-amber-50 text-amber-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
+          {data.cross.detected.toLocaleString()}/{data.cross.candidates.toLocaleString()} DETECTED
         </span>
       </div>
 
       <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-zinc-500">
         Capturamos los order books reales de los {data.capture.venues.length} exchanges (feeds WebSocket independientes,
-        <span className="font-mono text-zinc-700"> npm run record:ws</span>) durante {Math.round(data.capture.durationSec / 60)} minutos
+        <span className="font-mono text-zinc-700"> npm run record:ws</span>) durante {formatDuration(data.capture.durationSec)}
         ({data.capture.rounds.toLocaleString()} rondas, {data.capture.books.toLocaleString()} libros, base USDT/USD {data.capture.usdtUsdBasisBps} bps)
-        y reprodujimos cada dislocación por el motor. {data.cross.profitable > 0 && (
+        y reprodujimos cada dislocación por el motor. {data.cross.profitable > 0 && !anyDetected && (
           <>El <strong className="text-zinc-800">{data.cross.profitablePct}%</strong> tuvo spread neto positivo tras fees —
           pero el ajuste por riesgo del Edge Tensor (supervivencia, P&L ajustado a riesgo) rechazó correctamente las {data.cross.candidates.toLocaleString()}:
           {" "}<strong className="text-zinc-800">0 fueron DETECTED</strong> (ejecutables). El edge visible es real pero demasiado delgado para sobrevivir
           el riesgo de dos patas no simultáneas. </>
+        )}{data.cross.profitable > 0 && anyDetected && (
+          <>El <strong className="text-zinc-800">{data.cross.profitablePct}%</strong> tuvo spread neto positivo tras fees y el gate del motor marcó
+          {" "}<strong className="text-zinc-800">{data.cross.detected.toLocaleString()} ({detectedPct}%) como DETECTED</strong> en esta ventana —
+          dislocaciones que a la vista del gate habrían sido ejecutables. La prueba de fuego está abajo: liquidamos cada ensayo
+          contrafactualmente con el modelo de ejecución completo (latencia, decaimiento de supervivencia), y la mayoría no sobrevive. </>
         )}Distribución del <strong className="text-zinc-800">net spread tras fees + base + costos</strong>:
       </p>
 
@@ -143,7 +172,7 @@ export function RealMarketEvidence() {
           <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">
             {data.latency.candidates === 0
               ? `Cero edges de latencia. Lo medimos con feeds WebSocket independientes (npm run record:ws), no solo REST: aun así los venues BTC líquidos se refrescan sub-segundo (skew máximo observado ~690ms, lejos de la barra de ${data.latency.thresholdMs}ms). El latency-arb solo surge ante una caída/outage real o en pares ilíquidos — la estrategia está implementada y con tests, esperando esas condiciones.`
-              : `${data.latency.candidates} candidatas de latencia, ${data.latency.detected} DETECTED (staleness máx. ${data.latency.maxObservedStalenessMs}ms sobre la barra de ${data.latency.thresholdMs}ms).`}
+              : `${data.latency.candidates} candidatas de latencia y ${data.latency.detected} DETECTED: la ventana nocturna sí produjo staleness real (máx. ${data.latency.maxObservedStalenessMs}ms, ${data.latency.stalenessOver1800} veces sobre la barra de ${data.latency.thresholdMs}ms)${data.latency.maxNetBps !== undefined && data.latency.maxNetBps > 0 ? `, con mejor edge neto +${data.latency.maxNetBps}bps` : ""}. Exactamente el patrón que la estrategia espera: raro (${data.latency.detected} en ${formatDuration(data.capture.durationSec)}), pero real cuando un feed se rezaga.`}
           </p>
         </div>
         <div className="rounded-2xl border border-zinc-200/70 bg-zinc-50/60 p-5">
@@ -158,11 +187,47 @@ export function RealMarketEvidence() {
           <p className="font-mono text-[9px] font-black uppercase tracking-wider text-emerald-700">Veredicto</p>
           <p className="mt-2 text-sm font-semibold leading-6 text-zinc-700">{data.verdict}</p>
           <p className="mt-2 text-[11px] font-semibold leading-5 text-zinc-500">
-            Por eso el valor de ArbitrAI no es prometer un edge inexistente, sino <strong className="text-zinc-800">rechazar con precisión</strong>:
-            el modelo de costos (ley √-impacto, fees por venue, base de cotización) y el ensemble AET+ML descartan estas {data.cross.candidates.toLocaleString()} señales.
+            Por eso el valor de ArbitrAI no es prometer un edge inexistente, sino <strong className="text-zinc-800">medir con precisión</strong>:
+            el modelo de costos (ley √-impacto, fees por venue, base de cotización) y el ensemble AET+ML evalúan estas {data.cross.candidates.toLocaleString()} señales
+            una a una{anyDetected ? " — y la liquidación contrafactual de abajo muestra cuánto importa ese filtro" : ""}.
           </p>
         </div>
       </div>
+
+      {model && (
+        <div className="mt-4 rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/40 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-mono text-[9px] font-black uppercase tracking-wider text-emerald-700">
+              La prueba de fuego · {model.trialsSettled.toLocaleString()} ensayos reales liquidados contrafactualmente
+            </p>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-mono text-[11px] font-black tabular-nums text-emerald-700">
+              AUC {model.heldOutAuc.toFixed(4)} held-out
+            </span>
+          </div>
+          <p className="mt-2 text-sm font-semibold leading-6 text-zinc-600">
+            Reprodujimos el tape de {formatDuration(model.tape.durationSec)} por el motor y liquidamos{" "}
+            <strong className="text-zinc-800">{model.trialsSettled.toLocaleString()} dislocaciones</strong> con el simulador completo
+            (latencia realizada, decaimiento de supervivencia, fills parciales). Resultado: solo el{" "}
+            <strong className="text-zinc-800">{model.realizedWinRatePct}% habría ganado</strong>, con P&L contrafactual acumulado de{" "}
+            <strong className="text-rose-600">−${Math.abs(model.counterfactualPnlUsd / 1e6).toFixed(2)}M</strong> si se operara todo a ciegas —
+            la confirmación más grande hasta ahora de que el edge retail no existe. Lo que <em>sí</em> emerge es la calidad del modelo:
+            entrenado sobre esos resultados reales, el ensemble de {model.ensemble.trees} árboles distingue ganadores de perdedores con{" "}
+            <strong className="text-zinc-800">AUC {model.heldOutAuc.toFixed(4)}</strong> sobre {model.valSamples.toLocaleString()} muestras
+            out-of-sample (Brier {model.brierScore}): a los ganadores reales les asignó{" "}
+            <strong className="text-emerald-700">{model.survivalSeparation.meanOnRealWinnersPct}%</strong> de supervivencia media, a los
+            perdedores <strong className="text-rose-600">{model.survivalSeparation.meanOnRealLosersPct}%</strong>. Esa separación es
+            exactamente lo que alimenta el veto ML en producción.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+            <Stat label="Ensayos liquidados" value={compactNumber(model.trialsSettled)} tone="sky" />
+            <Stat label="DETECTED por el gate" value={compactNumber(model.detectedByGate)} tone="amber" />
+            <Stat label="% ganador realizado" value={`${model.realizedWinRatePct}%`} tone="rose" />
+            <Stat label="AUC held-out" value={model.heldOutAuc.toFixed(4)} tone="emerald" />
+            <Stat label="Surv. ganadores" value={`${model.survivalSeparation.meanOnRealWinnersPct}%`} tone="emerald" />
+            <Stat label="Surv. perdedores" value={`${model.survivalSeparation.meanOnRealLosersPct}%`} tone="rose" />
+          </div>
+        </div>
+      )}
 
       {study && (
         <div className="mt-4 rounded-2xl border border-violet-200/70 bg-gradient-to-br from-violet-50/50 via-white to-sky-50/40 p-5">
@@ -265,7 +330,7 @@ export function RealMarketEvidence() {
       )}
 
       <p className="mt-4 font-mono text-[9px] font-semibold uppercase tracking-wider text-zinc-400">
-        Captura {captured} · reproducible con npm run record · record:ws · analyze:tape · study:reversion · study:triangular · backtest
+        Captura {captured} · reproducible con npm run record:ws · analyze:tape · study:reversion · study:triangular · train --tape · o el pipeline completo: bash scripts/overnight-run.sh
       </p>
     </div>
   );
@@ -275,6 +340,12 @@ function compactNumber(n: number): string {
   if (n >= 10000) return `${Math.round(n / 1000)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
+}
+
+function formatDuration(seconds: number): string {
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 120) return `${minutes} minutos`;
+  return `${(minutes / 60).toFixed(1)} horas`;
 }
 
 const toneMap: Record<string, string> = {
