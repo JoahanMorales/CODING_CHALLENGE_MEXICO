@@ -61,6 +61,7 @@ npm run backtest             # paper-trading backtest -> public/data/backtest.js
 npm run record:ws            # record independent WS feeds -> data/tape-ws-*.jsonl (latency edges)
 npm run study:triangular     # triangular edge hunt by fee tier -> public/data/triangular-study.json
 npm run study:portfolio      # multi-strategy portfolio synthesis (linearity/correlation proof) -> public/data/portfolio-study.json
+bash scripts/overnight-run.sh # ~12h pipeline: 6h record:ws + 6h study:triangular + 30-seed search in parallel, then analyze:tape + study:reversion + train --tape on the fresh tape (logs in data/overnight-logs/)
 ```
 
 `npm run train [seconds]` drives the engine + simulator directly (compressed

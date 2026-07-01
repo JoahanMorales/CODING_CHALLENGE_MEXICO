@@ -195,6 +195,7 @@ npm run study:triangular                       # edge hunt: triangular intra-ven
 npm run study:portfolio                        # síntesis: portafolio multi-estrategia en vivo, ¿diversificar gana?
 npm run record:ws                              # graba feeds WebSocket independientes (latency edges)
 npm run backtest                               # backtest de paper trading -> public/data/backtest.json (curva de equity)
+bash scripts/overnight-run.sh                  # pipeline nocturno (~12h): 6h de tape real + 6h triangular + 30 seeds en paralelo, luego análisis + reversión + reentrenamiento sobre el tape
 ```
 
 **Camino 2 — generador sintético.** El harness conduce el motor + simulador
