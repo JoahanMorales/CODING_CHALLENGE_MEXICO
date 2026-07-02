@@ -48,6 +48,10 @@ export interface MlModelSnapshot {
   trees: TreeNode[];
   learningRate: number;
   calibration: Record<string, MlCalibration>;
+  // Optional Platt scaling (Platt 1999) of the boosted margin: survival =
+  // sigmoid(a*margin + b) instead of sigmoid(margin). Absent => identity
+  // (a=1, b=0), so pre-calibration snapshots keep their exact behavior.
+  platt?: { a: number; b: number };
   trainedAt?: string;
   observations?: number;
 }
@@ -71,6 +75,7 @@ export class MlEdgeTensor {
   private readonly calibration = new Map<string, MlCalibration>();
   private readonly trainingBuffer: Array<{ features: FeatureVector; label: number; weight: number; route: string }> = [];
   private maxTrees = 32;
+  private platt: { a: number; b: number } | null = null;
 
   // The ensemble only carries signal once it has been fitted on enough realized
   // outcomes. Callers gate on this so the model stays a no-op until it can help.
@@ -88,6 +93,7 @@ export class MlEdgeTensor {
       trees: this.ensemble.trees.map((tree) => ({ ...tree })),
       learningRate: this.ensemble.learningRate,
       calibration: Object.fromEntries([...this.calibration.entries()].map(([route, cal]) => [route, { ...cal }])),
+      ...(this.platt ? { platt: { ...this.platt } } : {}),
       trainedAt: new Date().toISOString(),
       observations: this.calibrationSummary().observations
     };
@@ -112,7 +118,36 @@ export class MlEdgeTensor {
         }
       });
     }
+    this.platt =
+      snapshot.platt && Number.isFinite(snapshot.platt.a) && Number.isFinite(snapshot.platt.b) && snapshot.platt.a > 0
+        ? { a: snapshot.platt.a, b: snapshot.platt.b }
+        : null;
     return trees.length > 0;
+  }
+
+  // The raw boosted margin (pre-sigmoid, pre-Platt). This is the quantity Platt
+  // scaling maps to a calibrated probability; null while untrained.
+  rawMargin(features: FeatureVector): number | null {
+    if (this.ensemble.trees.length === 0) return null;
+    let rawScore = 0;
+    for (const tree of this.ensemble.trees) {
+      const featureValue = this.getFeature(features, tree.featureIndex);
+      rawScore += featureValue <= tree.threshold ? tree.leftScore : tree.rightScore;
+    }
+    return rawScore * this.ensemble.learningRate;
+  }
+
+  // a must be positive: Platt scaling is only attached when it preserves the
+  // ranking the ensemble learned (a monotonic map keeps AUC identical while
+  // fixing the probability scale that Kelly sizing consumes).
+  setPlattCalibration(a: number, b: number): boolean {
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0) return false;
+    this.platt = { a, b };
+    return true;
+  }
+
+  plattCalibration(): { a: number; b: number } | null {
+    return this.platt ? { ...this.platt } : null;
   }
 
   extractFeatures(
@@ -209,15 +244,11 @@ export class MlEdgeTensor {
   }
 
   predict(features: FeatureVector): { survivalProbability: number; modelScore: number } {
-    if (this.ensemble.trees.length === 0) {
+    const margin = this.rawMargin(features);
+    if (margin === null) {
       return this.predictWithCalibration(features, 0);
     }
-    let rawScore = 0;
-    for (const tree of this.ensemble.trees) {
-      const featureValue = this.getFeature(features, tree.featureIndex);
-      rawScore += featureValue <= tree.threshold ? tree.leftScore : tree.rightScore;
-    }
-    const survivalProbability = sigmoid(rawScore * this.ensemble.learningRate);
+    const survivalProbability = this.platt ? sigmoid(this.platt.a * margin + this.platt.b) : sigmoid(margin);
     return this.predictWithCalibration(features, survivalProbability);
   }
 
@@ -244,6 +275,10 @@ export class MlEdgeTensor {
     const numFeatures = 20;
     let predictions = new Array(n).fill(0);
 
+    // Refitting the trees changes the margin distribution, so any Platt mapping
+    // fit for the previous ensemble is stale — fall back to identity rather than
+    // applying a wrong recalibration to new margins.
+    this.platt = null;
     this.ensemble.trees = [];
     for (let treeIdx = 0; treeIdx < this.maxTrees; treeIdx++) {
       const gradients = new Array(n);
@@ -358,6 +393,57 @@ export class MlEdgeTensor {
     const weightedBrier = routes.reduce((s, r) => s + r.brierScore * r.observations, 0);
     return { observations: Math.round(observations), brierScore: observations ? weightedBrier / observations : 0 };
   }
+}
+
+// Platt scaling (Platt 1999): fit survival = sigmoid(a*margin + b) by maximum
+// likelihood over held-out (margin, label) pairs, with Platt's target smoothing
+// (t+ = (N+ + 1)/(N+ + 2), t- = 1/(N- + 2)) so the fit doesn't chase 0/1
+// extremes on finite samples. Newton-Raphson on the 2-parameter logistic; the
+// map is monotonic (a > 0), so it repairs the probability scale that Kelly
+// sizing consumes WITHOUT changing the ranking (AUC) the ensemble learned.
+// Returns null when the fit is degenerate (single class, too few points, or a
+// non-positive slope), in which case callers keep the identity calibration.
+export function fitPlattScaling(points: Array<{ margin: number; label: number }>): { a: number; b: number } | null {
+  const clean = points.filter((p) => Number.isFinite(p.margin) && (p.label === 0 || p.label === 1));
+  const nPos = clean.filter((p) => p.label === 1).length;
+  const nNeg = clean.length - nPos;
+  if (nPos < 5 || nNeg < 5) return null;
+
+  const tPos = (nPos + 1) / (nPos + 2);
+  const tNeg = 1 / (nNeg + 2);
+  const targets = clean.map((p) => (p.label === 1 ? tPos : tNeg));
+
+  let a = 1;
+  let b = 0;
+  for (let iter = 0; iter < 100; iter += 1) {
+    let gradA = 0;
+    let gradB = 0;
+    let hAA = 0;
+    let hAB = 0;
+    let hBB = 0;
+    for (let i = 0; i < clean.length; i += 1) {
+      const m = clean[i].margin;
+      const p = sigmoid(a * m + b);
+      const diff = p - targets[i];
+      const w = Math.max(1e-12, p * (1 - p));
+      gradA += diff * m;
+      gradB += diff;
+      hAA += w * m * m;
+      hAB += w * m;
+      hBB += w;
+    }
+    const det = hAA * hBB - hAB * hAB;
+    if (!Number.isFinite(det) || Math.abs(det) < 1e-12) break;
+    const stepA = (hBB * gradA - hAB * gradB) / det;
+    const stepB = (hAA * gradB - hAB * gradA) / det;
+    a -= stepA;
+    b -= stepB;
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    if (Math.abs(stepA) < 1e-9 && Math.abs(stepB) < 1e-9) break;
+  }
+
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0) return null;
+  return { a, b };
 }
 
 function isValidTreeNode(tree: unknown): tree is TreeNode {

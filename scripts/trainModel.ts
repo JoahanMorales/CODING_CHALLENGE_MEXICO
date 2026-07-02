@@ -43,14 +43,19 @@ const tapeFlagIndex = args.findIndex((a) => a === "--tape");
 const tapePath = tapeFlagIndex >= 0 ? args[tapeFlagIndex + 1] : null;
 const outFlagIndex = args.findIndex((a) => a === "--out");
 const seedFlagIndex = args.findIndex((a) => a === "--seed");
+const opOutFlagIndex = args.findIndex((a) => a === "--opOut");
 // Generator mode writes the committed demo warm-start; tape mode (real, often
 // all-losing data) writes a separate artifact so it never clobbers the demo.
 const outPath = outFlagIndex >= 0 ? args[outFlagIndex + 1] : tapePath ? "data/tape-model.json" : "public/model/edge-model.json";
 const rngSeed = seedFlagIndex >= 0 ? Number(args[seedFlagIndex + 1]) : 0x9e3779b9;
+// Optional operating-point artifact: Platt calibration + threshold sweep over
+// the held-out fold, written for /resultados when the flag is present.
+const opOutPath = opOutFlagIndex >= 0 ? args[opOutFlagIndex + 1] : null;
 const flagValueIndices = new Set<number>();
 if (tapeFlagIndex >= 0) flagValueIndices.add(tapeFlagIndex + 1);
 if (outFlagIndex >= 0) flagValueIndices.add(outFlagIndex + 1);
 if (seedFlagIndex >= 0) flagValueIndices.add(seedFlagIndex + 1);
+if (opOutFlagIndex >= 0) flagValueIndices.add(opOutFlagIndex + 1);
 const positional = args.filter((a, i) => !a.startsWith("--") && !flagValueIndices.has(i));
 const durationSec = Number(positional[0] ?? 45);
 
@@ -61,6 +66,7 @@ process.env.ARBITRAI_SIM_SLEEP_SCALE = process.env.ARBITRAI_SIM_SLEEP_SCALE ?? "
 const { ArbitrageEngine } = await import("../src/lib/services/ArbitrageEngine");
 const { ExecutionSimulator } = await import("../src/lib/services/ExecutionSimulator");
 const { RiskManager } = await import("../src/lib/services/RiskManager");
+const { fitPlattScaling } = await import("../src/lib/services/MlEdgeTensor");
 const { EXCHANGE_IDS, EXCHANGE_FEES } = await import("../src/lib/config/exchanges");
 const { d } = await import("../src/lib/math/decimal");
 
@@ -117,6 +123,26 @@ function recordValSample(features: Feat, label: number): void {
   else {
     const j = Math.floor(rng() * valSeen);
     if (j < VAL_CAP) valSamples[j] = { features, label };
+  }
+}
+
+// A second, much larger held-out reservoir that also keeps the realized P&L and
+// gate status per trial. It feeds the post-training Platt calibration and the
+// operating-point sweep ("is there ANY survival threshold whose selected trades
+// have positive counterfactual P&L out-of-sample?"). Kept separate from the
+// 800-sample reservoir above because that one is re-scored every 64 trials for
+// the snapshot gate (pairwise AUC would be too slow at this size).
+interface OpRecord { features: Feat; label: number; pnlUsd: number; detected: boolean }
+const opRecords: OpRecord[] = [];
+const OP_CAP = 30000;
+let opSeen = 0;
+
+function recordOpSample(record: OpRecord): void {
+  opSeen += 1;
+  if (opRecords.length < OP_CAP) opRecords.push(record);
+  else {
+    const j = Math.floor(rng() * opSeen);
+    if (j < OP_CAP) opRecords[j] = record;
   }
 }
 
@@ -194,6 +220,7 @@ async function settleAndLearn(
         // and inference (netSpreadPct is in percent units -> divide by 100).
         const features = engine.mlEdgeTensor.extractFeatures(buyBook, sellBook, d(opportunity.tradeSizeBtc), opportunity.executionStyle, d(opportunity.netSpreadPct).div(100));
         recordValSample(features, tradePnl > 0 ? 1 : 0);
+        recordOpSample({ features, label: tradePnl > 0 ? 1 : 0, pnlUsd: tradePnl, detected: opportunity.status === "DETECTED" });
       }
     }
   }
@@ -442,6 +469,152 @@ reportRow(startedAt, "final");
 // genuinely trained here.
 evaluateAndSnapshot();
 if (bestMl.trees.length > 0) engine.mlEdgeTensor.importModel(bestMl);
+
+// ---------------------------------------------------------------------------
+// Platt calibration + operating-point sweep over the large held-out reservoir.
+// The reservoir is split into two disjoint halves: "calib" fits the Platt map
+// (Platt 1999) for the restored best-AUC ensemble, "eval" is never touched by
+// any fit and reports Brier before/after plus the threshold sweep -- so both
+// the calibration benefit and the operating-point P&L are honest out-of-sample
+// measurements. The map is monotonic, so AUC (ranking) is unchanged by design;
+// what it fixes is the probability SCALE, which is exactly what Kelly sizing
+// consumes as its win probability.
+// ---------------------------------------------------------------------------
+const sig = (x: number): number => 1 / (1 + Math.exp(-x));
+
+interface PlattReport {
+  a: number;
+  b: number;
+  attached: boolean;
+  calibSamples: number;
+  evalSamples: number;
+  brierPreCalibration: number;
+  brierPostCalibration: number;
+}
+interface SweepRow {
+  threshold: number;
+  trades: number;
+  winRatePct: number;
+  totalPnlUsd: number;
+  meanPnlUsd: number;
+}
+interface OperatingPointReport {
+  evalSamples: number;
+  aucEval: number;
+  platt: PlattReport | null;
+  gateBaseline: { trades: number; winRatePct: number; totalPnlUsd: number };
+  sweep: SweepRow[];
+  best: SweepRow | null;
+  takeaway: string;
+}
+let operatingPoint: OperatingPointReport | null = null;
+
+if (bestMl.trees.length > 0 && opRecords.length >= 200) {
+  const withMargin: Array<OpRecord & { margin: number }> = [];
+  for (const record of opRecords) {
+    const margin = engine.mlEdgeTensor.rawMargin(record.features);
+    if (margin !== null && Number.isFinite(margin)) withMargin.push({ ...record, margin });
+  }
+  // Deterministic shuffle so the calib/eval halves are stable per seed.
+  for (let i = withMargin.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [withMargin[i], withMargin[j]] = [withMargin[j], withMargin[i]];
+  }
+  const half = Math.floor(withMargin.length / 2);
+  const calibFold = withMargin.slice(0, half);
+  const evalFold = withMargin.slice(half);
+
+  const brierOf = (map: (m: number) => number): number =>
+    evalFold.reduce((s, r) => s + (map(r.margin) - r.label) ** 2, 0) / Math.max(1, evalFold.length);
+
+  const brierPre = brierOf(sig);
+  const platt = fitPlattScaling(calibFold.map((r) => ({ margin: r.margin, label: r.label })));
+  let plattReport: PlattReport | null = null;
+  let attached = false;
+  if (platt) {
+    const brierPost = brierOf((m) => sig(platt.a * m + platt.b));
+    // Attach only if it actually helps on the untouched eval half AND (in
+    // generator mode) keeps the demo winners comfortably above the veto floor.
+    if (brierPost < brierPre) {
+      engine.mlEdgeTensor.setPlattCalibration(platt.a, platt.b);
+      if (!tapePath && demoMinWinnerSurvival() <= 0.45) {
+        engine.mlEdgeTensor.importModel(bestMl); // revert to identity calibration
+      } else {
+        attached = true;
+      }
+    }
+    plattReport = {
+      a: Number(platt.a.toFixed(6)),
+      b: Number(platt.b.toFixed(6)),
+      attached,
+      calibSamples: calibFold.length,
+      evalSamples: evalFold.length,
+      brierPreCalibration: Number(brierPre.toFixed(4)),
+      brierPostCalibration: Number(brierPost.toFixed(4))
+    };
+  }
+
+  const survivalOf = attached && platt ? (m: number) => sig(platt.a * m + platt.b) : sig;
+  const scored = evalFold
+    .map((r) => ({ survival: survivalOf(r.margin), label: r.label, pnlUsd: r.pnlUsd, detected: r.detected }))
+    .sort((a, b) => b.survival - a.survival);
+
+  const positives = scored.filter((r) => r.label === 1);
+  const negatives = scored.filter((r) => r.label === 0);
+  let concordant = 0;
+  for (const p of positives) for (const n of negatives) concordant += p.survival > n.survival ? 1 : p.survival === n.survival ? 0.5 : 0;
+  const aucEval = positives.length && negatives.length ? concordant / (positives.length * negatives.length) : 0.5;
+
+  // Sorted descending by survival, so "threshold t" selects a prefix.
+  const sweep: SweepRow[] = [];
+  const thresholds = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 0.98, 0.99];
+  for (const threshold of thresholds) {
+    let trades = 0;
+    let winCount = 0;
+    let totalPnl = 0;
+    for (const r of scored) {
+      if (r.survival < threshold) break;
+      trades += 1;
+      winCount += r.label;
+      totalPnl += r.pnlUsd;
+    }
+    sweep.push({
+      threshold,
+      trades,
+      winRatePct: trades ? Number(((winCount / trades) * 100).toFixed(1)) : 0,
+      totalPnlUsd: Number(totalPnl.toFixed(2)),
+      meanPnlUsd: trades ? Number((totalPnl / trades).toFixed(4)) : 0
+    });
+  }
+
+  const gateTrades = scored.filter((r) => r.detected);
+  const gateBaseline = {
+    trades: gateTrades.length,
+    winRatePct: gateTrades.length ? Number(((gateTrades.filter((r) => r.label === 1).length / gateTrades.length) * 100).toFixed(1)) : 0,
+    totalPnlUsd: Number(gateTrades.reduce((s, r) => s + r.pnlUsd, 0).toFixed(2))
+  };
+
+  // Only trust operating points with enough selected trades to mean something.
+  const candidates = sweep.filter((row) => row.trades >= 30);
+  const best = candidates.length
+    ? candidates.reduce((bestRow, row) => (row.totalPnlUsd > bestRow.totalPnlUsd ? row : bestRow))
+    : null;
+
+  const takeaway = best && best.totalPnlUsd > 0
+    ? `Existe un punto de operación con P&L contrafactual positivo out-of-sample: umbral ${best.threshold} -> ${best.trades} trades, ${best.winRatePct}% ganadores, +$${best.totalPnlUsd.toFixed(2)}. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (${((best.trades / Math.max(1, evalFold.length)) * 100).toFixed(2)}% de las señales) muestra lo raro que es el edge.`
+    : `Ningún umbral de supervivencia produce P&L contrafactual positivo out-of-sample (mejor: ${best ? `$${best.totalPnlUsd.toFixed(2)} en umbral ${best.threshold}` : "sin candidatos con >=30 trades"}). Incluso seleccionando solo las señales de mayor confianza del modelo, los costos reales dominan — la conclusión honesta se mantiene: el valor está en rechazar bien, no en un edge retail.`;
+
+  operatingPoint = {
+    evalSamples: evalFold.length,
+    aucEval: Number(aucEval.toFixed(4)),
+    platt: plattReport,
+    gateBaseline,
+    sweep,
+    best,
+    takeaway
+  };
+}
+
 const finalAuc = valSamples.length >= 40 ? auc() : 0.5;
 
 // Held-out separation: the restored model's mean survival on real winners vs real
@@ -455,7 +628,10 @@ const meanLossSurvival = lossPreds.length ? lossPreds.reduce((a, b) => a + b, 0)
 const demoSafety = bestMl.trees.length > 0 ? demoMinWinnerSurvival() : 0; // min survival on demo winners (must clear 0.30 veto floor)
 const discriminates = bestMl.trees.length > 0 && finalAuc >= 0.65 && meanWinSurvival > meanLossSurvival;
 
-const mlModel = discriminates ? bestMl : { ...bestMl, trees: [] };
+// The engine holds the restored best-AUC trees, now possibly with an attached
+// Platt map -- exporting from it (rather than reusing the raw bestMl snapshot)
+// is what ships the calibration alongside the trees.
+const mlModel = discriminates ? engine.mlEdgeTensor.exportModel() : { ...bestMl, trees: [] };
 const bundle = {
   version: 1,
   savedAt: new Date().toISOString(),
@@ -469,11 +645,25 @@ const bundle = {
   valSamples: valSamples.length,
   demoSafety: Number(demoSafety.toFixed(4)),
   mlValidated: discriminates,
+  operatingPoint: operatingPoint ?? undefined,
   ml: mlModel,
   aet: engine.exportCalibration()
 };
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, JSON.stringify(bundle, null, 2));
+
+if (opOutPath && operatingPoint) {
+  const opArtifact = {
+    generatedAt: new Date().toISOString(),
+    source: tapePath ? "tape" : "generator",
+    tape: tapePath ?? undefined,
+    trialsSettled: signals,
+    detectedByGate: detectedCount,
+    ...operatingPoint
+  };
+  mkdirSync(dirname(opOutPath), { recursive: true });
+  writeFileSync(opOutPath, JSON.stringify(opArtifact, null, 2));
+}
 
 const mlCal = engine.mlEdgeTensor.calibrationSummary();
 console.log("\n=== Resultado del entrenamiento ===");
@@ -487,6 +677,25 @@ console.log(`  AUC discriminación (held-out)     : ${finalAuc.toFixed(4)}  (0.5
 console.log("\n  Separación en validación (out-of-sample):");
 console.log(`    survival medio en ganadores reales -> ${(meanWinSurvival * 100).toFixed(1)}%`);
 console.log(`    survival medio en perdedores reales -> ${(meanLossSurvival * 100).toFixed(1)}%`);
+
+if (operatingPoint) {
+  console.log("\n  Calibración Platt + punto de operación (folds calib/eval disjuntos):");
+  if (operatingPoint.platt) {
+    const p = operatingPoint.platt;
+    console.log(`    Platt a=${p.a.toFixed(3)} b=${p.b.toFixed(3)} (${p.attached ? "ADJUNTADA al modelo" : "no adjuntada"})`);
+    console.log(`    Brier eval: ${p.brierPreCalibration.toFixed(4)} -> ${p.brierPostCalibration.toFixed(4)} (${p.calibSamples} calib / ${p.evalSamples} eval)`);
+  } else {
+    console.log("    Platt: fit degenerado (se conserva la identidad)");
+  }
+  console.log(`    AUC eval (${operatingPoint.evalSamples} muestras): ${operatingPoint.aucEval.toFixed(4)}`);
+  const g = operatingPoint.gateBaseline;
+  console.log(`    Gate actual (DETECTED): ${g.trades} trades, ${g.winRatePct}% ganadores, $${g.totalPnlUsd.toFixed(2)}`);
+  console.log("    Umbral  trades   win%      P&L total     P&L medio");
+  for (const row of operatingPoint.sweep) {
+    console.log(`    ${row.threshold.toFixed(2).padStart(6)} ${String(row.trades).padStart(7)} ${`${row.winRatePct}%`.padStart(6)} ${`$${row.totalPnlUsd.toFixed(2)}`.padStart(13)} ${`$${row.meanPnlUsd.toFixed(4)}`.padStart(12)}`);
+  }
+  console.log(`\n    ${operatingPoint.takeaway}`);
+}
 if (!tapePath) {
   console.log(`  Demo-safety (min survival en ganadores del demo): ${(demoSafety * 100).toFixed(1)}%  (> 30% = no veta el demo)`);
 }
