@@ -28,7 +28,7 @@ interface Bundle {
   mlValidated?: boolean;
   signals?: number;
   valSamples?: number;
-  ml?: { trees?: unknown[] };
+  ml?: { trees?: unknown[]; version?: number };
 }
 
 function score(bundle: Bundle | null): number {
@@ -48,8 +48,18 @@ function readBundle(path: string): Bundle | null {
   }
 }
 
-const baseline = existsSync(finalOut) ? readBundle(finalOut) : null;
+const { ML_MODEL_VERSION } = await import("../src/lib/services/MlEdgeTensor");
+
+// A committed model from an older feature-schema version is REJECTED by
+// importModel at load time -- it provides zero value as a warm start, so it
+// cannot be allowed to block promotion of a valid current-version candidate.
+const baselineRaw = existsSync(finalOut) ? readBundle(finalOut) : null;
+const baselineOutdated = baselineRaw?.ml?.version !== undefined && baselineRaw.ml.version !== ML_MODEL_VERSION;
+const baseline = baselineOutdated ? null : baselineRaw;
 const baselineScore = score(baseline);
+if (baselineOutdated) {
+  console.log(`\n  AVISO: el modelo actual es de esquema v${baselineRaw?.ml?.version} (actual v${ML_MODEL_VERSION}) -> baseline inválido, se promoverá el mejor candidato.`);
+}
 
 console.log(`\nArbitrAI - busqueda de semillas para el modelo ML | ${numSeeds} seeds x ${perRunSec}s (~${Math.round((numSeeds * perRunSec) / 60)} min)\n`);
 console.log(`  Baseline actual: auc=${baseline?.auc ?? "n/d"} demoSafety=${baseline?.demoSafety ?? "n/d"} trees=${baseline?.ml?.trees?.length ?? 0} score=${baselineScore.toFixed(2)}\n`);

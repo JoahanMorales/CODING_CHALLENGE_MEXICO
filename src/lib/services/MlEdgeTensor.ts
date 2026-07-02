@@ -22,6 +22,13 @@ interface FeatureVector {
   styleStatArb: number;
   buyImbalance: number;
   sellImbalance: number;
+  // v3 temporal features, derived from the per-venue rolling history that
+  // observeBook() maintains. All default to 0 (neutral) on cold start.
+  buyMidMomentumBps: number;
+  sellMidMomentumBps: number;
+  realizedVolBps: number;
+  buyImbalanceDelta: number;
+  sellImbalanceDelta: number;
 }
 
 export interface TreeNode {
@@ -41,7 +48,11 @@ interface GradientBoostingEnsemble {
 // v2: populated the previously-dead features (alignment, volatilityBps,
 // orderFlowImbalance, multiLevelOfi) with real microstructure (Cont-Kukanov OFI,
 // Xu-Gould MLOFI, Stoikov microprice), so v1 models must not be reused.
-export const ML_MODEL_VERSION = 2;
+// v3: added temporal features (per-venue mid momentum, imbalance deltas,
+// realized volatility) from the rolling history observeBook() maintains --
+// snapshots only saw single-round state; OFI-style signals are defined over
+// intervals (Cont-Kukanov-Stoikov 2014), so the model now sees time.
+export const ML_MODEL_VERSION = 3;
 
 export interface MlModelSnapshot {
   version: number;
@@ -76,6 +87,19 @@ interface MlCalibration {
   wins: number;
 }
 
+interface VenueSnapshot {
+  t: number;
+  mid: number;
+  imbalance: number;
+}
+
+// Rolling history window per venue: enough entries to span several seconds of
+// updates (entries are throttled to one per 400ms), which is the horizon the
+// momentum/realized-vol features are computed over.
+const HISTORY_MAX_ENTRIES = 12;
+const HISTORY_MIN_SPACING_MS = 400;
+const MOMENTUM_HORIZON_MS = 8000;
+
 export class MlEdgeTensor {
   private ensemble: GradientBoostingEnsemble = { trees: [], learningRate: 0.3 };
   private readonly calibration = new Map<string, MlCalibration>();
@@ -83,6 +107,57 @@ export class MlEdgeTensor {
   private maxTrees = 32;
   private platt: { a: number; b: number } | null = null;
   private isotonic: { x: number[]; y: number[] } | null = null;
+  private readonly venueHistory = new Map<ExchangeId, VenueSnapshot[]>();
+
+  // Feeds the per-venue rolling history the v3 temporal features read. The
+  // engine calls this for every book BEFORE detection, so by the time
+  // extractFeatures runs for an opportunity, both venues' histories include
+  // the current round. Cheap (O(1) amortized) and side-effect-free otherwise.
+  observeBook(book: NormalizedOrderBook): void {
+    if (book.symbol !== "BTC/USDT") return;
+    const bid = topBid(book);
+    const ask = topAsk(book);
+    if (!bid || !ask) return;
+    const mid = bid.price.plus(ask.price).div(2).toNumber();
+    if (!Number.isFinite(mid) || mid <= 0) return;
+    const total = bid.size.plus(ask.size);
+    const imbalance = total.greaterThan(0) ? bid.size.minus(ask.size).div(total).toNumber() : 0;
+    const history = this.venueHistory.get(book.exchange) ?? [];
+    const last = history[history.length - 1];
+    if (last && book.receivedAt - last.t < HISTORY_MIN_SPACING_MS) return;
+    history.push({ t: book.receivedAt, mid, imbalance });
+    if (history.length > HISTORY_MAX_ENTRIES) history.shift();
+    this.venueHistory.set(book.exchange, history);
+  }
+
+  // Momentum (bps), imbalance delta and realized vol (bps) for one venue over
+  // the rolling window. All zeros (neutral) until the history has >= 2 entries.
+  private temporalStats(exchange: ExchangeId, now: number): { momentumBps: number; imbalanceDelta: number; volBps: number } {
+    const history = this.venueHistory.get(exchange);
+    if (!history || history.length < 2) return { momentumBps: 0, imbalanceDelta: 0, volBps: 0 };
+    const newest = history[history.length - 1];
+    // Reference point: the oldest entry inside the momentum horizon.
+    let reference = history[0];
+    for (const entry of history) {
+      if (now - entry.t <= MOMENTUM_HORIZON_MS) {
+        reference = entry;
+        break;
+      }
+    }
+    const momentumBps = reference.mid > 0 ? ((newest.mid - reference.mid) / reference.mid) * 10000 : 0;
+    const imbalanceDelta = newest.imbalance - reference.imbalance;
+    const returns: number[] = [];
+    for (let i = 1; i < history.length; i += 1) {
+      if (history[i - 1].mid > 0 && history[i].mid > 0) returns.push(Math.log(history[i].mid / history[i - 1].mid));
+    }
+    let volBps = 0;
+    if (returns.length >= 2) {
+      const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+      const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / (returns.length - 1);
+      volBps = Math.sqrt(variance) * 10000;
+    }
+    return { momentumBps, imbalanceDelta, volBps };
+  }
 
   // The ensemble only carries signal once it has been fitted on enough realized
   // outcomes. Callers gate on this so the model stays a no-op until it can help.
@@ -251,6 +326,13 @@ export class MlEdgeTensor {
     // is unavailable from a single snapshot.
     const volatilityBps = (buySpreadBps + sellSpreadBps) / 2;
 
+    // v3 temporal features from the rolling history. A dislocation that appears
+    // WITH momentum toward convergence dies fast; one appearing while books
+    // drift apart persists -- single snapshots cannot tell these apart.
+    const buyTemporal = this.temporalStats(buyBook.exchange, now);
+    const sellTemporal = this.temporalStats(sellBook.exchange, now);
+    const realizedVolBps = (buyTemporal.volBps + sellTemporal.volBps) / 2;
+
     return {
       netEdgeBps, alignment, liquidityScore, freshnessScore,
       volatilityBps, micropriceSkewBps: buyMicroSkewBps,
@@ -261,7 +343,12 @@ export class MlEdgeTensor {
       styleTaker: executionStyle === "INSTANT_TAKER" ? 1 : 0,
       styleMaker: executionStyle === "MAKER_ASSISTED" ? 1 : 0,
       styleStatArb: executionStyle === "STAT_MEAN_REVERSION" ? 1 : 0,
-      buyImbalance, sellImbalance
+      buyImbalance, sellImbalance,
+      buyMidMomentumBps: buyTemporal.momentumBps,
+      sellMidMomentumBps: sellTemporal.momentumBps,
+      realizedVolBps,
+      buyImbalanceDelta: buyTemporal.imbalanceDelta,
+      sellImbalanceDelta: sellTemporal.imbalanceDelta
     };
   }
 
@@ -298,7 +385,7 @@ export class MlEdgeTensor {
   private fitEnsemble(): void {
     const data = this.trainingBuffer;
     const n = data.length;
-    const numFeatures = 20;
+    const numFeatures = 24;
     let predictions = new Array(n).fill(0);
 
     // Refitting the trees changes the margin distribution, so any calibration
@@ -393,7 +480,9 @@ export class MlEdgeTensor {
       "volatilityBps", "micropriceSkewBps", "orderFlowImbalance", "multiLevelOfi",
       "buySpreadBps", "sellSpreadBps", "buyDepth5", "sellDepth5",
       "quoteSkewMs", "ageMs", "styleTaker", "styleMaker", "styleStatArb",
-      "buyImbalance", "sellImbalance", "netEdgeBps"
+      "buyImbalance", "sellImbalance",
+      "buyMidMomentumBps", "sellMidMomentumBps", "realizedVolBps",
+      "buyImbalanceDelta", "sellImbalanceDelta"
     ];
     const key = f[index] ?? "netEdgeBps";
     const value = features[key];

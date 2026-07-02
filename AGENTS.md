@@ -53,7 +53,9 @@ npm run check        # typecheck + lint + test
 npm run start        # Next.js production server
 npm run start:ws     # WS backend production
 npm run train        # offline ML/AET training harness -> public/model/edge-model.json
-                     #   --opOut <path>: also write the Platt-calibration + threshold-sweep artifact (operating point)
+                     #   --opOut <path>: also write the calibration + threshold-sweep artifact (operating point)
+                     #   --split temporal: walk-forward validation (val = last 20% of tape rounds; calib fold precedes eval fold in time)
+                     #   --evalTape <tape>: settle a SECOND tape with the frozen model (cross-regime transfer test)
 npm run train:search [seeds] [perRunSec]  # best-of-N seed search; only promotes if it beats current
 npm run record       # record real 7-exchange order-book tapes -> data/tape-*.jsonl
 npm run analyze:tape <tape>   # replay a tape -> public/data/tape-analysis.json (for /resultados)

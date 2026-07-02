@@ -17,6 +17,9 @@ export class ArbitrageEngine {
   onOrderBook(book: NormalizedOrderBook): Opportunity[] {
     const startedAt = performanceNow();
     this.edgeTensor.ingest(book);
+    // Feed the ML's rolling per-venue history BEFORE detection, so the temporal
+    // features (momentum, imbalance delta, realized vol) include this round.
+    this.mlEdgeTensor.observeBook(book);
     this.books.set(bookKey(book.exchange, book.symbol), book);
     const opportunities = [
       ...(book.symbol === "BTC/USDT" ? this.detectCrossExchange(startedAt, book.exchange) : []),
