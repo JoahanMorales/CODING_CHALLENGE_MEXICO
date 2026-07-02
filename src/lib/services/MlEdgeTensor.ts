@@ -52,6 +52,12 @@ export interface MlModelSnapshot {
   // sigmoid(a*margin + b) instead of sigmoid(margin). Absent => identity
   // (a=1, b=0), so pre-calibration snapshots keep their exact behavior.
   platt?: { a: number; b: number };
+  // Optional isotonic calibration (PAV blocks) as the non-parametric
+  // alternative: knots (x = margin, y = calibrated probability), linearly
+  // interpolated. At most one of platt/isotonic is attached — offline training
+  // fits both on the calibration fold and ships whichever has the lower Brier
+  // on the untouched evaluation fold.
+  isotonic?: { x: number[]; y: number[] };
   trainedAt?: string;
   observations?: number;
 }
@@ -76,6 +82,7 @@ export class MlEdgeTensor {
   private readonly trainingBuffer: Array<{ features: FeatureVector; label: number; weight: number; route: string }> = [];
   private maxTrees = 32;
   private platt: { a: number; b: number } | null = null;
+  private isotonic: { x: number[]; y: number[] } | null = null;
 
   // The ensemble only carries signal once it has been fitted on enough realized
   // outcomes. Callers gate on this so the model stays a no-op until it can help.
@@ -94,6 +101,7 @@ export class MlEdgeTensor {
       learningRate: this.ensemble.learningRate,
       calibration: Object.fromEntries([...this.calibration.entries()].map(([route, cal]) => [route, { ...cal }])),
       ...(this.platt ? { platt: { ...this.platt } } : {}),
+      ...(this.isotonic ? { isotonic: { x: [...this.isotonic.x], y: [...this.isotonic.y] } } : {}),
       trainedAt: new Date().toISOString(),
       observations: this.calibrationSummary().observations
     };
@@ -122,6 +130,7 @@ export class MlEdgeTensor {
       snapshot.platt && Number.isFinite(snapshot.platt.a) && Number.isFinite(snapshot.platt.b) && snapshot.platt.a > 0
         ? { a: snapshot.platt.a, b: snapshot.platt.b }
         : null;
+    this.isotonic = isValidIsotonic(snapshot.isotonic) ? { x: [...snapshot.isotonic!.x], y: [...snapshot.isotonic!.y] } : null;
     return trees.length > 0;
   }
 
@@ -139,15 +148,28 @@ export class MlEdgeTensor {
 
   // a must be positive: Platt scaling is only attached when it preserves the
   // ranking the ensemble learned (a monotonic map keeps AUC identical while
-  // fixing the probability scale that Kelly sizing consumes).
+  // fixing the probability scale that Kelly sizing consumes). Attaching either
+  // calibrator replaces the other — exactly one map is ever active.
   setPlattCalibration(a: number, b: number): boolean {
     if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0) return false;
     this.platt = { a, b };
+    this.isotonic = null;
     return true;
   }
 
   plattCalibration(): { a: number; b: number } | null {
     return this.platt ? { ...this.platt } : null;
+  }
+
+  setIsotonicCalibration(x: number[], y: number[]): boolean {
+    if (!isValidIsotonic({ x, y })) return false;
+    this.isotonic = { x: [...x], y: [...y] };
+    this.platt = null;
+    return true;
+  }
+
+  isotonicCalibration(): { x: number[]; y: number[] } | null {
+    return this.isotonic ? { x: [...this.isotonic.x], y: [...this.isotonic.y] } : null;
   }
 
   extractFeatures(
@@ -248,7 +270,11 @@ export class MlEdgeTensor {
     if (margin === null) {
       return this.predictWithCalibration(features, 0);
     }
-    const survivalProbability = this.platt ? sigmoid(this.platt.a * margin + this.platt.b) : sigmoid(margin);
+    const survivalProbability = this.isotonic
+      ? interpolateIsotonic(this.isotonic, margin)
+      : this.platt
+        ? sigmoid(this.platt.a * margin + this.platt.b)
+        : sigmoid(margin);
     return this.predictWithCalibration(features, survivalProbability);
   }
 
@@ -275,10 +301,11 @@ export class MlEdgeTensor {
     const numFeatures = 20;
     let predictions = new Array(n).fill(0);
 
-    // Refitting the trees changes the margin distribution, so any Platt mapping
-    // fit for the previous ensemble is stale — fall back to identity rather than
-    // applying a wrong recalibration to new margins.
+    // Refitting the trees changes the margin distribution, so any calibration
+    // mapping fit for the previous ensemble is stale — fall back to identity
+    // rather than applying a wrong recalibration to new margins.
     this.platt = null;
+    this.isotonic = null;
     this.ensemble.trees = [];
     for (let treeIdx = 0; treeIdx < this.maxTrees; treeIdx++) {
       const gradients = new Array(n);
@@ -444,6 +471,93 @@ export function fitPlattScaling(points: Array<{ margin: number; label: number }>
 
   if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0) return null;
   return { a, b };
+}
+
+// Isotonic calibration via Pool Adjacent Violators (PAV): the classic
+// non-parametric alternative to Platt (Zadrozny & Elkan 2002). Sorts points by
+// margin and pools adjacent blocks until block means are non-decreasing; the
+// resulting step function is stored as (x, y) knots and linearly interpolated
+// at prediction time (interpolation keeps the map monotone while avoiding the
+// staircase's zero-gradient plateaus). y is clamped away from 0/1 so a
+// perfectly-separated block can't emit a degenerate probability into Kelly.
+// Non-parametric => more flexible than Platt's 2 params, but needs more data;
+// offline training fits BOTH and ships whichever wins on the eval fold.
+export function fitIsotonicCalibration(points: Array<{ margin: number; label: number }>): { x: number[]; y: number[] } | null {
+  const clean = points
+    .filter((p) => Number.isFinite(p.margin) && (p.label === 0 || p.label === 1))
+    .sort((a, b) => a.margin - b.margin);
+  const nPos = clean.reduce((s, p) => s + p.label, 0);
+  const nNeg = clean.length - nPos;
+  if (nPos < 5 || nNeg < 5) return null;
+
+  interface Block { sum: number; n: number; lo: number; hi: number }
+  const blocks: Block[] = [];
+  for (const point of clean) {
+    let block: Block = { sum: point.label, n: 1, lo: point.margin, hi: point.margin };
+    while (blocks.length && blocks[blocks.length - 1].sum / blocks[blocks.length - 1].n >= block.sum / block.n) {
+      const prev = blocks.pop()!;
+      block = { sum: prev.sum + block.sum, n: prev.n + block.n, lo: prev.lo, hi: block.hi };
+    }
+    blocks.push(block);
+  }
+  if (blocks.length < 2) return null;
+
+  const rawX = blocks.map((b) => (b.lo + b.hi) / 2);
+  const rawY = blocks.map((b) => Math.min(0.999, Math.max(0.001, b.sum / b.n)));
+  // Duplicate margins can leave adjacent blocks with the same midpoint; keep the
+  // last (highest-y) knot at each x so the map stays strictly increasing in x.
+  const x: number[] = [];
+  const y: number[] = [];
+  for (let i = 0; i < rawX.length; i += 1) {
+    if (x.length && rawX[i] <= x[x.length - 1]) {
+      y[y.length - 1] = Math.max(y[y.length - 1], rawY[i]);
+    } else {
+      x.push(rawX[i]);
+      y.push(rawY[i]);
+    }
+  }
+  if (x.length < 2) return null;
+
+  // Keep snapshots bounded: PAV block counts are usually small, but cap the
+  // knot count anyway (uniform downsample preserving the endpoints).
+  const MAX_KNOTS = 200;
+  if (x.length > MAX_KNOTS) {
+    const sampledX: number[] = [];
+    const sampledY: number[] = [];
+    for (let i = 0; i < MAX_KNOTS; i += 1) {
+      const idx = Math.round((i * (x.length - 1)) / (MAX_KNOTS - 1));
+      sampledX.push(x[idx]);
+      sampledY.push(y[idx]);
+    }
+    return { x: sampledX, y: sampledY };
+  }
+  return { x, y };
+}
+
+export function interpolateIsotonic(map: { x: number[]; y: number[] }, margin: number): number {
+  const { x, y } = map;
+  if (margin <= x[0]) return y[0];
+  if (margin >= x[x.length - 1]) return y[y.length - 1];
+  let lo = 0;
+  let hi = x.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (x[mid] <= margin) lo = mid;
+    else hi = mid;
+  }
+  const span = x[hi] - x[lo];
+  const t = span > 0 ? (margin - x[lo]) / span : 0;
+  return y[lo] + t * (y[hi] - y[lo]);
+}
+
+function isValidIsotonic(map: { x: number[]; y: number[] } | undefined): boolean {
+  if (!map || !Array.isArray(map.x) || !Array.isArray(map.y)) return false;
+  if (map.x.length !== map.y.length || map.x.length < 2) return false;
+  for (let i = 0; i < map.x.length; i += 1) {
+    if (!Number.isFinite(map.x[i]) || !Number.isFinite(map.y[i]) || map.y[i] < 0 || map.y[i] > 1) return false;
+    if (i > 0 && (map.x[i] <= map.x[i - 1] || map.y[i] < map.y[i - 1])) return false;
+  }
+  return true;
 }
 
 function isValidTreeNode(tree: unknown): tree is TreeNode {

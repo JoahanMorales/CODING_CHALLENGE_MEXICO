@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { d } from "../src/lib/math/decimal";
-import { fitPlattScaling, MlEdgeTensor } from "../src/lib/services/MlEdgeTensor";
+import { fitIsotonicCalibration, fitPlattScaling, interpolateIsotonic, MlEdgeTensor } from "../src/lib/services/MlEdgeTensor";
 import type { ExchangeId, NormalizedOrderBook } from "../src/lib/types";
 
 // Deterministic PRNG so label draws are stable run-to-run.
@@ -120,6 +120,93 @@ describe("Platt scaling", () => {
     expect(restored.predict(goodFeatures).survivalProbability).toBeGreaterThan(
       restored.predict(badFeatures).survivalProbability
     );
+  });
+
+  it("isotonic PAV pools violators into a non-decreasing map and beats identity on miscalibrated data", () => {
+    // Tiny hand-checkable case: labels 1,0 at increasing margins violate
+    // monotonicity, so PAV must pool them into one 0.5 block.
+    const tiny = fitIsotonicCalibration([
+      { margin: -2, label: 0 },
+      { margin: -1.5, label: 0 },
+      { margin: -1.4, label: 0 },
+      { margin: -1.3, label: 0 },
+      { margin: -1, label: 1 },
+      { margin: -0.5, label: 0 },
+      { margin: 1, label: 1 },
+      { margin: 1.5, label: 1 },
+      { margin: 1.6, label: 1 },
+      { margin: 2, label: 1 },
+      { margin: 2.5, label: 0 },
+      { margin: 3, label: 1 }
+    ]);
+    expect(tiny).not.toBeNull();
+    for (let i = 1; i < tiny!.y.length; i += 1) {
+      expect(tiny!.y[i]).toBeGreaterThanOrEqual(tiny!.y[i - 1]);
+      expect(tiny!.x[i]).toBeGreaterThan(tiny!.x[i - 1]);
+    }
+
+    // Same miscalibrated synthetic setup as the Platt test: true p = sigmoid(2m-1).
+    const rng = mulberry32(0xbeef);
+    const points: Array<{ margin: number; label: number }> = [];
+    for (let i = 0; i < 4000; i += 1) {
+      const margin = (rng() - 0.5) * 6;
+      const trueP = sigmoid(2 * margin - 1);
+      points.push({ margin, label: rng() < trueP ? 1 : 0 });
+    }
+    const iso = fitIsotonicCalibration(points);
+    expect(iso).not.toBeNull();
+    expect(iso!.x.length).toBeLessThanOrEqual(200);
+
+    const brier = (p: (m: number) => number) =>
+      points.reduce((s, pt) => s + (p(pt.margin) - pt.label) ** 2, 0) / points.length;
+    expect(brier((m) => interpolateIsotonic(iso!, m))).toBeLessThan(brier(sigmoid));
+
+    // Interpolation clamps outside the knot range and stays within [0, 1].
+    expect(interpolateIsotonic(iso!, -100)).toBe(iso!.y[0]);
+    expect(interpolateIsotonic(iso!, 100)).toBe(iso!.y[iso!.y.length - 1]);
+  });
+
+  it("isotonic survives an export/import roundtrip and is mutually exclusive with platt", () => {
+    const model = new MlEdgeTensor();
+    const now = Date.now();
+    const goodFeatures = model.extractFeatures(
+      book("kraken", "69999", "70000", "5", now),
+      book("binance", "70100", "70101", "5", now),
+      d("0.05"),
+      "INSTANT_TAKER",
+      d("0.0008")
+    );
+    const badFeatures = model.extractFeatures(
+      book("kraken", "69990", "70000", "0.01", now - 5000),
+      book("binance", "69950", "69960", "0.01", now - 5000),
+      d("0.05"),
+      "INSTANT_TAKER",
+      d("-0.0010")
+    );
+    for (let i = 0; i < 24; i += 1) {
+      model.train("Kraken -> Binance", goodFeatures, 1, 1);
+      model.train("Kraken -> Binance", badFeatures, 0, 1);
+    }
+    expect(model.isTrained()).toBe(true);
+
+    expect(model.setIsotonicCalibration([0, 1], [0.9, 0.1])).toBe(false); // decreasing y
+    expect(model.setIsotonicCalibration([1, 1], [0.1, 0.9])).toBe(false); // non-increasing x
+    expect(model.setIsotonicCalibration([-1, 0, 2], [0.1, 0.5, 0.95])).toBe(true);
+    expect(model.plattCalibration()).toBeNull();
+
+    const snapshot = model.exportModel();
+    expect(snapshot.isotonic).toEqual({ x: [-1, 0, 2], y: [0.1, 0.5, 0.95] });
+    const restored = new MlEdgeTensor();
+    expect(restored.importModel(snapshot)).toBe(true);
+    expect(restored.isotonicCalibration()).toEqual({ x: [-1, 0, 2], y: [0.1, 0.5, 0.95] });
+    expect(restored.predict(goodFeatures).survivalProbability).toBeCloseTo(
+      model.predict(goodFeatures).survivalProbability,
+      10
+    );
+
+    // Attaching platt afterwards must clear the isotonic map (one active max).
+    expect(model.setPlattCalibration(2, -1)).toBe(true);
+    expect(model.isotonicCalibration()).toBeNull();
   });
 
   it("clears stale platt params when the ensemble refits online", () => {

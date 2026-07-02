@@ -44,18 +44,31 @@ const tapePath = tapeFlagIndex >= 0 ? args[tapeFlagIndex + 1] : null;
 const outFlagIndex = args.findIndex((a) => a === "--out");
 const seedFlagIndex = args.findIndex((a) => a === "--seed");
 const opOutFlagIndex = args.findIndex((a) => a === "--opOut");
+const splitFlagIndex = args.findIndex((a) => a === "--split");
+const evalTapeFlagIndex = args.findIndex((a) => a === "--evalTape");
 // Generator mode writes the committed demo warm-start; tape mode (real, often
 // all-losing data) writes a separate artifact so it never clobbers the demo.
 const outPath = outFlagIndex >= 0 ? args[outFlagIndex + 1] : tapePath ? "data/tape-model.json" : "public/model/edge-model.json";
 const rngSeed = seedFlagIndex >= 0 ? Number(args[seedFlagIndex + 1]) : 0x9e3779b9;
-// Optional operating-point artifact: Platt calibration + threshold sweep over
-// the held-out fold, written for /resultados when the flag is present.
+// Optional operating-point artifact: calibration + threshold sweep over the
+// held-out fold, written for /resultados when the flag is present.
 const opOutPath = opOutFlagIndex >= 0 ? args[opOutFlagIndex + 1] : null;
+// Held-out split strategy for tape mode. "random" interleaves val rounds
+// (default, maximum sample diversity); "temporal" holds out the LAST 20% of
+// rounds chronologically -- the walk-forward test: the model never sees any
+// data from the future segment it is judged on, and the calibration fold
+// strictly precedes the evaluation fold inside that segment too.
+const splitMode: "random" | "temporal" = splitFlagIndex >= 0 && args[splitFlagIndex + 1] === "temporal" ? "temporal" : "random";
+// Optional second tape settled AFTER training with the frozen model: a pure
+// cross-regime transfer test (e.g. train overnight, evaluate daytime).
+const evalTapePath = evalTapeFlagIndex >= 0 ? args[evalTapeFlagIndex + 1] : null;
 const flagValueIndices = new Set<number>();
 if (tapeFlagIndex >= 0) flagValueIndices.add(tapeFlagIndex + 1);
 if (outFlagIndex >= 0) flagValueIndices.add(outFlagIndex + 1);
 if (seedFlagIndex >= 0) flagValueIndices.add(seedFlagIndex + 1);
 if (opOutFlagIndex >= 0) flagValueIndices.add(opOutFlagIndex + 1);
+if (splitFlagIndex >= 0) flagValueIndices.add(splitFlagIndex + 1);
+if (evalTapeFlagIndex >= 0) flagValueIndices.add(evalTapeFlagIndex + 1);
 const positional = args.filter((a, i) => !a.startsWith("--") && !flagValueIndices.has(i));
 const durationSec = Number(positional[0] ?? 45);
 
@@ -66,7 +79,7 @@ process.env.ARBITRAI_SIM_SLEEP_SCALE = process.env.ARBITRAI_SIM_SLEEP_SCALE ?? "
 const { ArbitrageEngine } = await import("../src/lib/services/ArbitrageEngine");
 const { ExecutionSimulator } = await import("../src/lib/services/ExecutionSimulator");
 const { RiskManager } = await import("../src/lib/services/RiskManager");
-const { fitPlattScaling } = await import("../src/lib/services/MlEdgeTensor");
+const { fitPlattScaling, fitIsotonicCalibration, interpolateIsotonic } = await import("../src/lib/services/MlEdgeTensor");
 const { EXCHANGE_IDS, EXCHANGE_FEES } = await import("../src/lib/config/exchanges");
 const { d } = await import("../src/lib/math/decimal");
 
@@ -127,18 +140,29 @@ function recordValSample(features: Feat, label: number): void {
 }
 
 // A second, much larger held-out reservoir that also keeps the realized P&L and
-// gate status per trial. It feeds the post-training Platt calibration and the
+// gate status per trial. It feeds the post-training calibration fit and the
 // operating-point sweep ("is there ANY survival threshold whose selected trades
 // have positive counterfactual P&L out-of-sample?"). Kept separate from the
 // 800-sample reservoir above because that one is re-scored every 64 trials for
 // the snapshot gate (pairwise AUC would be too slow at this size).
+//
+// Sampling strategy depends on the split: random split uses reservoir sampling
+// (uniform over all val trials); temporal split uses stride sampling instead,
+// because it must PRESERVE CHRONOLOGICAL ORDER so the calibration fold can be
+// the strictly-earlier half of the held-out segment (reservoir sampling would
+// scramble time and leak future data into the calibrator).
 interface OpRecord { features: Feat; label: number; pnlUsd: number; detected: boolean }
 const opRecords: OpRecord[] = [];
 const OP_CAP = 30000;
+const TEMPORAL_STRIDE = 5;
 let opSeen = 0;
 
 function recordOpSample(record: OpRecord): void {
   opSeen += 1;
+  if (splitMode === "temporal") {
+    if (opSeen % TEMPORAL_STRIDE === 0) opRecords.push(record);
+    return;
+  }
   if (opRecords.length < OP_CAP) opRecords.push(record);
   else {
     const j = Math.floor(rng() * opSeen);
@@ -419,9 +443,11 @@ if (tapePath) {
     console.error(`\nTape vacio o ilegible: ${tapePath}. Graba uno con: npm run record\n`);
     process.exit(1);
   }
-  console.log(`  (${rounds.length} rondas capturadas; reproduciendo en orden)\n`);
+  console.log(`  (${rounds.length} rondas capturadas; reproduciendo en orden; split ${splitMode})\n`);
+  const temporalValStart = Math.floor(rounds.length * 0.8);
   for (let i = 0; i < rounds.length; i += 1) {
-    await ingestCandidates(rebaseRound(rounds[i]), rng() < 0.2 ? "val" : "train");
+    const mode = splitMode === "temporal" ? (i >= temporalValStart ? "val" : "train") : rng() < 0.2 ? "val" : "train";
+    await ingestCandidates(rebaseRound(rounds[i]), mode);
     await sleep(0);
     if (!announcedTrained && engine.mlEdgeTensor.isTrained()) {
       announcedTrained = true;
@@ -471,104 +497,100 @@ evaluateAndSnapshot();
 if (bestMl.trees.length > 0) engine.mlEdgeTensor.importModel(bestMl);
 
 // ---------------------------------------------------------------------------
-// Platt calibration + operating-point sweep over the large held-out reservoir.
-// The reservoir is split into two disjoint halves: "calib" fits the Platt map
-// (Platt 1999) for the restored best-AUC ensemble, "eval" is never touched by
-// any fit and reports Brier before/after plus the threshold sweep -- so both
-// the calibration benefit and the operating-point P&L are honest out-of-sample
-// measurements. The map is monotonic, so AUC (ranking) is unchanged by design;
-// what it fixes is the probability SCALE, which is exactly what Kelly sizing
-// consumes as its win probability.
+// Calibration + operating-point sweep over the large held-out reservoir.
+// The reservoir is split into two disjoint halves: "calib" fits the candidate
+// calibration maps (Platt 1999 AND isotonic/PAV, Zadrozny-Elkan 2002) for the
+// restored best-AUC ensemble; "eval" is never touched by any fit and decides
+// which calibrator (if any) ships, reports Brier before/after, and hosts the
+// threshold sweep -- so both the calibration benefit and the operating-point
+// P&L are honest out-of-sample measurements. Under the temporal split the
+// halves are chronological (calib strictly precedes eval), making the whole
+// chain walk-forward: train < calibrate < evaluate in time. Both maps are
+// monotonic, so AUC (ranking) is unchanged by design; what they fix is the
+// probability SCALE, which is exactly what Kelly sizing consumes.
 // ---------------------------------------------------------------------------
 const sig = (x: number): number => 1 / (1 + Math.exp(-x));
 
-interface PlattReport {
-  a: number;
-  b: number;
+// Wilson 95% score interval lower bound: the statistically honest way to quote
+// a win rate from n trades (a 100% rate over 30 trades is NOT a 100% claim).
+function wilsonLow95(winCount: number, n: number): number {
+  if (n === 0) return 0;
+  const z = 1.959963984540054;
+  const p = winCount / n;
+  const denom = 1 + (z * z) / n;
+  const centre = p + (z * z) / (2 * n);
+  const half = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n);
+  return Math.max(0, (centre - half) / denom);
+}
+
+// Mann-Whitney rank-sum AUC with tie correction: O(n log n), safe for the
+// full-size transfer sets where pairwise counting would be quadratic.
+function aucRankSum(records: Array<{ survival: number; label: number }>): number {
+  const pos = records.reduce((s, r) => s + r.label, 0);
+  const neg = records.length - pos;
+  if (!pos || !neg) return 0.5;
+  const sorted = [...records].sort((a, b) => a.survival - b.survival);
+  let rankSumPos = 0;
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1].survival === sorted[i].survival) j += 1;
+    const avgRank = (i + j + 2) / 2;
+    for (let k = i; k <= j; k += 1) if (sorted[k].label === 1) rankSumPos += avgRank;
+    i = j + 1;
+  }
+  return (rankSumPos - (pos * (pos + 1)) / 2) / (pos * neg);
+}
+
+interface CalibrationReport {
+  method: "platt" | "isotonic" | "identity";
   attached: boolean;
   calibSamples: number;
   evalSamples: number;
   brierPreCalibration: number;
+  brierPlatt: number | null;
+  brierIsotonic: number | null;
   brierPostCalibration: number;
+  platt?: { a: number; b: number };
+  isotonicKnots?: number;
 }
 interface SweepRow {
   threshold: number;
   trades: number;
   winRatePct: number;
+  winRateCi95LoPct: number;
   totalPnlUsd: number;
   meanPnlUsd: number;
 }
-interface OperatingPointReport {
-  evalSamples: number;
-  aucEval: number;
-  platt: PlattReport | null;
-  gateBaseline: { trades: number; winRatePct: number; totalPnlUsd: number };
+interface ScoredTrial { survival: number; label: number; pnlUsd: number; detected: boolean }
+interface SweepReport {
+  gateBaseline: { trades: number; winRatePct: number; winRateCi95LoPct: number; totalPnlUsd: number };
   sweep: SweepRow[];
   best: SweepRow | null;
+}
+interface TransferReport extends SweepReport {
+  tape: string;
+  samples: number;
+  auc: number;
+  brier: number;
+  takeaway: string;
+}
+interface OperatingPointReport extends SweepReport {
+  split: "random" | "temporal";
+  evalSamples: number;
+  aucEval: number;
+  calibration: CalibrationReport | null;
+  transfer?: TransferReport;
   takeaway: string;
 }
 let operatingPoint: OperatingPointReport | null = null;
 
-if (bestMl.trees.length > 0 && opRecords.length >= 200) {
-  const withMargin: Array<OpRecord & { margin: number }> = [];
-  for (const record of opRecords) {
-    const margin = engine.mlEdgeTensor.rawMargin(record.features);
-    if (margin !== null && Number.isFinite(margin)) withMargin.push({ ...record, margin });
-  }
-  // Deterministic shuffle so the calib/eval halves are stable per seed.
-  for (let i = withMargin.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(rng() * (i + 1));
-    [withMargin[i], withMargin[j]] = [withMargin[j], withMargin[i]];
-  }
-  const half = Math.floor(withMargin.length / 2);
-  const calibFold = withMargin.slice(0, half);
-  const evalFold = withMargin.slice(half);
+const SWEEP_THRESHOLDS = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 0.98, 0.99];
 
-  const brierOf = (map: (m: number) => number): number =>
-    evalFold.reduce((s, r) => s + (map(r.margin) - r.label) ** 2, 0) / Math.max(1, evalFold.length);
-
-  const brierPre = brierOf(sig);
-  const platt = fitPlattScaling(calibFold.map((r) => ({ margin: r.margin, label: r.label })));
-  let plattReport: PlattReport | null = null;
-  let attached = false;
-  if (platt) {
-    const brierPost = brierOf((m) => sig(platt.a * m + platt.b));
-    // Attach only if it actually helps on the untouched eval half AND (in
-    // generator mode) keeps the demo winners comfortably above the veto floor.
-    if (brierPost < brierPre) {
-      engine.mlEdgeTensor.setPlattCalibration(platt.a, platt.b);
-      if (!tapePath && demoMinWinnerSurvival() <= 0.45) {
-        engine.mlEdgeTensor.importModel(bestMl); // revert to identity calibration
-      } else {
-        attached = true;
-      }
-    }
-    plattReport = {
-      a: Number(platt.a.toFixed(6)),
-      b: Number(platt.b.toFixed(6)),
-      attached,
-      calibSamples: calibFold.length,
-      evalSamples: evalFold.length,
-      brierPreCalibration: Number(brierPre.toFixed(4)),
-      brierPostCalibration: Number(brierPost.toFixed(4))
-    };
-  }
-
-  const survivalOf = attached && platt ? (m: number) => sig(platt.a * m + platt.b) : sig;
-  const scored = evalFold
-    .map((r) => ({ survival: survivalOf(r.margin), label: r.label, pnlUsd: r.pnlUsd, detected: r.detected }))
-    .sort((a, b) => b.survival - a.survival);
-
-  const positives = scored.filter((r) => r.label === 1);
-  const negatives = scored.filter((r) => r.label === 0);
-  let concordant = 0;
-  for (const p of positives) for (const n of negatives) concordant += p.survival > n.survival ? 1 : p.survival === n.survival ? 0.5 : 0;
-  const aucEval = positives.length && negatives.length ? concordant / (positives.length * negatives.length) : 0.5;
-
-  // Sorted descending by survival, so "threshold t" selects a prefix.
+function buildSweep(scoredInput: ScoredTrial[]): SweepReport {
+  const scored = [...scoredInput].sort((a, b) => b.survival - a.survival);
   const sweep: SweepRow[] = [];
-  const thresholds = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 0.98, 0.99];
-  for (const threshold of thresholds) {
+  for (const threshold of SWEEP_THRESHOLDS) {
     let trades = 0;
     let winCount = 0;
     let totalPnl = 0;
@@ -582,37 +604,176 @@ if (bestMl.trees.length > 0 && opRecords.length >= 200) {
       threshold,
       trades,
       winRatePct: trades ? Number(((winCount / trades) * 100).toFixed(1)) : 0,
+      winRateCi95LoPct: trades ? Number((wilsonLow95(winCount, trades) * 100).toFixed(1)) : 0,
       totalPnlUsd: Number(totalPnl.toFixed(2)),
       meanPnlUsd: trades ? Number((totalPnl / trades).toFixed(4)) : 0
     });
   }
-
   const gateTrades = scored.filter((r) => r.detected);
+  const gateWins = gateTrades.reduce((s, r) => s + r.label, 0);
   const gateBaseline = {
     trades: gateTrades.length,
-    winRatePct: gateTrades.length ? Number(((gateTrades.filter((r) => r.label === 1).length / gateTrades.length) * 100).toFixed(1)) : 0,
+    winRatePct: gateTrades.length ? Number(((gateWins / gateTrades.length) * 100).toFixed(1)) : 0,
+    winRateCi95LoPct: gateTrades.length ? Number((wilsonLow95(gateWins, gateTrades.length) * 100).toFixed(1)) : 0,
     totalPnlUsd: Number(gateTrades.reduce((s, r) => s + r.pnlUsd, 0).toFixed(2))
   };
-
-  // Only trust operating points with enough selected trades to mean something.
   const candidates = sweep.filter((row) => row.trades >= 30);
   const best = candidates.length
     ? candidates.reduce((bestRow, row) => (row.totalPnlUsd > bestRow.totalPnlUsd ? row : bestRow))
     : null;
+  return { gateBaseline, sweep, best };
+}
+
+if (bestMl.trees.length > 0 && opRecords.length >= 200) {
+  const withMargin: Array<OpRecord & { margin: number }> = [];
+  for (const record of opRecords) {
+    const margin = engine.mlEdgeTensor.rawMargin(record.features);
+    if (margin !== null && Number.isFinite(margin)) withMargin.push({ ...record, margin });
+  }
+  // Temporal split: records are already in chronological order (stride
+  // sampling), so slicing at the midpoint keeps calib strictly BEFORE eval in
+  // time. Random split: deterministic shuffle, stable per seed.
+  if (splitMode !== "temporal") {
+    for (let i = withMargin.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rng() * (i + 1));
+      [withMargin[i], withMargin[j]] = [withMargin[j], withMargin[i]];
+    }
+  }
+  const half = Math.floor(withMargin.length / 2);
+  const calibFold = withMargin.slice(0, half);
+  const evalFold = withMargin.slice(half);
+
+  const brierOf = (map: (m: number) => number): number =>
+    evalFold.reduce((s, r) => s + (map(r.margin) - r.label) ** 2, 0) / Math.max(1, evalFold.length);
+
+  const brierPre = brierOf(sig);
+  const calibPoints = calibFold.map((r) => ({ margin: r.margin, label: r.label }));
+  const platt = fitPlattScaling(calibPoints);
+  const isotonic = fitIsotonicCalibration(calibPoints);
+  const brierPlatt = platt ? brierOf((m) => sig(platt.a * m + platt.b)) : null;
+  const brierIsotonic = isotonic ? brierOf((m) => interpolateIsotonic(isotonic, m)) : null;
+
+  // The two calibrators compete on the untouched eval half; ship the winner
+  // only if it beats identity there AND (in generator mode) keeps the demo
+  // winners comfortably above the veto floor.
+  let method: "platt" | "isotonic" | "identity" = "identity";
+  if (brierPlatt !== null && brierPlatt < brierPre && (brierIsotonic === null || brierPlatt <= brierIsotonic)) method = "platt";
+  else if (brierIsotonic !== null && brierIsotonic < brierPre) method = "isotonic";
+
+  let attached = false;
+  if (method === "platt" && platt) {
+    engine.mlEdgeTensor.setPlattCalibration(platt.a, platt.b);
+    attached = true;
+  } else if (method === "isotonic" && isotonic) {
+    attached = engine.mlEdgeTensor.setIsotonicCalibration(isotonic.x, isotonic.y);
+  }
+  if (attached && !tapePath && demoMinWinnerSurvival() <= 0.45) {
+    engine.mlEdgeTensor.importModel(bestMl); // revert to identity calibration
+    attached = false;
+    method = "identity";
+  }
+
+  const brierPost = method === "platt" && brierPlatt !== null ? brierPlatt : method === "isotonic" && brierIsotonic !== null ? brierIsotonic : brierPre;
+  const calibrationReport: CalibrationReport = {
+    method,
+    attached,
+    calibSamples: calibFold.length,
+    evalSamples: evalFold.length,
+    brierPreCalibration: Number(brierPre.toFixed(4)),
+    brierPlatt: brierPlatt !== null ? Number(brierPlatt.toFixed(4)) : null,
+    brierIsotonic: brierIsotonic !== null ? Number(brierIsotonic.toFixed(4)) : null,
+    brierPostCalibration: Number(brierPost.toFixed(4)),
+    ...(platt ? { platt: { a: Number(platt.a.toFixed(6)), b: Number(platt.b.toFixed(6)) } } : {}),
+    ...(isotonic ? { isotonicKnots: isotonic.x.length } : {})
+  };
+
+  const survivalOf =
+    attached && method === "platt" && platt
+      ? (m: number) => sig(platt.a * m + platt.b)
+      : attached && method === "isotonic" && isotonic
+        ? (m: number) => interpolateIsotonic(isotonic, m)
+        : sig;
+  const scored: ScoredTrial[] = evalFold.map((r) => ({ survival: survivalOf(r.margin), label: r.label, pnlUsd: r.pnlUsd, detected: r.detected }));
+  const aucEval = aucRankSum(scored);
+  const { gateBaseline, sweep, best } = buildSweep(scored);
 
   const takeaway = best && best.totalPnlUsd > 0
-    ? `Existe un punto de operación con P&L contrafactual positivo out-of-sample: umbral ${best.threshold} -> ${best.trades} trades, ${best.winRatePct}% ganadores, +$${best.totalPnlUsd.toFixed(2)}. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (${((best.trades / Math.max(1, evalFold.length)) * 100).toFixed(2)}% de las señales) muestra lo raro que es el edge.`
+    ? `Existe un punto de operación con P&L contrafactual positivo out-of-sample${splitMode === "temporal" ? " (validación walk-forward: el modelo nunca vio el segmento temporal evaluado)" : ""}: umbral ${best.threshold} -> ${best.trades} trades, ${best.winRatePct}% ganadores (IC95 inferior ${best.winRateCi95LoPct}%), +$${best.totalPnlUsd.toFixed(2)}. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (${((best.trades / Math.max(1, evalFold.length)) * 100).toFixed(2)}% de las señales) muestra lo raro que es el edge.`
     : `Ningún umbral de supervivencia produce P&L contrafactual positivo out-of-sample (mejor: ${best ? `$${best.totalPnlUsd.toFixed(2)} en umbral ${best.threshold}` : "sin candidatos con >=30 trades"}). Incluso seleccionando solo las señales de mayor confianza del modelo, los costos reales dominan — la conclusión honesta se mantiene: el valor está en rechazar bien, no en un edge retail.`;
 
   operatingPoint = {
+    split: splitMode,
     evalSamples: evalFold.length,
     aucEval: Number(aucEval.toFixed(4)),
-    platt: plattReport,
+    calibration: calibrationReport,
     gateBaseline,
     sweep,
     best,
     takeaway
   };
+}
+
+// ---------------------------------------------------------------------------
+// Cross-regime transfer: settle a SECOND tape with the frozen, calibrated
+// model. Nothing here trains or recalibrates anything -- it is the purest
+// out-of-distribution test available: e.g. train on the overnight session,
+// evaluate on the daytime session. Records survival at settle time (model is
+// final), so no features need retaining.
+// ---------------------------------------------------------------------------
+if (evalTapePath && operatingPoint && bestMl.trees.length > 0) {
+  const transferRounds = loadTape(evalTapePath);
+  if (transferRounds.length) {
+    console.log(`\n  Transferencia: liquidando ${evalTapePath} (${transferRounds.length} rondas) con el modelo congelado...`);
+    const transferScored: ScoredTrial[] = [];
+    let nextTransferReport = Date.now() + 5000;
+    for (let i = 0; i < transferRounds.length; i += 1) {
+      const books = rebaseRound(transferRounds[i]);
+      const byExchange = bookMap(books);
+      for (const book of books) {
+        for (const opportunity of engine.onOrderBook(book)) {
+          if (opportunity.type !== "CROSS_EXCHANGE") continue;
+          const trade = await simulator.execute(opportunity);
+          const tradePnl = Number(trade.pnlUsd);
+          const buyBook = opportunity.buyExchange ? byExchange.get(opportunity.buyExchange) : undefined;
+          const sellBook = opportunity.sellExchange ? byExchange.get(opportunity.sellExchange) : undefined;
+          if (!buyBook || !sellBook) continue;
+          const features = engine.mlEdgeTensor.extractFeatures(buyBook, sellBook, d(opportunity.tradeSizeBtc), opportunity.executionStyle, d(opportunity.netSpreadPct).div(100));
+          transferScored.push({
+            survival: engine.mlEdgeTensor.predict(features).survivalProbability,
+            label: tradePnl > 0 ? 1 : 0,
+            pnlUsd: tradePnl,
+            detected: opportunity.status === "DETECTED"
+          });
+        }
+      }
+      await sleep(0);
+      if (Date.now() >= nextTransferReport) {
+        console.log(`    transfer ${Math.round((i / transferRounds.length) * 100)}% (${transferScored.length} ensayos)`);
+        nextTransferReport += 5000;
+      }
+    }
+    if (transferScored.length >= 100) {
+      const { gateBaseline, sweep, best } = buildSweep(transferScored);
+      const transferBrier = transferScored.reduce((s, r) => s + (r.survival - r.label) ** 2, 0) / transferScored.length;
+      const transferTakeaway = best && best.totalPnlUsd > 0
+        ? `La selección transfiere de régimen: en un tape ajeno al entrenamiento (${evalTapePath}), el umbral ${best.threshold} habría tomado ${best.trades} trades con ${best.winRatePct}% ganadores (IC95 inferior ${best.winRateCi95LoPct}%) y +$${best.totalPnlUsd.toFixed(2)} contrafactuales.`
+        : `En el tape de transferencia (${evalTapePath}) ningún umbral produce P&L positivo${best ? ` (mejor: $${best.totalPnlUsd.toFixed(2)} en ${best.threshold})` : ""} — la selección aprendida en la ventana nocturna NO transfiere a este régimen, y lo reportamos tal cual.`;
+      operatingPoint.transfer = {
+        tape: evalTapePath,
+        samples: transferScored.length,
+        auc: Number(aucRankSum(transferScored).toFixed(4)),
+        brier: Number(transferBrier.toFixed(4)),
+        gateBaseline,
+        sweep,
+        best,
+        takeaway: transferTakeaway
+      };
+    } else {
+      console.log(`    Transferencia omitida: solo ${transferScored.length} ensayos (<100).`);
+    }
+  } else {
+    console.log(`\n  Transferencia omitida: tape vacio o ilegible (${evalTapePath}).`);
+  }
 }
 
 const finalAuc = valSamples.length >= 40 ? auc() : 0.5;
@@ -678,23 +839,31 @@ console.log("\n  Separación en validación (out-of-sample):");
 console.log(`    survival medio en ganadores reales -> ${(meanWinSurvival * 100).toFixed(1)}%`);
 console.log(`    survival medio en perdedores reales -> ${(meanLossSurvival * 100).toFixed(1)}%`);
 
+function printSweep(report: { gateBaseline: SweepReport["gateBaseline"]; sweep: SweepRow[] }): void {
+  const g = report.gateBaseline;
+  console.log(`    Gate actual (DETECTED): ${g.trades} trades, ${g.winRatePct}% ganadores (IC95 >= ${g.winRateCi95LoPct}%), $${g.totalPnlUsd.toFixed(2)}`);
+  console.log("    Umbral  trades   win%  IC95lo      P&L total     P&L medio");
+  for (const row of report.sweep) {
+    console.log(`    ${row.threshold.toFixed(2).padStart(6)} ${String(row.trades).padStart(7)} ${`${row.winRatePct}%`.padStart(6)} ${`${row.winRateCi95LoPct}%`.padStart(7)} ${`$${row.totalPnlUsd.toFixed(2)}`.padStart(13)} ${`$${row.meanPnlUsd.toFixed(4)}`.padStart(12)}`);
+  }
+}
+
 if (operatingPoint) {
-  console.log("\n  Calibración Platt + punto de operación (folds calib/eval disjuntos):");
-  if (operatingPoint.platt) {
-    const p = operatingPoint.platt;
-    console.log(`    Platt a=${p.a.toFixed(3)} b=${p.b.toFixed(3)} (${p.attached ? "ADJUNTADA al modelo" : "no adjuntada"})`);
-    console.log(`    Brier eval: ${p.brierPreCalibration.toFixed(4)} -> ${p.brierPostCalibration.toFixed(4)} (${p.calibSamples} calib / ${p.evalSamples} eval)`);
-  } else {
-    console.log("    Platt: fit degenerado (se conserva la identidad)");
+  console.log(`\n  Calibración + punto de operación (split ${operatingPoint.split}; folds calib/eval disjuntos):`);
+  const c = operatingPoint.calibration;
+  if (c) {
+    console.log(`    Brier eval: identidad ${c.brierPreCalibration.toFixed(4)} | Platt ${c.brierPlatt !== null ? c.brierPlatt.toFixed(4) : "n/a"} | isotónica ${c.brierIsotonic !== null ? c.brierIsotonic.toFixed(4) : "n/a"}`);
+    console.log(`    Ganadora: ${c.method}${c.attached ? " (ADJUNTADA al modelo)" : " (no adjuntada)"}${c.platt ? ` | platt a=${c.platt.a.toFixed(3)} b=${c.platt.b.toFixed(3)}` : ""}${c.isotonicKnots ? ` | knots=${c.isotonicKnots}` : ""} | ${c.calibSamples} calib / ${c.evalSamples} eval`);
   }
   console.log(`    AUC eval (${operatingPoint.evalSamples} muestras): ${operatingPoint.aucEval.toFixed(4)}`);
-  const g = operatingPoint.gateBaseline;
-  console.log(`    Gate actual (DETECTED): ${g.trades} trades, ${g.winRatePct}% ganadores, $${g.totalPnlUsd.toFixed(2)}`);
-  console.log("    Umbral  trades   win%      P&L total     P&L medio");
-  for (const row of operatingPoint.sweep) {
-    console.log(`    ${row.threshold.toFixed(2).padStart(6)} ${String(row.trades).padStart(7)} ${`${row.winRatePct}%`.padStart(6)} ${`$${row.totalPnlUsd.toFixed(2)}`.padStart(13)} ${`$${row.meanPnlUsd.toFixed(4)}`.padStart(12)}`);
-  }
+  printSweep(operatingPoint);
   console.log(`\n    ${operatingPoint.takeaway}`);
+  if (operatingPoint.transfer) {
+    const t = operatingPoint.transfer;
+    console.log(`\n  Transferencia de régimen (${t.tape}): ${t.samples} ensayos, AUC ${t.auc.toFixed(4)}, Brier ${t.brier.toFixed(4)}`);
+    printSweep(t);
+    console.log(`\n    ${t.takeaway}`);
+  }
 }
 if (!tapePath) {
   console.log(`  Demo-safety (min survival en ganadores del demo): ${(demoSafety * 100).toFixed(1)}%  (> 30% = no veta el demo)`);
