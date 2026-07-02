@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BacktestPanel } from "@/components/BacktestPanel";
+import { OperatingPointPanel } from "@/components/OperatingPointPanel";
 import { PortfolioSynthesis } from "@/components/PortfolioSynthesis";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
@@ -24,6 +25,7 @@ export default function ResultsPage() {
           </div>
           <BacktestPanel />
           <RealMarketEvidence />
+          <OperatingPointPanel />
           <PortfolioSynthesis />
         </div>
       </section>
