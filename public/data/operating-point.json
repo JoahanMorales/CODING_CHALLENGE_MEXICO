@@ -1,0 +1,110 @@
+{
+  "generatedAt": "2026-07-02T09:37:32.811Z",
+  "source": "tape",
+  "tape": "data/tape-ws-overnight.jsonl",
+  "trialsSettled": 827443,
+  "detectedByGate": 65706,
+  "evalSamples": 15000,
+  "aucEval": 0.988,
+  "platt": {
+    "a": 3.705934,
+    "b": -2.976139,
+    "attached": true,
+    "calibSamples": 15000,
+    "evalSamples": 15000,
+    "brierPreCalibration": 0.0602,
+    "brierPostCalibration": 0.0232
+  },
+  "gateBaseline": {
+    "trades": 1173,
+    "winRatePct": 100,
+    "totalPnlUsd": 19651.78
+  },
+  "sweep": [
+    {
+      "threshold": 0.3,
+      "trades": 2416,
+      "winRatePct": 61.7,
+      "totalPnlUsd": 17455.41,
+      "meanPnlUsd": 7.2249
+    },
+    {
+      "threshold": 0.4,
+      "trades": 1469,
+      "winRatePct": 99.9,
+      "totalPnlUsd": 19669.25,
+      "meanPnlUsd": 13.3896
+    },
+    {
+      "threshold": 0.5,
+      "trades": 1443,
+      "winRatePct": 99.9,
+      "totalPnlUsd": 19458.56,
+      "meanPnlUsd": 13.4848
+    },
+    {
+      "threshold": 0.6,
+      "trades": 1436,
+      "winRatePct": 99.9,
+      "totalPnlUsd": 19402.82,
+      "meanPnlUsd": 13.5117
+    },
+    {
+      "threshold": 0.7,
+      "trades": 1187,
+      "winRatePct": 99.9,
+      "totalPnlUsd": 16743.53,
+      "meanPnlUsd": 14.1058
+    },
+    {
+      "threshold": 0.8,
+      "trades": 1187,
+      "winRatePct": 99.9,
+      "totalPnlUsd": 16743.53,
+      "meanPnlUsd": 14.1058
+    },
+    {
+      "threshold": 0.85,
+      "trades": 1187,
+      "winRatePct": 99.9,
+      "totalPnlUsd": 16743.53,
+      "meanPnlUsd": 14.1058
+    },
+    {
+      "threshold": 0.9,
+      "trades": 833,
+      "winRatePct": 99.9,
+      "totalPnlUsd": 12945.53,
+      "meanPnlUsd": 15.5409
+    },
+    {
+      "threshold": 0.95,
+      "trades": 829,
+      "winRatePct": 99.9,
+      "totalPnlUsd": 12889.78,
+      "meanPnlUsd": 15.5486
+    },
+    {
+      "threshold": 0.98,
+      "trades": 751,
+      "winRatePct": 100,
+      "totalPnlUsd": 12149.46,
+      "meanPnlUsd": 16.1777
+    },
+    {
+      "threshold": 0.99,
+      "trades": 276,
+      "winRatePct": 100,
+      "totalPnlUsd": 4704.14,
+      "meanPnlUsd": 17.044
+    }
+  ],
+  "best": {
+    "threshold": 0.4,
+    "trades": 1469,
+    "winRatePct": 99.9,
+    "totalPnlUsd": 19669.25,
+    "meanPnlUsd": 13.3896
+  },
+  "takeaway": "Existe un punto de operación con P&L contrafactual positivo out-of-sample: umbral 0.4 -> 1469 trades, 99.9% ganadores, +$19669.25. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (9.79% de las señales) muestra lo raro que es el edge."
+}
