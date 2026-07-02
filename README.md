@@ -104,6 +104,7 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 | 16 | **Features de order-flow imbalance** | El ML consume OFI a la punta y multi-level OFI ponderado a 5 niveles + microprice en ambos libros y su alineación (antes inertes en 0) | Cont-Kukanov-Stoikov (2014), Xu-Gould-Howison (2018) |
 | 17 | **Búsqueda de semillas del modelo ML** | `npm run train:search` entrena N seeds independientes, puntúa cada uno (AUC held-out + demo-safety) y solo promueve un modelo si supera al actual — nunca regresa | |
 | 18 | **Aislamiento de fallos en la cola de ejecución** | `drainQueue()` envuelve cada trade en `try/catch` propio y el loop entero en `try/finally`: una excepción en una pierna rechaza esa señal sin congelar `executing` ni el resto de la cola. React boundary (`error.tsx`) evita pantalla blanca si un panel falla al renderizar | |
+| 19 | **Calibración de Platt + punto de operación** | La salida del ensemble no era probabilidad calibrada (Brier 0.060 eval) y Kelly la consume como probabilidad. Capa `survival = sigmoid(a·margen + b)` ajustada por MLE en fold disjunto, adjuntada solo si mejora el Brier out-of-sample: 0.060 → 0.023 (−61%) en el tape real de 6h, ranking intacto. El barrido de umbrales (`--opOut`) mide el P&L contrafactual de las señales seleccionadas a cada nivel de confianza vs el gate actual | Platt (1999) |
 
 <p align="center">
   <img alt="Innovaciones implementadas" src="recursos/11mejoras.png" width="820" />

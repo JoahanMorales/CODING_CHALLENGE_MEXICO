@@ -130,7 +130,8 @@ export function RealMarketEvidence() {
           <>El <strong className="text-zinc-800">{data.cross.profitablePct}%</strong> tuvo spread neto positivo tras fees y el gate del motor marcó
           {" "}<strong className="text-zinc-800">{data.cross.detected.toLocaleString()} ({detectedPct}%) como DETECTED</strong> en esta ventana —
           dislocaciones que a la vista del gate habrían sido ejecutables. La prueba de fuego está abajo: liquidamos cada ensayo
-          contrafactualmente con el modelo de ejecución completo (latencia, decaimiento de supervivencia), y la mayoría no sobrevive. </>
+          contrafactualmente con el modelo de ejecución completo (latencia, decaimiento de supervivencia). Operar todo a ciegas pierde
+          masivamente; las señales que el gate y el modelo calibrado seleccionan, no — el panel de punto de operación pone los números. </>
         )}Distribución del <strong className="text-zinc-800">net spread tras fees + base + costos</strong>:
       </p>
 
@@ -210,7 +211,8 @@ export function RealMarketEvidence() {
             (latencia realizada, decaimiento de supervivencia, fills parciales). Resultado: solo el{" "}
             <strong className="text-zinc-800">{model.realizedWinRatePct}% habría ganado</strong>, con P&L contrafactual acumulado de{" "}
             <strong className="text-rose-600">−${Math.abs(model.counterfactualPnlUsd / 1e6).toFixed(2)}M</strong> si se operara todo a ciegas —
-            la confirmación más grande hasta ahora de que el edge retail no existe. Lo que <em>sí</em> emerge es la calidad del modelo:
+            operar sin filtro es ruinoso; todo el valor está en la selección (el panel de punto de operación mide exactamente cuánto).
+            Lo que <em>sí</em> emerge es la calidad del modelo:
             entrenado sobre esos resultados reales, el ensemble de {model.ensemble.trees} árboles distingue ganadores de perdedores con{" "}
             <strong className="text-zinc-800">AUC {model.heldOutAuc.toFixed(4)}</strong> sobre {model.valSamples.toLocaleString()} muestras
             out-of-sample (Brier {model.brierScore}): a los ganadores reales les asignó{" "}
