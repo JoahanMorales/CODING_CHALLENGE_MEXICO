@@ -575,17 +575,25 @@ interface TransferReport extends SweepReport {
   brier: number;
   takeaway: string;
 }
+interface FeatureImportance {
+  feature: string;
+  aucDrop: number;
+}
 interface OperatingPointReport extends SweepReport {
   split: "random" | "temporal";
   evalSamples: number;
   aucEval: number;
   calibration: CalibrationReport | null;
+  importance?: FeatureImportance[];
   transfer?: TransferReport;
   takeaway: string;
 }
 let operatingPoint: OperatingPointReport | null = null;
 
-const SWEEP_THRESHOLDS = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 0.98, 0.99];
+// Denser in [0.3, 0.7] where the calibrated survival actually lives (Platt caps
+// it around 0.6-0.7 on this data), so the operating-point curve has resolution
+// where it matters instead of collapsing to empty rows above the cap.
+const SWEEP_THRESHOLDS = [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99];
 
 function buildSweep(scoredInput: ScoredTrial[]): SweepReport {
   const scored = [...scoredInput].sort((a, b) => b.survival - a.survival);
@@ -697,6 +705,35 @@ if (bestMl.trees.length > 0 && opRecords.length >= 200) {
   const aucEval = aucRankSum(scored);
   const { gateBaseline, sweep, best } = buildSweep(scored);
 
+  // Permutation feature importance: shuffle one feature's values across the eval
+  // fold, recompute each margin, and measure how much the ranking AUC drops.
+  // A feature the ensemble never split on stays ~0; the ones carrying signal
+  // show the biggest drop -- this makes the model's reasoning legible (which of
+  // the 24 microstructure + temporal inputs it actually uses to separate
+  // winners from losers). Monotone calibration doesn't change ranking, so we
+  // measure the drop on the raw margins directly.
+  let importance: FeatureImportance[] | undefined;
+  if (evalFold.length >= 50) {
+    const baselineMarginAuc = aucRankSum(evalFold.map((r) => ({ survival: r.margin, label: r.label })));
+    const featureKeys = Object.keys(evalFold[0].features) as Array<keyof Feat>;
+    importance = featureKeys
+      .map((key) => {
+        const shuffled = evalFold.map((r) => r.features[key]);
+        for (let i = shuffled.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(rng() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        const permutedAuc = aucRankSum(
+          evalFold.map((r, i) => ({
+            survival: engine.mlEdgeTensor.rawMargin({ ...r.features, [key]: shuffled[i] }) ?? 0,
+            label: r.label
+          }))
+        );
+        return { feature: String(key), aucDrop: Number((baselineMarginAuc - permutedAuc).toFixed(4)) };
+      })
+      .sort((a, b) => b.aucDrop - a.aucDrop);
+  }
+
   const takeaway = best && best.totalPnlUsd > 0
     ? `Existe un punto de operación con P&L contrafactual positivo out-of-sample${splitMode === "temporal" ? " (validación walk-forward: el modelo nunca vio el segmento temporal evaluado)" : ""}: umbral ${best.threshold} -> ${best.trades} trades, ${best.winRatePct}% ganadores (IC95 inferior ${best.winRateCi95LoPct}%), +$${best.totalPnlUsd.toFixed(2)}. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (${((best.trades / Math.max(1, evalFold.length)) * 100).toFixed(2)}% de las señales) muestra lo raro que es el edge.`
     : `Ningún umbral de supervivencia produce P&L contrafactual positivo out-of-sample (mejor: ${best ? `$${best.totalPnlUsd.toFixed(2)} en umbral ${best.threshold}` : "sin candidatos con >=30 trades"}). Incluso seleccionando solo las señales de mayor confianza del modelo, los costos reales dominan — la conclusión honesta se mantiene: el valor está en rechazar bien, no en un edge retail.`;
@@ -706,6 +743,7 @@ if (bestMl.trees.length > 0 && opRecords.length >= 200) {
     evalSamples: evalFold.length,
     aucEval: Number(aucEval.toFixed(4)),
     calibration: calibrationReport,
+    importance,
     gateBaseline,
     sweep,
     best,
@@ -856,6 +894,12 @@ if (operatingPoint) {
     console.log(`    Ganadora: ${c.method}${c.attached ? " (ADJUNTADA al modelo)" : " (no adjuntada)"}${c.platt ? ` | platt a=${c.platt.a.toFixed(3)} b=${c.platt.b.toFixed(3)}` : ""}${c.isotonicKnots ? ` | knots=${c.isotonicKnots}` : ""} | ${c.calibSamples} calib / ${c.evalSamples} eval`);
   }
   console.log(`    AUC eval (${operatingPoint.evalSamples} muestras): ${operatingPoint.aucEval.toFixed(4)}`);
+  if (operatingPoint.importance && operatingPoint.importance.length) {
+    console.log("    Importancia de features (caída de AUC al permutar):");
+    for (const imp of operatingPoint.importance.filter((i) => i.aucDrop > 0.0005).slice(0, 12)) {
+      console.log(`      ${imp.feature.padEnd(20)} ${imp.aucDrop.toFixed(4)}`);
+    }
+  }
   printSweep(operatingPoint);
   console.log(`\n    ${operatingPoint.takeaway}`);
   if (operatingPoint.transfer) {

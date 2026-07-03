@@ -1,65 +1,65 @@
 {
-  "generatedAt": "2026-07-03T00:58:02.354Z",
+  "generatedAt": "2026-07-03T08:26:17.421Z",
   "source": "tape",
   "tape": "data/tape-ws-overnight.jsonl",
-  "trialsSettled": 827074,
-  "detectedByGate": 53470,
+  "trialsSettled": 823093,
+  "detectedByGate": 51525,
   "split": "temporal",
   "evalSamples": 17001,
-  "aucEval": 0.9255,
+  "aucEval": 0.9259,
   "calibration": {
     "method": "platt",
     "attached": true,
     "calibSamples": 17000,
     "evalSamples": 17001,
-    "brierPreCalibration": 0.1012,
-    "brierPlatt": 0.0792,
-    "brierIsotonic": 0.0845,
-    "brierPostCalibration": 0.0792,
+    "brierPreCalibration": 0.1009,
+    "brierPlatt": 0.0789,
+    "brierIsotonic": 0.084,
+    "brierPostCalibration": 0.0789,
     "platt": {
-      "a": 3.247741,
-      "b": -4.46541
+      "a": 3.250466,
+      "b": -4.46058
     },
     "isotonicKnots": 2
   },
   "gateBaseline": {
-    "trades": 3730,
+    "trades": 3757,
     "winRatePct": 100,
     "winRateCi95LoPct": 99.9,
-    "totalPnlUsd": 92811.19
+    "totalPnlUsd": 93481.94
   },
   "sweep": [
     {
       "threshold": 0.3,
-      "trades": 6422,
-      "winRatePct": 71.2,
-      "winRateCi95LoPct": 70.1,
-      "totalPnlUsd": 93660.98,
-      "meanPnlUsd": 14.5844
+      "trades": 6421,
+      "winRatePct": 71.3,
+      "winRateCi95LoPct": 70.2,
+      "totalPnlUsd": 94136.08,
+      "meanPnlUsd": 14.6607
     },
     {
       "threshold": 0.4,
-      "trades": 6422,
-      "winRatePct": 71.2,
-      "winRateCi95LoPct": 70.1,
-      "totalPnlUsd": 93660.98,
-      "meanPnlUsd": 14.5844
+      "trades": 6421,
+      "winRatePct": 71.3,
+      "winRateCi95LoPct": 70.2,
+      "totalPnlUsd": 94136.08,
+      "meanPnlUsd": 14.6607
     },
     {
       "threshold": 0.5,
-      "trades": 6422,
-      "winRatePct": 71.2,
-      "winRateCi95LoPct": 70.1,
-      "totalPnlUsd": 93660.98,
-      "meanPnlUsd": 14.5844
+      "trades": 6421,
+      "winRatePct": 71.3,
+      "winRateCi95LoPct": 70.2,
+      "totalPnlUsd": 94136.08,
+      "meanPnlUsd": 14.6607
     },
     {
       "threshold": 0.6,
-      "trades": 6422,
-      "winRatePct": 71.2,
-      "winRateCi95LoPct": 70.1,
-      "totalPnlUsd": 93660.98,
-      "meanPnlUsd": 14.5844
+      "trades": 6421,
+      "winRatePct": 71.3,
+      "winRateCi95LoPct": 70.2,
+      "totalPnlUsd": 94136.08,
+      "meanPnlUsd": 14.6607
     },
     {
       "threshold": 0.7,
@@ -120,56 +120,56 @@
   ],
   "best": {
     "threshold": 0.3,
-    "trades": 6422,
-    "winRatePct": 71.2,
-    "winRateCi95LoPct": 70.1,
-    "totalPnlUsd": 93660.98,
-    "meanPnlUsd": 14.5844
+    "trades": 6421,
+    "winRatePct": 71.3,
+    "winRateCi95LoPct": 70.2,
+    "totalPnlUsd": 94136.08,
+    "meanPnlUsd": 14.6607
   },
-  "takeaway": "Existe un punto de operación con P&L contrafactual positivo out-of-sample (validación walk-forward: el modelo nunca vio el segmento temporal evaluado): umbral 0.3 -> 6422 trades, 71.2% ganadores (IC95 inferior 70.1%), +$93660.98. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (37.77% de las señales) muestra lo raro que es el edge.",
+  "takeaway": "Existe un punto de operación con P&L contrafactual positivo out-of-sample (validación walk-forward: el modelo nunca vio el segmento temporal evaluado): umbral 0.3 -> 6421 trades, 71.3% ganadores (IC95 inferior 70.2%), +$94136.08. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (37.77% de las señales) muestra lo raro que es el edge.",
   "transfer": {
     "tape": "data/tape-ws-1h.jsonl",
-    "samples": 139749,
-    "auc": 0.903,
-    "brier": 0.0812,
+    "samples": 139743,
+    "auc": 0.9029,
+    "brier": 0.0818,
     "gateBaseline": {
       "trades": 2,
       "winRatePct": 100,
       "winRateCi95LoPct": 34.2,
-      "totalPnlUsd": 43.25
+      "totalPnlUsd": 43.85
     },
     "sweep": [
       {
         "threshold": 0.3,
         "trades": 28698,
-        "winRatePct": 6.9,
-        "winRateCi95LoPct": 6.6,
-        "totalPnlUsd": -43896.51,
-        "meanPnlUsd": -1.5296
+        "winRatePct": 6.8,
+        "winRateCi95LoPct": 6.5,
+        "totalPnlUsd": -43657.42,
+        "meanPnlUsd": -1.5213
       },
       {
         "threshold": 0.4,
         "trades": 28698,
-        "winRatePct": 6.9,
-        "winRateCi95LoPct": 6.6,
-        "totalPnlUsd": -43896.51,
-        "meanPnlUsd": -1.5296
+        "winRatePct": 6.8,
+        "winRateCi95LoPct": 6.5,
+        "totalPnlUsd": -43657.42,
+        "meanPnlUsd": -1.5213
       },
       {
         "threshold": 0.5,
         "trades": 28698,
-        "winRatePct": 6.9,
-        "winRateCi95LoPct": 6.6,
-        "totalPnlUsd": -43896.51,
-        "meanPnlUsd": -1.5296
+        "winRatePct": 6.8,
+        "winRateCi95LoPct": 6.5,
+        "totalPnlUsd": -43657.42,
+        "meanPnlUsd": -1.5213
       },
       {
         "threshold": 0.6,
         "trades": 28698,
-        "winRatePct": 6.9,
-        "winRateCi95LoPct": 6.6,
-        "totalPnlUsd": -43896.51,
-        "meanPnlUsd": -1.5296
+        "winRatePct": 6.8,
+        "winRateCi95LoPct": 6.5,
+        "totalPnlUsd": -43657.42,
+        "meanPnlUsd": -1.5213
       },
       {
         "threshold": 0.7,
@@ -231,11 +231,11 @@
     "best": {
       "threshold": 0.3,
       "trades": 28698,
-      "winRatePct": 6.9,
-      "winRateCi95LoPct": 6.6,
-      "totalPnlUsd": -43896.51,
-      "meanPnlUsd": -1.5296
+      "winRatePct": 6.8,
+      "winRateCi95LoPct": 6.5,
+      "totalPnlUsd": -43657.42,
+      "meanPnlUsd": -1.5213
     },
-    "takeaway": "En el tape de transferencia (data/tape-ws-1h.jsonl) ningún umbral produce P&L positivo (mejor: $-43896.51 en 0.3) — la selección aprendida en la ventana nocturna NO transfiere a este régimen, y lo reportamos tal cual."
+    "takeaway": "En el tape de transferencia (data/tape-ws-1h.jsonl) ningún umbral produce P&L positivo (mejor: $-43657.42 en 0.3) — la selección aprendida en la ventana nocturna NO transfiere a este régimen, y lo reportamos tal cual."
   }
 }
