@@ -42,6 +42,11 @@ interface TransferInfo {
   takeaway: string;
 }
 
+interface FeatureImportance {
+  feature: string;
+  aucDrop: number;
+}
+
 interface OperatingPoint {
   generatedAt: string;
   source: string;
@@ -60,12 +65,42 @@ interface OperatingPoint {
     brierPreCalibration: number;
     brierPostCalibration: number;
   } | null;
+  importance?: FeatureImportance[];
   gateBaseline: GateBaseline;
   sweep: SweepRow[];
   best: SweepRow | null;
   transfer?: TransferInfo;
   takeaway: string;
 }
+
+// Human-readable Spanish labels + one-line meaning for the 24 model inputs, so
+// the importance chart reads as "what the model looks at" not raw field names.
+const FEATURE_LABEL: Record<string, { name: string; hint: string }> = {
+  netEdgeBps: { name: "Edge neto (bps)", hint: "spread tras fees + base + costos" },
+  alignment: { name: "Alineación microprice", hint: "ambos libros apuntan igual" },
+  liquidityScore: { name: "Liquidez vs tamaño", hint: "profundidad disponible" },
+  freshnessScore: { name: "Frescura", hint: "edad + skew de cotización" },
+  volatilityBps: { name: "Volatilidad (spread)", hint: "half-spread promedio" },
+  micropriceSkewBps: { name: "Sesgo microprice", hint: "presión direccional Stoikov" },
+  orderFlowImbalance: { name: "OFI a la punta", hint: "Cont-Kukanov-Stoikov" },
+  multiLevelOfi: { name: "MLOFI 5 niveles", hint: "Xu-Gould-Howison" },
+  buySpreadBps: { name: "Spread venue compra", hint: "" },
+  sellSpreadBps: { name: "Spread venue venta", hint: "" },
+  buyDepth5: { name: "Profundidad compra", hint: "5 niveles" },
+  sellDepth5: { name: "Profundidad venta", hint: "5 niveles" },
+  quoteSkewMs: { name: "Skew de cotización", hint: "desfase entre venues" },
+  ageMs: { name: "Edad del libro", hint: "" },
+  styleTaker: { name: "Estilo taker", hint: "" },
+  styleMaker: { name: "Estilo maker", hint: "" },
+  styleStatArb: { name: "Estilo stat-arb", hint: "" },
+  buyImbalance: { name: "Imbalance compra", hint: "" },
+  sellImbalance: { name: "Imbalance venta", hint: "" },
+  buyMidMomentumBps: { name: "Momentum mid compra", hint: "v3 temporal" },
+  sellMidMomentumBps: { name: "Momentum mid venta", hint: "v3 temporal" },
+  realizedVolBps: { name: "Volatilidad realizada", hint: "v3 temporal" },
+  buyImbalanceDelta: { name: "Δ imbalance compra", hint: "v3 temporal" },
+  sellImbalanceDelta: { name: "Δ imbalance venta", hint: "v3 temporal" }
+};
 
 const METHOD_LABEL: Record<string, string> = {
   platt: "Platt (1999)",
@@ -156,6 +191,8 @@ export function OperatingPointPanel() {
         </div>
       )}
 
+      {data.importance && data.importance.length > 0 && <FeatureImportanceChart importance={data.importance} />}
+
       <p className="mt-4 font-mono text-[9px] font-black uppercase tracking-wider text-zinc-500">
         Barrido de umbrales — P&L contrafactual de las señales seleccionadas (fold de evaluación, nunca visto por ningún fit)
       </p>
@@ -193,6 +230,48 @@ export function OperatingPointPanel() {
       <p className="mt-4 font-mono text-[9px] font-semibold uppercase tracking-wider text-zinc-400">
         Reproducible: npm run train -- --tape &lt;tape&gt; --split temporal --evalTape &lt;otro tape&gt; --opOut public/data/operating-point.json
       </p>
+    </div>
+  );
+}
+
+function FeatureImportanceChart({ importance }: { importance: FeatureImportance[] }) {
+  // Show only features that actually move the ranking (a stump-based ensemble
+  // splits on a handful), largest first, capped so the chart stays readable.
+  const shown = importance.filter((f) => f.aucDrop > 0.0005).slice(0, 10);
+  if (!shown.length) return null;
+  const max = Math.max(...shown.map((f) => f.aucDrop));
+  const temporalKeys = new Set(["buyMidMomentumBps", "sellMidMomentumBps", "realizedVolBps", "buyImbalanceDelta", "sellImbalanceDelta"]);
+
+  return (
+    <div className="mt-5 rounded-2xl border border-zinc-200/70 bg-gradient-to-br from-sky-50/40 via-white to-white p-5">
+      <p className="font-mono text-[9px] font-black uppercase tracking-wider text-sky-700">
+        ¿En qué se fija el modelo? · caída de AUC al permutar cada feature (fold de evaluación)
+      </p>
+      <p className="mt-1.5 text-[11px] font-semibold leading-5 text-zinc-500">
+        Barajamos los valores de cada feature y medimos cuánto se degrada la discriminación: cuanto más cae el AUC, más depende el
+        modelo de esa señal. Hace legible su razonamiento — no es una caja negra.
+      </p>
+      <div className="mt-3 space-y-1.5">
+        {shown.map((f) => {
+          const meta = FEATURE_LABEL[f.feature] ?? { name: f.feature, hint: "" };
+          const isTemporal = temporalKeys.has(f.feature);
+          return (
+            <div key={f.feature} className="grid grid-cols-[minmax(0,150px)_1fr_auto] items-center gap-2.5">
+              <span className="truncate text-[11px] font-bold text-zinc-700" title={meta.hint}>
+                {meta.name}
+                {isTemporal && <span className="ml-1 rounded border border-violet-200 bg-violet-50 px-1 py-0.5 font-mono text-[7px] font-black uppercase text-violet-600">v3</span>}
+              </span>
+              <div className="h-3 w-full overflow-hidden rounded-full bg-zinc-100">
+                <div
+                  className={`h-full rounded-full ${isTemporal ? "bg-gradient-to-r from-violet-400 to-violet-300" : "bg-gradient-to-r from-sky-500 to-sky-300"}`}
+                  style={{ width: `${Math.max(3, (f.aucDrop / max) * 100)}%` }}
+                />
+              </div>
+              <span className="font-mono text-[10px] font-bold tabular-nums text-zinc-500">{f.aucDrop.toFixed(4)}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
