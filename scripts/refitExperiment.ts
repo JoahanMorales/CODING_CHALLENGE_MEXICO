@@ -56,20 +56,27 @@ type Config = {
 
 const CONFIGS: Config[] = [
   { name: "baseline (greedy, all 24 feats)" },
+  { name: "bag 0.70 / >=6 trees", boosting: { featureSampleRatio: 0.7, minStopTrees: 6, stopRmse: 0.008, maxTrees: 12, seed: 2654435769 } },
   { name: "bag 0.50 / >=8 trees", boosting: { featureSampleRatio: 0.5, minStopTrees: 8, stopRmse: 0.005, maxTrees: 16, seed: 2654435769 } },
   { name: "bag 0.35 / >=10 trees", boosting: { featureSampleRatio: 0.35, minStopTrees: 10, stopRmse: 0.003, maxTrees: 20, seed: 2654435769 } },
-  { name: "bag 0.70 / >=6 trees", boosting: { featureSampleRatio: 0.7, minStopTrees: 6, stopRmse: 0.008, maxTrees: 12, seed: 2654435769 } }
+  { name: "bag 0.20 / >=16 (max div)", boosting: { featureSampleRatio: 0.2, minStopTrees: 16, stopRmse: 0.001, maxTrees: 32, seed: 2654435769 } },
+  { name: "bag 0.35 / seed B", boosting: { featureSampleRatio: 0.35, minStopTrees: 10, stopRmse: 0.003, maxTrees: 20, seed: 987654321 } },
+  { name: "bag 0.20 / seed B", boosting: { featureSampleRatio: 0.2, minStopTrees: 16, stopRmse: 0.001, maxTrees: 32, seed: 987654321 } }
 ];
 
-// Clean walk-forward: train strictly before calib strictly before eval.
-const trainEnd = Math.floor(records.length * 0.6);
-const calibEnd = Math.floor(records.length * 0.8);
-const trainDetected = records.slice(0, trainEnd).filter((r) => r.detected);
+// DETECTED records are ~100% winners (the gate is a near-perfect precision
+// filter), so training on detected-only is single-class -> no gradient -> zero
+// trees. The classifier learns the win/loss boundary from the FULL mixed
+// population (rejected signals supply the negatives), which is what the model
+// discriminates on. Clean walk-forward: train < calib < eval in time.
+const trainEnd = Math.floor(records.length * 0.5);
+const calibEnd = Math.floor(records.length * 0.75);
+const trainSet = records.slice(0, trainEnd);
 const calibFold = records.slice(trainEnd, calibEnd);
 const evalFold = records.slice(calibEnd);
 
-console.log(`Records: ${records.length} | detected: ${records.filter((r) => r.detected).length}`);
-console.log(`Walk-forward: train=${trainDetected.length} detected | calib=${calibFold.length} | eval=${evalFold.length}\n`);
+console.log(`Records: ${records.length} | detected: ${records.filter((r) => r.detected).length} (winrate ${(records.filter((r) => r.detected).reduce((s, r) => s + r.label, 0) / Math.max(1, records.filter((r) => r.detected).length) * 100).toFixed(0)}%)`);
+console.log(`Walk-forward: train=${trainSet.length} | calib=${calibFold.length} | eval=${evalFold.length}\n`);
 console.log("config                          trees  feats  evalAUC   bestPnl$    win%   gate$");
 console.log("------------------------------  -----  -----  -------  ----------  -----  ----------");
 
@@ -79,7 +86,7 @@ const gatePnl = gateEval.reduce((s, r) => s + r.pnlUsd, 0);
 for (const cfg of CONFIGS) {
   const ml = new MlEdgeTensor();
   if (cfg.boosting) ml.configureBoosting(cfg.boosting);
-  for (const r of trainDetected) ml.train("r", r.features as never, r.label, 1);
+  for (const r of trainSet) ml.train("r", r.features as never, r.label, 1);
 
   const model = ml.exportModel();
   const feats = new Set(model.trees.map((t) => t.featureIndex)).size;
