@@ -108,6 +108,18 @@ export class MlEdgeTensor {
   private platt: { a: number; b: number } | null = null;
   private isotonic: { x: number[]; y: number[] } | null = null;
   private readonly venueHistory = new Map<ExchangeId, VenueSnapshot[]>();
+  // Stochastic gradient boosting knobs. The defaults reproduce the deterministic
+  // greedy fit EXACTLY: featureSampleRatio 1 makes findBestStump scan every
+  // feature in order with no RNG draw, so the committed model is byte-identical.
+  // The offline harness can dial these down to force column subsampling
+  // ("feature bagging", Friedman's stochastic gradient boosting 2002) and a
+  // deeper fit -- the experiment that tests whether any feature beyond the
+  // dominant netEdgeBps carries out-of-sample signal once greedy monopoly is
+  // broken.
+  private featureSampleRatio = 1;
+  private stopRmse = 0.02;
+  private minStopTrees = 4;
+  private baggingRngState = 0x9e3779b9;
 
   // Feeds the per-venue rolling history the v3 temporal features read. The
   // engine calls this for every book BEFORE detection, so by the time
@@ -382,6 +394,27 @@ export class MlEdgeTensor {
     if (this.trainingBuffer.length >= 32) this.fitEnsemble();
   }
 
+  // Offline-only knobs for the feature-bagging experiment. featureSampleRatio < 1
+  // makes each boosting round consider only a random subset of the 24 features,
+  // so netEdgeBps cannot win every split; stopRmse/minStopTrees/maxTrees let the
+  // fit grow deeper than the 4-stump early stop. Leaving this unset preserves the
+  // exact committed behaviour. Seed makes the subsampling reproducible.
+  configureBoosting(opts: {
+    featureSampleRatio?: number;
+    stopRmse?: number;
+    minStopTrees?: number;
+    maxTrees?: number;
+    seed?: number;
+  }): void {
+    if (opts.featureSampleRatio !== undefined) {
+      this.featureSampleRatio = Math.max(0, Math.min(1, opts.featureSampleRatio));
+    }
+    if (opts.stopRmse !== undefined && Number.isFinite(opts.stopRmse)) this.stopRmse = opts.stopRmse;
+    if (opts.minStopTrees !== undefined) this.minStopTrees = Math.max(1, Math.floor(opts.minStopTrees));
+    if (opts.maxTrees !== undefined) this.maxTrees = Math.max(1, Math.floor(opts.maxTrees));
+    if (opts.seed !== undefined) this.baggingRngState = opts.seed >>> 0;
+  }
+
   private fitEnsemble(): void {
     const data = this.trainingBuffer;
     const n = data.length;
@@ -426,9 +459,9 @@ export class MlEdgeTensor {
         predictions[i] += fv <= stump.threshold ? leftGain : rightGain;
       }
 
-      if (this.ensemble.trees.length >= 4) {
+      if (this.ensemble.trees.length >= this.minStopTrees) {
         const rmse = Math.sqrt(data.reduce((s, d, i) => s + (sigmoid(predictions[i]) - d.label) ** 2, 0) / n);
-        if (rmse < 0.02) break;
+        if (rmse < this.stopRmse) break;
       }
     }
   }
@@ -442,7 +475,7 @@ export class MlEdgeTensor {
     let best: StumpObservation | null = null;
     let bestGain = -Infinity;
 
-    for (let fIdx = 0; fIdx < numFeatures; fIdx++) {
+    for (const fIdx of this.selectFeatureSubset(numFeatures)) {
       const values = data.map((d) => this.getFeature(d.features, fIdx));
       const sorted = values.map((v, i) => ({ v, g: gradients[i], h: hessians[i], w: data[i].weight }))
         .filter((x) => isFinite(x.v))
@@ -472,6 +505,34 @@ export class MlEdgeTensor {
       }
     }
     return best;
+  }
+
+  // Column subsampling for one boosting round. Ratio 1 is the fast path: every
+  // feature index in order, no RNG draw -> identical to the deterministic fit.
+  // Below 1 it draws k = round(numFeatures * ratio) distinct indices via a
+  // partial Fisher-Yates on a seeded PRNG (state advances across rounds, so each
+  // tree sees a different subset -- the essence of stochastic gradient boosting).
+  private selectFeatureSubset(numFeatures: number): number[] {
+    if (this.featureSampleRatio >= 1) {
+      return Array.from({ length: numFeatures }, (_, i) => i);
+    }
+    const k = Math.max(1, Math.min(numFeatures, Math.round(numFeatures * this.featureSampleRatio)));
+    const idx = Array.from({ length: numFeatures }, (_, i) => i);
+    for (let i = 0; i < k; i += 1) {
+      const j = i + Math.floor(this.nextBaggingRandom() * (numFeatures - i));
+      [idx[i], idx[j]] = [idx[j], idx[i]];
+    }
+    return idx.slice(0, k).sort((a, b) => a - b);
+  }
+
+  // mulberry32 PRNG, seeded from configureBoosting. Only ever called when feature
+  // bagging is active, so the default deterministic model never touches it.
+  private nextBaggingRandom(): number {
+    this.baggingRngState = (this.baggingRngState + 0x6d2b79f5) >>> 0;
+    let t = this.baggingRngState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
   private getFeature(features: FeatureVector, index: number): number {

@@ -62,6 +62,23 @@ const splitMode: "random" | "temporal" = splitFlagIndex >= 0 && args[splitFlagIn
 // Optional second tape settled AFTER training with the frozen model: a pure
 // cross-regime transfer test (e.g. train overnight, evaluate daytime).
 const evalTapePath = evalTapeFlagIndex >= 0 ? args[evalTapeFlagIndex + 1] : null;
+// Feature-bagging experiment knobs (see MlEdgeTensor.configureBoosting). Unset =
+// the committed deterministic fit. --colsample <0..1> forces column subsampling
+// per tree; --stopRmse / --minTrees / --maxTrees let the fit grow deeper so the
+// bagged features actually get rounds to be chosen.
+const colsampleFlagIndex = args.findIndex((a) => a === "--colsample");
+const stopRmseFlagIndex = args.findIndex((a) => a === "--stopRmse");
+const minTreesFlagIndex = args.findIndex((a) => a === "--minTrees");
+const maxTreesFlagIndex = args.findIndex((a) => a === "--maxTrees");
+const colsample = colsampleFlagIndex >= 0 ? Number(args[colsampleFlagIndex + 1]) : null;
+const stopRmseArg = stopRmseFlagIndex >= 0 ? Number(args[stopRmseFlagIndex + 1]) : null;
+const minTreesArg = minTreesFlagIndex >= 0 ? Number(args[minTreesFlagIndex + 1]) : null;
+const maxTreesArg = maxTreesFlagIndex >= 0 ? Number(args[maxTreesFlagIndex + 1]) : null;
+// Optional: persist the held-out op-reservoir records (features + label + pnl)
+// as JSONL so model experiments (bagging, calibration, ...) can be re-run in
+// seconds off the dump instead of replaying the whole tape again.
+const dumpRecordsFlagIndex = args.findIndex((a) => a === "--dumpRecords");
+const dumpRecordsPath = dumpRecordsFlagIndex >= 0 ? args[dumpRecordsFlagIndex + 1] : null;
 const flagValueIndices = new Set<number>();
 if (tapeFlagIndex >= 0) flagValueIndices.add(tapeFlagIndex + 1);
 if (outFlagIndex >= 0) flagValueIndices.add(outFlagIndex + 1);
@@ -69,6 +86,11 @@ if (seedFlagIndex >= 0) flagValueIndices.add(seedFlagIndex + 1);
 if (opOutFlagIndex >= 0) flagValueIndices.add(opOutFlagIndex + 1);
 if (splitFlagIndex >= 0) flagValueIndices.add(splitFlagIndex + 1);
 if (evalTapeFlagIndex >= 0) flagValueIndices.add(evalTapeFlagIndex + 1);
+if (colsampleFlagIndex >= 0) flagValueIndices.add(colsampleFlagIndex + 1);
+if (stopRmseFlagIndex >= 0) flagValueIndices.add(stopRmseFlagIndex + 1);
+if (minTreesFlagIndex >= 0) flagValueIndices.add(minTreesFlagIndex + 1);
+if (maxTreesFlagIndex >= 0) flagValueIndices.add(maxTreesFlagIndex + 1);
+if (dumpRecordsFlagIndex >= 0) flagValueIndices.add(dumpRecordsFlagIndex + 1);
 const positional = args.filter((a, i) => !a.startsWith("--") && !flagValueIndices.has(i));
 const durationSec = Number(positional[0] ?? 45);
 
@@ -109,6 +131,17 @@ const seed = Object.fromEntries(
 
 const risk = new RiskManager();
 const engine = new ArbitrageEngine();
+// Feature-bagging experiment: only touches the fit when a knob is passed.
+if (colsample !== null || stopRmseArg !== null || minTreesArg !== null || maxTreesArg !== null) {
+  engine.mlEdgeTensor.configureBoosting({
+    ...(colsample !== null && Number.isFinite(colsample) ? { featureSampleRatio: colsample } : {}),
+    ...(stopRmseArg !== null && Number.isFinite(stopRmseArg) ? { stopRmse: stopRmseArg } : {}),
+    ...(minTreesArg !== null && Number.isFinite(minTreesArg) ? { minStopTrees: minTreesArg } : {}),
+    ...(maxTreesArg !== null && Number.isFinite(maxTreesArg) ? { maxTrees: maxTreesArg } : {}),
+    seed: rngSeed
+  });
+  console.log(`[bagging] colsample=${colsample ?? "-"} stopRmse=${stopRmseArg ?? "-"} minTrees=${minTreesArg ?? "-"} maxTrees=${maxTreesArg ?? "-"}`);
+}
 const simulator = new ExecutionSimulator(seed, () => risk.getLatencyMultiplier());
 
 let signals = 0; // cross-exchange trials settled (the training distribution)
@@ -862,6 +895,16 @@ if (opOutPath && operatingPoint) {
   };
   mkdirSync(dirname(opOutPath), { recursive: true });
   writeFileSync(opOutPath, JSON.stringify(opArtifact, null, 2));
+}
+
+if (dumpRecordsPath && opRecords.length > 0) {
+  // One JSONL line per held-out record: the exact (features, label, pnl) tuples
+  // the operating-point analysis scored, so any refit experiment reproduces the
+  // same eval fold without another tape replay.
+  const jsonl = opRecords.map((r) => JSON.stringify(r)).join("\n");
+  mkdirSync(dirname(dumpRecordsPath), { recursive: true });
+  writeFileSync(dumpRecordsPath, jsonl + "\n");
+  console.log(`  Registros held-out volcados: ${opRecords.length} -> ${dumpRecordsPath}`);
 }
 
 const mlCal = engine.mlEdgeTensor.calibrationSummary();
