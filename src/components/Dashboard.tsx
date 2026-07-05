@@ -57,7 +57,6 @@ export function Dashboard() {
     setSandboxKillSwitch,
     mode,
     connected,
-    connectionError,
     lastGatewayMessageAt,
     books,
     exchangeStatuses,
@@ -139,7 +138,6 @@ export function Dashboard() {
         <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] gap-3 xl:h-full xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.28fr)_minmax(0,0.96fr)]">
           <aside className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden pr-1 xl:grid-rows-[auto_auto_auto_minmax(220px,0.82fr)] xl:overflow-y-auto">
             <MemoSystemHealth
-              connectionError={connectionError}
               connected={connected}
               dataActive={dataActive}
               heartbeatMs={heartbeatMs}
@@ -260,7 +258,7 @@ function CommandBar({
 
         <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2 md:w-auto md:justify-end">
           <SegmentedMode mode={mode} setMode={setMode} />
-          <TopMetric label="Gateway" value={connected ? `${heartbeatMs}ms` : "OFF"} tone={connected ? "sky" : "rose"} />
+          <TopMetric label="Gateway" value={connected ? `${heartbeatMs}ms` : "—"} tone={connected ? "sky" : "zinc"} />
           <TopMetric label="Señales" value={String(metrics.opportunitiesDetected)} tone="zinc" />
           <TopMetric label="Ejecuciones" value={`${metrics.tradesExecuted}/${metrics.executableOpportunities}`} tone="emerald" />
           <TopMetric label="Paper P&L" value={`$${metrics.netPnlUsd}`} tone={netPositive ? "emerald" : "rose"} />
@@ -375,7 +373,6 @@ function FilterChip({ active, label, onClick }: { active: boolean; label: string
 
 function SystemHealth({
   connected,
-  connectionError,
   dataActive,
   heartbeatMs,
   mode,
@@ -383,7 +380,6 @@ function SystemHealth({
   statuses
 }: {
   connected: boolean;
-  connectionError: string;
   dataActive: boolean;
   heartbeatMs: number;
   mode: "LIVE" | "DEMO";
@@ -410,7 +406,7 @@ function SystemHealth({
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <HealthStat label="Mercados" value={`${liveCount}/${exchanges.length}`} tone={liveCount === exchanges.length ? "emerald" : "amber"} />
         <HealthStat label="Books íntegros" value={`${verifiedBooks}/${exchanges.length}`} tone={verifiedBooks >= 4 ? "emerald" : "amber"} />
-        <HealthStat label="Heartbeat" value={connected ? `${heartbeatMs}ms` : "--"} tone={connected ? "sky" : "rose"} />
+        <HealthStat label="Heartbeat" value={connected ? `${heartbeatMs}ms` : "--"} tone={connected ? "sky" : "zinc"} />
         <HealthStat label="Gaps" value={String(integrityGaps)} tone={integrityGaps ? "amber" : "emerald"} />
       </div>
 
@@ -436,8 +432,6 @@ function SystemHealth({
           })}
         </div>
       </details>
-
-      {!dataActive && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">{connectionError || "Esperando libros de órdenes."}</p>}
     </Panel>
   );
 }
