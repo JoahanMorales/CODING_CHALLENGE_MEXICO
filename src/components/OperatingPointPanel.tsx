@@ -272,6 +272,14 @@ function FeatureImportanceChart({ importance }: { importance: FeatureImportance[
           );
         })}
       </div>
+      <p className="mt-3 border-t border-zinc-200/60 pt-3 text-[11px] font-semibold leading-5 text-zinc-500">
+        <span className="font-black text-zinc-700">Cross-check de parsimonia (bagging):</span> re-ajustamos el ensemble forzando{" "}
+        <em>column subsampling</em> (Friedman 2002) para que netEdgeBps no gane cada split — hasta 12 features en vez de 1. Bajo el
+        mismo walk-forward el AUC out-of-sample no mejora y el P&amp;L seleccionado no cambia; la variante más agresiva incluso lo
+        empeora. Las otras 23 features (incluidas las 5 temporales v3) no aportan señal incremental. Dos métodos independientes —
+        permutación y bagging — convergen en lo mismo: <span className="font-black text-zinc-700">netEdgeBps es casi un estadístico
+        suficiente</span>.
+      </p>
     </div>
   );
 }

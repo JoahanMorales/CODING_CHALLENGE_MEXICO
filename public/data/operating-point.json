@@ -1,68 +1,206 @@
 {
-  "generatedAt": "2026-07-03T08:26:17.421Z",
+  "generatedAt": "2026-07-04T00:41:57.161Z",
   "source": "tape",
   "tape": "data/tape-ws-overnight.jsonl",
-  "trialsSettled": 823093,
-  "detectedByGate": 51525,
+  "trialsSettled": 825314,
+  "detectedByGate": 52525,
   "split": "temporal",
   "evalSamples": 17001,
-  "aucEval": 0.9259,
+  "aucEval": 0.926,
   "calibration": {
     "method": "platt",
     "attached": true,
     "calibSamples": 17000,
     "evalSamples": 17001,
-    "brierPreCalibration": 0.1009,
-    "brierPlatt": 0.0789,
-    "brierIsotonic": 0.084,
-    "brierPostCalibration": 0.0789,
+    "brierPreCalibration": 0.1007,
+    "brierPlatt": 0.079,
+    "brierIsotonic": 0.0839,
+    "brierPostCalibration": 0.079,
     "platt": {
-      "a": 3.250466,
-      "b": -4.46058
+      "a": 3.245787,
+      "b": -4.469329
     },
     "isotonicKnots": 2
   },
+  "importance": [
+    {
+      "feature": "netEdgeBps",
+      "aucDrop": 0.4297
+    },
+    {
+      "feature": "alignment",
+      "aucDrop": 0
+    },
+    {
+      "feature": "liquidityScore",
+      "aucDrop": 0
+    },
+    {
+      "feature": "freshnessScore",
+      "aucDrop": 0
+    },
+    {
+      "feature": "volatilityBps",
+      "aucDrop": 0
+    },
+    {
+      "feature": "micropriceSkewBps",
+      "aucDrop": 0
+    },
+    {
+      "feature": "orderFlowImbalance",
+      "aucDrop": 0
+    },
+    {
+      "feature": "multiLevelOfi",
+      "aucDrop": 0
+    },
+    {
+      "feature": "buySpreadBps",
+      "aucDrop": 0
+    },
+    {
+      "feature": "sellSpreadBps",
+      "aucDrop": 0
+    },
+    {
+      "feature": "buyDepth5",
+      "aucDrop": 0
+    },
+    {
+      "feature": "sellDepth5",
+      "aucDrop": 0
+    },
+    {
+      "feature": "quoteSkewMs",
+      "aucDrop": 0
+    },
+    {
+      "feature": "ageMs",
+      "aucDrop": 0
+    },
+    {
+      "feature": "styleTaker",
+      "aucDrop": 0
+    },
+    {
+      "feature": "styleMaker",
+      "aucDrop": 0
+    },
+    {
+      "feature": "styleStatArb",
+      "aucDrop": 0
+    },
+    {
+      "feature": "buyImbalance",
+      "aucDrop": 0
+    },
+    {
+      "feature": "sellImbalance",
+      "aucDrop": 0
+    },
+    {
+      "feature": "buyMidMomentumBps",
+      "aucDrop": 0
+    },
+    {
+      "feature": "sellMidMomentumBps",
+      "aucDrop": 0
+    },
+    {
+      "feature": "realizedVolBps",
+      "aucDrop": 0
+    },
+    {
+      "feature": "buyImbalanceDelta",
+      "aucDrop": 0
+    },
+    {
+      "feature": "sellImbalanceDelta",
+      "aucDrop": 0
+    }
+  ],
   "gateBaseline": {
-    "trades": 3757,
+    "trades": 3762,
     "winRatePct": 100,
     "winRateCi95LoPct": 99.9,
-    "totalPnlUsd": 93481.94
+    "totalPnlUsd": 93640.12
   },
   "sweep": [
     {
       "threshold": 0.3,
-      "trades": 6421,
-      "winRatePct": 71.3,
-      "winRateCi95LoPct": 70.2,
-      "totalPnlUsd": 94136.08,
-      "meanPnlUsd": 14.6607
+      "trades": 6422,
+      "winRatePct": 71.4,
+      "winRateCi95LoPct": 70.3,
+      "totalPnlUsd": 94269.42,
+      "meanPnlUsd": 14.6791
+    },
+    {
+      "threshold": 0.35,
+      "trades": 6422,
+      "winRatePct": 71.4,
+      "winRateCi95LoPct": 70.3,
+      "totalPnlUsd": 94269.42,
+      "meanPnlUsd": 14.6791
     },
     {
       "threshold": 0.4,
-      "trades": 6421,
-      "winRatePct": 71.3,
-      "winRateCi95LoPct": 70.2,
-      "totalPnlUsd": 94136.08,
-      "meanPnlUsd": 14.6607
+      "trades": 6422,
+      "winRatePct": 71.4,
+      "winRateCi95LoPct": 70.3,
+      "totalPnlUsd": 94269.42,
+      "meanPnlUsd": 14.6791
+    },
+    {
+      "threshold": 0.45,
+      "trades": 6422,
+      "winRatePct": 71.4,
+      "winRateCi95LoPct": 70.3,
+      "totalPnlUsd": 94269.42,
+      "meanPnlUsd": 14.6791
     },
     {
       "threshold": 0.5,
-      "trades": 6421,
-      "winRatePct": 71.3,
-      "winRateCi95LoPct": 70.2,
-      "totalPnlUsd": 94136.08,
-      "meanPnlUsd": 14.6607
+      "trades": 6422,
+      "winRatePct": 71.4,
+      "winRateCi95LoPct": 70.3,
+      "totalPnlUsd": 94269.42,
+      "meanPnlUsd": 14.6791
+    },
+    {
+      "threshold": 0.55,
+      "trades": 6422,
+      "winRatePct": 71.4,
+      "winRateCi95LoPct": 70.3,
+      "totalPnlUsd": 94269.42,
+      "meanPnlUsd": 14.6791
     },
     {
       "threshold": 0.6,
-      "trades": 6421,
-      "winRatePct": 71.3,
-      "winRateCi95LoPct": 70.2,
-      "totalPnlUsd": 94136.08,
-      "meanPnlUsd": 14.6607
+      "trades": 6422,
+      "winRatePct": 71.4,
+      "winRateCi95LoPct": 70.3,
+      "totalPnlUsd": 94269.42,
+      "meanPnlUsd": 14.6791
+    },
+    {
+      "threshold": 0.65,
+      "trades": 0,
+      "winRatePct": 0,
+      "winRateCi95LoPct": 0,
+      "totalPnlUsd": 0,
+      "meanPnlUsd": 0
     },
     {
       "threshold": 0.7,
+      "trades": 0,
+      "winRatePct": 0,
+      "winRateCi95LoPct": 0,
+      "totalPnlUsd": 0,
+      "meanPnlUsd": 0
+    },
+    {
+      "threshold": 0.75,
       "trades": 0,
       "winRatePct": 0,
       "winRateCi95LoPct": 0,
@@ -102,14 +240,6 @@
       "meanPnlUsd": 0
     },
     {
-      "threshold": 0.98,
-      "trades": 0,
-      "winRatePct": 0,
-      "winRateCi95LoPct": 0,
-      "totalPnlUsd": 0,
-      "meanPnlUsd": 0
-    },
-    {
       "threshold": 0.99,
       "trades": 0,
       "winRatePct": 0,
@@ -120,23 +250,23 @@
   ],
   "best": {
     "threshold": 0.3,
-    "trades": 6421,
-    "winRatePct": 71.3,
-    "winRateCi95LoPct": 70.2,
-    "totalPnlUsd": 94136.08,
-    "meanPnlUsd": 14.6607
+    "trades": 6422,
+    "winRatePct": 71.4,
+    "winRateCi95LoPct": 70.3,
+    "totalPnlUsd": 94269.42,
+    "meanPnlUsd": 14.6791
   },
-  "takeaway": "Existe un punto de operación con P&L contrafactual positivo out-of-sample (validación walk-forward: el modelo nunca vio el segmento temporal evaluado): umbral 0.3 -> 6421 trades, 71.3% ganadores (IC95 inferior 70.2%), +$94136.08. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (37.77% de las señales) muestra lo raro que es el edge.",
+  "takeaway": "Existe un punto de operación con P&L contrafactual positivo out-of-sample (validación walk-forward: el modelo nunca vio el segmento temporal evaluado): umbral 0.3 -> 6422 trades, 71.4% ganadores (IC95 inferior 70.3%), +$94269.42. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (37.77% de las señales) muestra lo raro que es el edge.",
   "transfer": {
     "tape": "data/tape-ws-1h.jsonl",
-    "samples": 139743,
+    "samples": 139744,
     "auc": 0.9029,
-    "brier": 0.0818,
+    "brier": 0.0809,
     "gateBaseline": {
-      "trades": 2,
-      "winRatePct": 100,
-      "winRateCi95LoPct": 34.2,
-      "totalPnlUsd": 43.85
+      "trades": 0,
+      "winRatePct": 0,
+      "winRateCi95LoPct": 0,
+      "totalPnlUsd": 0
     },
     "sweep": [
       {
@@ -144,35 +274,75 @@
         "trades": 28698,
         "winRatePct": 6.8,
         "winRateCi95LoPct": 6.5,
-        "totalPnlUsd": -43657.42,
-        "meanPnlUsd": -1.5213
+        "totalPnlUsd": -43779.66,
+        "meanPnlUsd": -1.5255
+      },
+      {
+        "threshold": 0.35,
+        "trades": 28698,
+        "winRatePct": 6.8,
+        "winRateCi95LoPct": 6.5,
+        "totalPnlUsd": -43779.66,
+        "meanPnlUsd": -1.5255
       },
       {
         "threshold": 0.4,
         "trades": 28698,
         "winRatePct": 6.8,
         "winRateCi95LoPct": 6.5,
-        "totalPnlUsd": -43657.42,
-        "meanPnlUsd": -1.5213
+        "totalPnlUsd": -43779.66,
+        "meanPnlUsd": -1.5255
+      },
+      {
+        "threshold": 0.45,
+        "trades": 28698,
+        "winRatePct": 6.8,
+        "winRateCi95LoPct": 6.5,
+        "totalPnlUsd": -43779.66,
+        "meanPnlUsd": -1.5255
       },
       {
         "threshold": 0.5,
         "trades": 28698,
         "winRatePct": 6.8,
         "winRateCi95LoPct": 6.5,
-        "totalPnlUsd": -43657.42,
-        "meanPnlUsd": -1.5213
+        "totalPnlUsd": -43779.66,
+        "meanPnlUsd": -1.5255
+      },
+      {
+        "threshold": 0.55,
+        "trades": 28698,
+        "winRatePct": 6.8,
+        "winRateCi95LoPct": 6.5,
+        "totalPnlUsd": -43779.66,
+        "meanPnlUsd": -1.5255
       },
       {
         "threshold": 0.6,
         "trades": 28698,
         "winRatePct": 6.8,
         "winRateCi95LoPct": 6.5,
-        "totalPnlUsd": -43657.42,
-        "meanPnlUsd": -1.5213
+        "totalPnlUsd": -43779.66,
+        "meanPnlUsd": -1.5255
+      },
+      {
+        "threshold": 0.65,
+        "trades": 0,
+        "winRatePct": 0,
+        "winRateCi95LoPct": 0,
+        "totalPnlUsd": 0,
+        "meanPnlUsd": 0
       },
       {
         "threshold": 0.7,
+        "trades": 0,
+        "winRatePct": 0,
+        "winRateCi95LoPct": 0,
+        "totalPnlUsd": 0,
+        "meanPnlUsd": 0
+      },
+      {
+        "threshold": 0.75,
         "trades": 0,
         "winRatePct": 0,
         "winRateCi95LoPct": 0,
@@ -212,14 +382,6 @@
         "meanPnlUsd": 0
       },
       {
-        "threshold": 0.98,
-        "trades": 0,
-        "winRatePct": 0,
-        "winRateCi95LoPct": 0,
-        "totalPnlUsd": 0,
-        "meanPnlUsd": 0
-      },
-      {
         "threshold": 0.99,
         "trades": 0,
         "winRatePct": 0,
@@ -233,9 +395,9 @@
       "trades": 28698,
       "winRatePct": 6.8,
       "winRateCi95LoPct": 6.5,
-      "totalPnlUsd": -43657.42,
-      "meanPnlUsd": -1.5213
+      "totalPnlUsd": -43779.66,
+      "meanPnlUsd": -1.5255
     },
-    "takeaway": "En el tape de transferencia (data/tape-ws-1h.jsonl) ningún umbral produce P&L positivo (mejor: $-43657.42 en 0.3) — la selección aprendida en la ventana nocturna NO transfiere a este régimen, y lo reportamos tal cual."
+    "takeaway": "En el tape de transferencia (data/tape-ws-1h.jsonl) ningún umbral produce P&L positivo (mejor: $-43779.66 en 0.3) — la selección aprendida en la ventana nocturna NO transfiere a este régimen, y lo reportamos tal cual."
   }
 }
