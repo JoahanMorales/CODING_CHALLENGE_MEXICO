@@ -169,6 +169,8 @@ export function NeuralHero() {
 
     const clock = new THREE.Clock();
     let raf = 0;
+    let running = false;
+    let onScreen = true;
     let targetRx = -0.04;
     let targetRy = 0;
     function frame(): void {
@@ -188,15 +190,41 @@ export function NeuralHero() {
         placePulse(p);
       }
       renderer.render(scene, camera);
+      if (running) raf = requestAnimationFrame(frame);
+    }
+    function start(): void {
+      if (running || reduce) return;
+      running = true;
       raf = requestAnimationFrame(frame);
+    }
+    function stop(): void {
+      running = false;
+      cancelAnimationFrame(raf);
     }
 
     if (reduce) {
       group.rotation.set(-0.04, 0.18, 0);
       renderer.render(scene, camera);
     } else {
-      raf = requestAnimationFrame(frame);
+      start();
     }
+
+    // Pause the loop when the hero is scrolled out of view or the tab is hidden --
+    // no wasted GPU/CPU when nobody is watching it.
+    const io = new IntersectionObserver(
+      (entries) => {
+        onScreen = entries[0]?.isIntersecting ?? true;
+        if (onScreen && !document.hidden) start();
+        else stop();
+      },
+      { threshold: 0.01 }
+    );
+    io.observe(mount);
+    const onVisibility = () => {
+      if (!document.hidden && onScreen) start();
+      else stop();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     const resize = () => {
       width = mount!.clientWidth || width;
@@ -209,8 +237,10 @@ export function NeuralHero() {
     ro.observe(mount);
 
     return () => {
-      cancelAnimationFrame(raf);
+      stop();
+      io.disconnect();
       ro.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
       mount.removeEventListener("pointermove", onMove);
       for (const d of disposables) d.dispose();
       renderer.dispose();
