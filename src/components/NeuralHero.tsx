@@ -67,7 +67,19 @@ export function NeuralHero() {
     const camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 100);
     camera.position.set(0, 0.1, 9.6);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    // WebGL context creation throws ("Error creating WebGL context.") when the
+    // browser can't give us a GPU context -- headless/VNC/software-render setups
+    // (e.g. the Jetson over a remote display), WebGL disabled, or a lost driver.
+    // Catch it here and bail to the static dark background instead of letting the
+    // throw bubble out of useEffect into the global error boundary and take the
+    // whole landing down.
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    } catch (err) {
+      console.warn("NeuralHero: WebGL unavailable, skipping the 3D hero.", err);
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
     mount.appendChild(renderer.domElement);
@@ -226,6 +238,16 @@ export function NeuralHero() {
     };
     document.addEventListener("visibilitychange", onVisibility);
 
+    // If the GPU drops the context mid-run (common on memory-constrained devices
+    // like the Jetson), stop the loop instead of throwing on every frame. Prevent
+    // the default so the browser doesn't mark it permanently unrecoverable.
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      console.warn("NeuralHero: WebGL context lost, pausing the 3D hero.");
+      stop();
+    };
+    renderer.domElement.addEventListener("webglcontextlost", onContextLost);
+
     const resize = () => {
       width = mount!.clientWidth || width;
       height = mount!.clientHeight || height;
@@ -241,6 +263,7 @@ export function NeuralHero() {
       io.disconnect();
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
+      renderer.domElement.removeEventListener("webglcontextlost", onContextLost);
       mount.removeEventListener("pointermove", onMove);
       for (const d of disposables) d.dispose();
       renderer.dispose();
