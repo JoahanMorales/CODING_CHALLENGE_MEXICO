@@ -3,8 +3,10 @@ import { IconTrophy } from "@/components/icons";
 import { PublicHealthBadge } from "@/components/PublicHealthBadge";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
-import { SystemMap } from "@/components/SystemMap";
+import { NeuralHeroMount } from "@/components/NeuralHeroMount";
 import { EXCHANGE_IDS, EXCHANGE_LABELS } from "@/lib/config/exchanges";
+
+const PIPELINE_STAGES = ["Mercados", "Microestructura", "Estrategias", "Ensemble ML", "Riesgo", "Decisión"];
 
 export default function Home() {
   return (
@@ -54,8 +56,23 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="fade-up relative min-h-[420px] overflow-hidden rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-50/70 via-white to-violet-50/60 backdrop-blur elev-lift sm:min-h-[500px]">
-            <SystemMap />
+          <div className="fade-up relative min-h-[440px] overflow-hidden rounded-3xl border border-white/10 bg-[#070b16] shadow-2xl shadow-sky-950/30 sm:min-h-[520px]">
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(120% 90% at 12% 18%, rgba(56,189,248,0.18), transparent 55%), radial-gradient(120% 90% at 88% 82%, rgba(52,211,153,0.15), transparent 55%)"
+              }}
+            />
+            <NeuralHeroMount />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 bg-gradient-to-t from-[#070b16] via-[#070b16]/85 to-transparent px-4 pb-3.5 pt-10">
+              {PIPELINE_STAGES.map((stage, index) => (
+                <span className="font-mono text-[9px] font-black uppercase tracking-wider text-white/50" key={stage}>
+                  {stage}
+                  {index < PIPELINE_STAGES.length - 1 && <span className="ml-2.5 text-white/25">→</span>}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
