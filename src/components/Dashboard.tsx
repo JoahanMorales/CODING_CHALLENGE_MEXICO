@@ -1,17 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
+import dynamic from "next/dynamic";
 import { EXCHANGE_IDS, EXCHANGE_LABELS } from "@/lib/config/exchanges";
 import type {
   ExchangeConnectionStatus,
@@ -24,7 +14,6 @@ import type {
   Opportunity,
   OpportunityType,
   PerformanceMetrics,
-  PricePoint,
   RiskState,
   ScenarioKind,
   Trade,
@@ -32,6 +21,21 @@ import type {
   WalletSeed
 } from "@/lib/types";
 import { btcBookKey, useArbitrageStore } from "@/store/useArbitrageStore";
+
+// recharts is the terminal's heaviest dependency; load it as a lazy client chunk
+// after the shell paints (charts show a skeleton until ready) so it stays out of
+// the initial /terminal bundle. Each chart subscribes to the store on its own.
+function ChartSkeleton() {
+  return <div className="h-full w-full animate-pulse rounded-xl bg-sky-50/70" />;
+}
+const LazyPriceLineChart = dynamic(() => import("./TerminalCharts").then((mod) => mod.PriceLineChart), {
+  ssr: false,
+  loading: () => <ChartSkeleton />
+});
+const LazyPnlAreaChart = dynamic(() => import("./TerminalCharts").then((mod) => mod.PnlAreaChart), {
+  ssr: false,
+  loading: () => <ChartSkeleton />
+});
 
 const exchanges: ExchangeId[] = EXCHANGE_IDS;
 const opportunityTypes: OpportunityType[] = ["CROSS_EXCHANGE", "STAT_ARB", "TRIANGULAR", "LATENCY_ARB"];
@@ -74,7 +78,6 @@ export function Dashboard() {
     metrics,
     learning,
     executionRuntime,
-    priceSeries,
     adminAuthenticated,
     scannerUniverse,
     setScannerUniverse
@@ -103,7 +106,6 @@ export function Dashboard() {
   const dataActive = mode === "DEMO" ? hasFreshBooks || connected : connected || hasLiveExchange || hasFreshBooks;
   const heartbeatMs = lastGatewayMessageAt ? Date.now() - lastGatewayMessageAt : 0;
 
-  const pnlSeries = useMemo(() => makePnlSeries(trades), [trades]);
   const strategyStats = useMemo(() => buildStrategyStats(opportunities), [opportunities]);
   const walletTotals = useMemo(() => summarizeWallets(wallets), [wallets]);
   const marketIntel = useMemo(() => buildMarketIntel(books, opportunities), [books, opportunities]);
@@ -147,7 +149,7 @@ export function Dashboard() {
             />
             <MemoMicrostructurePanel intel={marketIntel} />
             <MemoMarketStack books={books} exchangesShown={visibleExchanges} flashes={flashes} statuses={exchangeStatuses} />
-            <MemoPriceChartPanel marketDrift={marketDrift} priceSeries={priceSeries} />
+            <MemoPriceChartPanel marketDrift={marketDrift} />
           </aside>
 
           <section className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden xl:grid-rows-[auto_minmax(0,1fr)_auto] xl:overflow-hidden">
@@ -166,7 +168,7 @@ export function Dashboard() {
 
           <aside className="flex min-h-0 min-w-0 max-w-full flex-col gap-3 overflow-x-hidden overflow-y-auto pr-1">
             <div className="flex-shrink-0">
-              <MemoPerformancePanel metrics={metrics} mode={mode} pnlSeries={pnlSeries} risk={risk} />
+              <MemoPerformancePanel metrics={metrics} mode={mode} risk={risk} />
             </div>
             <details className="flex-shrink-0 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
@@ -572,7 +574,7 @@ function MarketCard({
   );
 }
 
-function PriceChartPanel({ marketDrift, priceSeries }: { marketDrift: number; priceSeries: PricePoint[] }) {
+function PriceChartPanel({ marketDrift }: { marketDrift: number }) {
   return (
     <Panel className="min-h-0">
       <div className="flex items-center justify-between">
@@ -583,21 +585,7 @@ function PriceChartPanel({ marketDrift, priceSeries }: { marketDrift: number; pr
         </div>
       </div>
       <div className="mt-3 h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={priceSeries}>
-            <CartesianGrid stroke="#e4edf7" vertical={false} />
-            <XAxis dataKey="time" hide />
-            <YAxis domain={["dataMin - 25", "dataMax + 25"]} hide />
-            <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #dbeafe", borderRadius: 12, color: "#27272a" }} />
-            <Line type="monotone" dataKey="binance" stroke="#0ea5e9" dot={false} isAnimationActive={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="kraken" stroke="#10b981" dot={false} isAnimationActive={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="coinbase" stroke="#f59e0b" dot={false} isAnimationActive={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="okx" stroke="#8b5cf6" dot={false} isAnimationActive={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="bybit" stroke="#ec4899" dot={false} isAnimationActive={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="bitfinex" stroke="#64748b" dot={false} isAnimationActive={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="gate" stroke="#14b8a6" dot={false} isAnimationActive={false} strokeWidth={2} />
-          </LineChart>
-        </ResponsiveContainer>
+        <LazyPriceLineChart />
       </div>
     </Panel>
   );
@@ -806,7 +794,7 @@ function SignalRow({ opportunity }: { opportunity: Opportunity }) {
   );
 }
 
-function PerformancePanel({ metrics, mode, pnlSeries, risk }: { metrics: PerformanceMetrics; mode: "LIVE" | "DEMO"; pnlSeries: Array<{ index: number; pnl: number }>; risk: RiskState }) {
+function PerformancePanel({ metrics, mode, risk }: { metrics: PerformanceMetrics; mode: "LIVE" | "DEMO"; risk: RiskState }) {
   const positive = Number(metrics.netPnlUsd) >= 0;
   return (
     <Panel>
@@ -819,21 +807,7 @@ function PerformancePanel({ metrics, mode, pnlSeries, risk }: { metrics: Perform
       </div>
 
       <div className="mt-3 h-48 rounded-xl border border-emerald-100 bg-emerald-50/35 p-2">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={pnlSeries}>
-            <defs>
-              <linearGradient id="pnlGradient" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.48} />
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="#d9f3e8" vertical={false} />
-            <XAxis dataKey="index" hide />
-            <YAxis hide />
-            <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #bbf7d0", borderRadius: 12, color: "#27272a" }} />
-            <Area type="monotone" dataKey="pnl" stroke="#10b981" fill="url(#pnlGradient)" isAnimationActive={false} strokeWidth={2.4} />
-          </AreaChart>
-        </ResponsiveContainer>
+        <LazyPnlAreaChart />
       </div>
 
       <CostWaterfall metrics={metrics} />
@@ -1537,16 +1511,6 @@ const MemoLearningPanel = memo(LearningPanel);
 const MemoExecutionPanel = memo(ExecutionPanel);
 const MemoWalletPanel = memo(WalletPanel);
 
-function makePnlSeries(trades: Trade[]): Array<{ index: number; pnl: number }> {
-  return trades
-    .slice()
-    .reverse()
-    .reduce<Array<{ index: number; pnl: number }>>((series, trade, index) => {
-      const previous = series.at(-1)?.pnl ?? 0;
-      series.push({ index: index + 1, pnl: previous + Number(trade.pnlUsd) });
-      return series;
-    }, [{ index: 0, pnl: 0 }]);
-}
 
 function summarizeWallets(wallets: WalletBalance[]): { btc: number; rebalanceCount: number; usdt: number } {
   return wallets.reduce(
