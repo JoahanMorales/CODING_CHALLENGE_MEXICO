@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-07-06T19:43:10.279Z",
+  "source": "generator",
+  "heldOutSamples": 12001,
+  "winners": 4172,
+  "winRatePct": 34.8,
+  "tree": {
+    "auc": 0.9832,
+    "brier": 0.0324
+  },
+  "neural": {
+    "auc": 0.9977,
+    "brier": 0.0194
+  },
+  "committee": {
+    "auc": 0.9974,
+    "brier": 0.022
+  },
+  "neuralArch": [
+    24,
+    32,
+    16,
+    1
+  ],
+  "takeaway": "Árbol y red neuronal discriminan casi idéntico (AUC 0.9832 vs 0.9977); el comité queda entre ambos. La diversidad de modelo está disponible como segunda opinión aunque en esta distribución el árbol ya domina."
+}

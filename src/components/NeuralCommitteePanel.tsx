@@ -15,7 +15,20 @@ interface NeuralStudy {
   neural: ModelMetric;
   committee: ModelMetric;
   neuralArch: number[] | null;
-  takeaway: string;
+}
+
+// Derive the verdict from the numbers on screen so it can never contradict them.
+function deriveTakeaway(d: NeuralStudy): string {
+  const ranked = [
+    { name: "árbol con gradient boosting", m: d.tree },
+    { name: "red neuronal", m: d.neural },
+    { name: "comité", m: d.committee }
+  ].sort((a, b) => a.m.brier - b.m.brier);
+  const best = ranked[0];
+  if (best.name === "comité") {
+    return `El comité (promedio de ambos modelos) logra el mejor Brier (${d.committee.brier.toFixed(3)}) con AUC ${d.committee.auc.toFixed(3)}: dos familias que separan winners de losers por caminos distintos se corrigen el ruido de calibración mutuamente.`;
+  }
+  return `En este held-out la ${best.name} es el modelo individual más fuerte (AUC ${best.m.auc.toFixed(3)}, Brier ${best.m.brier.toFixed(3)}); el comité promedia ambas opiniones como segunda voz. Dos modelos independientes, de arquitectura distinta, reducen el riesgo de que una sola familia se equivoque en conjunto.`;
 }
 
 export function NeuralCommitteePanel() {
@@ -61,7 +74,7 @@ export function NeuralCommitteePanel() {
       </div>
 
       <div className="mx-6 mb-6 rounded-2xl border border-sky-100 bg-sky-50/50 px-5 py-4 text-sm font-semibold leading-6 text-sky-900 sm:mx-8">
-        {data.takeaway}
+        {deriveTakeaway(data)}
       </div>
     </section>
   );

@@ -127,11 +127,16 @@ const nn = metrics((s) => s.nn);
 const committee = metrics((s) => s.committee);
 const winners = scored.filter((s) => s.label === 1).length;
 
-const bestBrier = Math.min(tree.brier, nn.brier, committee.brier);
+const ranked = [
+  { name: "árbol con gradient boosting", m: tree },
+  { name: "red neuronal", m: nn },
+  { name: "comité", m: committee }
+].sort((a, b) => a.m.brier - b.m.brier);
+const best = ranked[0];
 const takeaway =
-  committee.brier <= bestBrier
-    ? `El comité (promedio de los dos modelos independientes) iguala o mejora el Brier de cualquiera por separado (${committee.brier} vs árbol ${tree.brier} / red ${nn.brier}), manteniendo un AUC de ${committee.auc}. Dos familias de modelo que separan winners de losers por caminos distintos se corrigen mutuamente el ruido de calibración.`
-    : `Árbol y red neuronal discriminan casi idéntico (AUC ${tree.auc} vs ${nn.auc}); el comité queda entre ambos. La diversidad de modelo está disponible como segunda opinión aunque en esta distribución el árbol ya domina.`;
+  best.name === "comité"
+    ? `El comité (promedio de los dos modelos independientes) logra el mejor Brier (${committee.brier} vs árbol ${tree.brier} / red ${nn.brier}) con AUC ${committee.auc}. Dos familias de modelo que separan winners de losers por caminos distintos se corrigen mutuamente el ruido de calibración.`
+    : `En este held-out la ${best.name} es el modelo individual más fuerte (AUC ${best.m.auc}, Brier ${best.m.brier}); el comité promedia ambas opiniones como segunda voz robusta. Dos modelos independientes de arquitectura distinta reducen el riesgo de que una sola familia se equivoque en conjunto.`;
 
 const artifact = {
   generatedAt: new Date().toISOString(),
