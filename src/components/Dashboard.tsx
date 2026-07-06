@@ -47,41 +47,16 @@ const strategyLabel: Record<OpportunityType, string> = {
   LATENCY_ARB: "Latencia"
 };
 
+// The terminal is decomposed so each live column subscribes to only its own store
+// slices. The shell below owns just the UI filter state (and the init effect) and
+// subscribes to nothing high-frequency, so a per-tick book/opportunity/learning
+// write re-renders only the affected column subtree instead of reconciling the
+// whole 84KB tree on every store write. Filter state stays here and flows to the
+// toolbar (to set) and the columns (to read) as props -- unchanged behavior.
 export function Dashboard() {
-  const {
-    init,
-    setMode,
-    runScenario,
-    resetRisk,
-    replayHistory,
-    exportSessionCsv,
-    setExecutionRuntimeMode,
-    refreshSandboxBalances,
-    reconcileSandbox,
-    setSandboxKillSwitch,
-    mode,
-    connected,
-    lastGatewayMessageAt,
-    books,
-    exchangeStatuses,
-    flashes,
-    opportunities,
-    replayOpportunities,
-    executionQueue,
-    executionTransitions,
-    trades,
-    wallets,
-    walletSeed,
-    updateWalletSeed,
-    applyWalletSeed,
-    risk,
-    metrics,
-    learning,
-    executionRuntime,
-    adminAuthenticated,
-    scannerUniverse,
-    setScannerUniverse
-  } = useArbitrageStore();
+  const init = useArbitrageStore((state) => state.init);
+  const scannerUniverse = useArbitrageStore((state) => state.scannerUniverse);
+  const setScannerUniverse = useArbitrageStore((state) => state.setScannerUniverse);
   const [visibleExchanges, setVisibleExchanges] = useState<ExchangeId[]>(exchanges);
   const [visibleTypes, setVisibleTypes] = useState<OpportunityType[]>(opportunityTypes);
   const [visibleStatus, setVisibleStatus] = useState<"ALL" | "EXECUTABLE" | "REJECTED">("ALL");
@@ -89,41 +64,9 @@ export function Dashboard() {
 
   useEffect(() => init(), [init]);
 
-  const visibleOpportunities = useMemo(
-    () => (replayOpportunities.length ? replayOpportunities : opportunities).filter((opportunity) =>
-      visibleTypes.includes(opportunity.type)
-      && opportunityTouchesExchange(opportunity, visibleExchanges)
-      && (visibleStatus === "ALL"
-        || (visibleStatus === "EXECUTABLE" && (opportunity.status === "DETECTED" || opportunity.status === "EVALUATING" || opportunity.status === "EXECUTED"))
-        || (visibleStatus === "REJECTED" && opportunity.status === "REJECTED"))
-    ),
-    [opportunities, replayOpportunities, visibleExchanges, visibleStatus, visibleTypes]
-  );
-  const latestExecutable = opportunities.find((item) => item.status === "DETECTED" || item.status === "EVALUATING");
-  const latestSignal = opportunities[0];
-  const hasFreshBooks = useMemo(() => Object.values(books).some((book) => Date.now() - book.receivedAt < 6000), [books]);
-  const hasLiveExchange = exchangeStatuses.some((status) => status.status === "live" || status.status === "polling");
-  const dataActive = mode === "DEMO" ? hasFreshBooks || connected : connected || hasLiveExchange || hasFreshBooks;
-  const heartbeatMs = lastGatewayMessageAt ? Date.now() - lastGatewayMessageAt : 0;
-
-  const strategyStats = useMemo(() => buildStrategyStats(opportunities), [opportunities]);
-  const walletTotals = useMemo(() => summarizeWallets(wallets), [wallets]);
-  const marketIntel = useMemo(() => buildMarketIntel(books, opportunities), [books, opportunities]);
-  const marketMids = useMemo(() => exchanges.map((exchange) => midFromBook(books[btcBookKey(exchange)])).filter((value) => value > 0), [books]);
-  const marketDrift = marketMids.length > 1 ? Math.max(...marketMids) - Math.min(...marketMids) : 0;
-  const missedOpportunities = useMemo(() => opportunities.filter((opportunity) => opportunity.status === "REJECTED").slice(0, 6), [opportunities]);
-
   return (
     <main className="grid h-full w-full min-w-0 max-w-full grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-[#f7fbff] text-zinc-900">
-      <CommandBar
-        connected={connected}
-        dataActive={dataActive}
-        heartbeatMs={heartbeatMs}
-        metrics={metrics}
-        mode={mode}
-        risk={risk}
-        setMode={setMode}
-      />
+      <TerminalHeader />
 
       <MemoTerminalToolbar
         scannerUniverse={scannerUniverse}
@@ -138,74 +81,180 @@ export function Dashboard() {
 
       <section className="relative z-0 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-3 xl:overflow-hidden xl:px-4">
         <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] gap-3 xl:h-full xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.28fr)_minmax(0,0.96fr)]">
-          <aside className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden pr-1 xl:grid-rows-[auto_auto_auto_minmax(220px,0.82fr)] xl:overflow-y-auto">
-            <MemoSystemHealth
-              connected={connected}
-              dataActive={dataActive}
-              heartbeatMs={heartbeatMs}
-              mode={mode}
-              risk={risk}
-              statuses={exchangeStatuses}
-            />
-            <MemoMicrostructurePanel intel={marketIntel} />
-            <MemoMarketStack books={books} exchangesShown={visibleExchanges} flashes={flashes} statuses={exchangeStatuses} />
-            <MemoPriceChartPanel marketDrift={marketDrift} />
-          </aside>
-
-          <section className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden xl:grid-rows-[auto_minmax(0,1fr)_auto] xl:overflow-hidden">
-            <MemoActiveEdgePanel latestExecutable={latestExecutable} latestSignal={latestSignal} latestTrade={trades[0]} metrics={metrics} risk={risk} />
-            <MemoSignalFeed opportunities={visibleOpportunities} replaying={replayOpportunities.length > 0} />
-            <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
-              <summary className="cursor-pointer list-none font-mono text-[10px] font-black uppercase text-sky-700">
-                Abrir análisis avanzado
-              </summary>
-              <div className="mt-3 grid gap-3">
-                <StrategyMatrix stats={strategyStats} />
-                <MissedOpportunityPanel opportunities={missedOpportunities} />
-              </div>
-            </details>
-          </section>
-
-          <aside className="flex min-h-0 min-w-0 max-w-full flex-col gap-3 overflow-x-hidden overflow-y-auto pr-1">
-            <div className="flex-shrink-0">
-              <MemoPerformancePanel metrics={metrics} mode={mode} risk={risk} />
-            </div>
-            <details className="flex-shrink-0 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                <span className="font-mono text-[10px] font-black uppercase text-sky-700">Shadow Learning</span>
-                <StatusPill label={`${learning.evaluatedSignals} markouts`} tone={learning.evaluatedSignals ? "sky" : "zinc"} />
-              </summary>
-              <div className="mt-3">
-                <MemoLearningPanel learning={learning} bare />
-              </div>
-            </details>
-            <div className="flex-shrink-0">
-              <MemoExecutionPanel
-                executionQueue={executionQueue}
-                executionTransitions={executionTransitions}
-                reconcileSandbox={reconcileSandbox}
-                refreshSandboxBalances={refreshSandboxBalances}
-                runtime={executionRuntime}
-                setExecutionRuntimeMode={setExecutionRuntimeMode}
-                setSandboxKillSwitch={setSandboxKillSwitch}
-                trades={trades}
-                controlsLocked={mode === "LIVE" && !adminAuthenticated}
-              />
-            </div>
-            <div className="flex-shrink-0">
-              <MemoWalletPanel
-                applyWalletSeed={applyWalletSeed}
-                mode={mode}
-                seed={walletSeed}
-                totals={walletTotals}
-                update={updateWalletSeed}
-                wallets={wallets}
-              />
-            </div>
-          </aside>
+          <MarketColumn visibleExchanges={visibleExchanges} />
+          <SignalColumn visibleExchanges={visibleExchanges} visibleStatus={visibleStatus} visibleTypes={visibleTypes} />
+          <TerminalSidebar />
         </div>
       </section>
 
+      <TerminalRiskDock setStressOpen={setStressOpen} stressOpen={stressOpen} />
+    </main>
+  );
+}
+
+// Top status bar: the live-data pulse needs book freshness, so it subscribes to
+// books/statuses and re-renders on the tick -- but it is a thin bar, and keeping
+// it out of the shell is what lets the shell stay still.
+function TerminalHeader() {
+  const connected = useArbitrageStore((state) => state.connected);
+  const mode = useArbitrageStore((state) => state.mode);
+  const risk = useArbitrageStore((state) => state.risk);
+  const metrics = useArbitrageStore((state) => state.metrics);
+  const setMode = useArbitrageStore((state) => state.setMode);
+  const books = useArbitrageStore((state) => state.books);
+  const exchangeStatuses = useArbitrageStore((state) => state.exchangeStatuses);
+  const lastGatewayMessageAt = useArbitrageStore((state) => state.lastGatewayMessageAt);
+  const hasFreshBooks = useMemo(() => Object.values(books).some((book) => Date.now() - book.receivedAt < 6000), [books]);
+  const hasLiveExchange = exchangeStatuses.some((status) => status.status === "live" || status.status === "polling");
+  const dataActive = mode === "DEMO" ? hasFreshBooks || connected : connected || hasLiveExchange || hasFreshBooks;
+  const heartbeatMs = lastGatewayMessageAt ? Date.now() - lastGatewayMessageAt : 0;
+  return (
+    <CommandBar connected={connected} dataActive={dataActive} heartbeatMs={heartbeatMs} metrics={metrics} mode={mode} risk={risk} setMode={setMode} />
+  );
+}
+
+// Left column: order books, microstructure and the price chart. Owns the
+// books/opportunities-derived market intel so the shell never touches them.
+function MarketColumn({ visibleExchanges }: { visibleExchanges: ExchangeId[] }) {
+  const connected = useArbitrageStore((state) => state.connected);
+  const mode = useArbitrageStore((state) => state.mode);
+  const risk = useArbitrageStore((state) => state.risk);
+  const books = useArbitrageStore((state) => state.books);
+  const flashes = useArbitrageStore((state) => state.flashes);
+  const exchangeStatuses = useArbitrageStore((state) => state.exchangeStatuses);
+  const opportunities = useArbitrageStore((state) => state.opportunities);
+  const lastGatewayMessageAt = useArbitrageStore((state) => state.lastGatewayMessageAt);
+  const hasFreshBooks = useMemo(() => Object.values(books).some((book) => Date.now() - book.receivedAt < 6000), [books]);
+  const hasLiveExchange = exchangeStatuses.some((status) => status.status === "live" || status.status === "polling");
+  const dataActive = mode === "DEMO" ? hasFreshBooks || connected : connected || hasLiveExchange || hasFreshBooks;
+  const heartbeatMs = lastGatewayMessageAt ? Date.now() - lastGatewayMessageAt : 0;
+  const marketIntel = useMemo(() => buildMarketIntel(books, opportunities), [books, opportunities]);
+  const marketMids = useMemo(() => exchanges.map((exchange) => midFromBook(books[btcBookKey(exchange)])).filter((value) => value > 0), [books]);
+  const marketDrift = marketMids.length > 1 ? Math.max(...marketMids) - Math.min(...marketMids) : 0;
+  return (
+    <aside className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden pr-1 xl:grid-rows-[auto_auto_auto_minmax(220px,0.82fr)] xl:overflow-y-auto">
+      <MemoSystemHealth connected={connected} dataActive={dataActive} heartbeatMs={heartbeatMs} mode={mode} risk={risk} statuses={exchangeStatuses} />
+      <MemoMicrostructurePanel intel={marketIntel} />
+      <MemoMarketStack books={books} exchangesShown={visibleExchanges} flashes={flashes} statuses={exchangeStatuses} />
+      <MemoPriceChartPanel marketDrift={marketDrift} />
+    </aside>
+  );
+}
+
+// Center column: the opportunity feed, active edge and advanced analytics. Reads
+// the filter state as props so the shell keeps owning it.
+function SignalColumn({ visibleExchanges, visibleStatus, visibleTypes }: { visibleExchanges: ExchangeId[]; visibleStatus: "ALL" | "EXECUTABLE" | "REJECTED"; visibleTypes: OpportunityType[] }) {
+  const opportunities = useArbitrageStore((state) => state.opportunities);
+  const replayOpportunities = useArbitrageStore((state) => state.replayOpportunities);
+  const trades = useArbitrageStore((state) => state.trades);
+  const metrics = useArbitrageStore((state) => state.metrics);
+  const risk = useArbitrageStore((state) => state.risk);
+  const visibleOpportunities = useMemo(
+    () => (replayOpportunities.length ? replayOpportunities : opportunities).filter((opportunity) =>
+      visibleTypes.includes(opportunity.type)
+      && opportunityTouchesExchange(opportunity, visibleExchanges)
+      && (visibleStatus === "ALL"
+        || (visibleStatus === "EXECUTABLE" && (opportunity.status === "DETECTED" || opportunity.status === "EVALUATING" || opportunity.status === "EXECUTED"))
+        || (visibleStatus === "REJECTED" && opportunity.status === "REJECTED"))
+    ),
+    [opportunities, replayOpportunities, visibleExchanges, visibleStatus, visibleTypes]
+  );
+  const latestExecutable = opportunities.find((item) => item.status === "DETECTED" || item.status === "EVALUATING");
+  const latestSignal = opportunities[0];
+  const strategyStats = useMemo(() => buildStrategyStats(opportunities), [opportunities]);
+  const missedOpportunities = useMemo(() => opportunities.filter((opportunity) => opportunity.status === "REJECTED").slice(0, 6), [opportunities]);
+  return (
+    <section className="grid min-h-0 min-w-0 max-w-full gap-3 overflow-x-hidden xl:grid-rows-[auto_minmax(0,1fr)_auto] xl:overflow-hidden">
+      <MemoActiveEdgePanel latestExecutable={latestExecutable} latestSignal={latestSignal} latestTrade={trades[0]} metrics={metrics} risk={risk} />
+      <MemoSignalFeed opportunities={visibleOpportunities} replaying={replayOpportunities.length > 0} />
+      <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
+        <summary className="cursor-pointer list-none font-mono text-[10px] font-black uppercase text-sky-700">
+          Abrir análisis avanzado
+        </summary>
+        <div className="mt-3 grid gap-3">
+          <StrategyMatrix stats={strategyStats} />
+          <MissedOpportunityPanel opportunities={missedOpportunities} />
+        </div>
+      </details>
+    </section>
+  );
+}
+
+// Right column: performance, shadow learning, execution and wallets. All of these
+// track low/mid-frequency slices, so isolating them keeps their updates off the
+// shell and the other columns.
+function TerminalSidebar() {
+  const mode = useArbitrageStore((state) => state.mode);
+  const risk = useArbitrageStore((state) => state.risk);
+  const metrics = useArbitrageStore((state) => state.metrics);
+  const learning = useArbitrageStore((state) => state.learning);
+  const executionQueue = useArbitrageStore((state) => state.executionQueue);
+  const executionTransitions = useArbitrageStore((state) => state.executionTransitions);
+  const executionRuntime = useArbitrageStore((state) => state.executionRuntime);
+  const trades = useArbitrageStore((state) => state.trades);
+  const wallets = useArbitrageStore((state) => state.wallets);
+  const walletSeed = useArbitrageStore((state) => state.walletSeed);
+  const adminAuthenticated = useArbitrageStore((state) => state.adminAuthenticated);
+  const setExecutionRuntimeMode = useArbitrageStore((state) => state.setExecutionRuntimeMode);
+  const refreshSandboxBalances = useArbitrageStore((state) => state.refreshSandboxBalances);
+  const reconcileSandbox = useArbitrageStore((state) => state.reconcileSandbox);
+  const setSandboxKillSwitch = useArbitrageStore((state) => state.setSandboxKillSwitch);
+  const applyWalletSeed = useArbitrageStore((state) => state.applyWalletSeed);
+  const updateWalletSeed = useArbitrageStore((state) => state.updateWalletSeed);
+  const walletTotals = useMemo(() => summarizeWallets(wallets), [wallets]);
+  return (
+    <aside className="flex min-h-0 min-w-0 max-w-full flex-col gap-3 overflow-x-hidden overflow-y-auto pr-1">
+      <div className="flex-shrink-0">
+        <MemoPerformancePanel metrics={metrics} mode={mode} risk={risk} />
+      </div>
+      <details className="flex-shrink-0 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+          <span className="font-mono text-[10px] font-black uppercase text-sky-700">Shadow Learning</span>
+          <StatusPill label={`${learning.evaluatedSignals} markouts`} tone={learning.evaluatedSignals ? "sky" : "zinc"} />
+        </summary>
+        <div className="mt-3">
+          <MemoLearningPanel learning={learning} bare />
+        </div>
+      </details>
+      <div className="flex-shrink-0">
+        <MemoExecutionPanel
+          executionQueue={executionQueue}
+          executionTransitions={executionTransitions}
+          reconcileSandbox={reconcileSandbox}
+          refreshSandboxBalances={refreshSandboxBalances}
+          runtime={executionRuntime}
+          setExecutionRuntimeMode={setExecutionRuntimeMode}
+          setSandboxKillSwitch={setSandboxKillSwitch}
+          trades={trades}
+          controlsLocked={mode === "LIVE" && !adminAuthenticated}
+        />
+      </div>
+      <div className="flex-shrink-0">
+        <MemoWalletPanel
+          applyWalletSeed={applyWalletSeed}
+          mode={mode}
+          seed={walletSeed}
+          totals={walletTotals}
+          update={updateWalletSeed}
+          wallets={wallets}
+        />
+      </div>
+    </aside>
+  );
+}
+
+// Bottom risk dock + the controlled-scenario popover. Subscribes to its own
+// low-frequency slices; the shell only owns the open/close UI state.
+function TerminalRiskDock({ setStressOpen, stressOpen }: { setStressOpen: (open: boolean) => void; stressOpen: boolean }) {
+  const mode = useArbitrageStore((state) => state.mode);
+  const risk = useArbitrageStore((state) => state.risk);
+  const adminAuthenticated = useArbitrageStore((state) => state.adminAuthenticated);
+  const runScenario = useArbitrageStore((state) => state.runScenario);
+  const resetRisk = useArbitrageStore((state) => state.resetRisk);
+  const replayHistory = useArbitrageStore((state) => state.replayHistory);
+  const exportSessionCsv = useArbitrageStore((state) => state.exportSessionCsv);
+  return (
+    <>
       <RiskDock adminAuthenticated={adminAuthenticated} exportSessionCsv={exportSessionCsv} mode={mode} replayHistory={replayHistory} resetRisk={resetRisk} risk={risk} runScenario={runScenario} stressOpen={stressOpen} setStressOpen={setStressOpen} />
       {stressOpen && <div className="fixed inset-0 z-[1000]" onClick={() => setStressOpen(false)} />}
       {stressOpen && (
@@ -226,7 +275,7 @@ export function Dashboard() {
           </div>
         </div>
       )}
-    </main>
+    </>
   );
 }
 
