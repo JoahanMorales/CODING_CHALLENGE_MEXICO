@@ -1,0 +1,21 @@
+# PyTorch GPU stack for the Jetson Orin Nano Super.
+# Target: JetPack 6 / L4T R36.4.7 / CUDA 12.6 / Python 3.10 (aarch64).
+#
+# Install into a project venv:
+#   python3 -m venv .venv
+#   .venv/bin/pip install --upgrade pip
+#   .venv/bin/pip install -r scripts/gpu/requirements-jetson.txt \
+#       --index-url https://pypi.jetson-ai-lab.io/jp6/cu126
+#
+# GOTCHA -- torch MUST be pinned to 2.8.0. The newer Jetson wheels (2.9.x /
+# 2.10 / 2.11) are built against CUDA 12.8/12.9: they drag in cublas 12.9 +
+# cuDSS and fail at runtime with CUBLAS_STATUS_ALLOC_FAILED on this JetPack's
+# CUDA 12.6 driver. 2.8.0 links the system CUDA 12.6 libs and just works
+# (no LD_LIBRARY_PATH needed -- /usr/local/cuda is already on the ldconfig path).
+#
+# NOTE -- the community index moved from pypi.jetson-ai-lab.DEV (dead DNS) to
+# pypi.jetson-ai-lab.IO. Use .io.
+torch==2.8.0
+# torch 2.8.0 is compiled against the NumPy 1.x ABI; NumPy 2.x prints an ABI
+# warning on import. Pin below 2.
+numpy<2

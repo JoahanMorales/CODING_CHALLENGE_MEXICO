@@ -18,6 +18,11 @@ npm-debug.log*
 /data/
 scripts/railway_keepalive.py
 
+# Python venv for the GPU/PyTorch training path (Jetson CUDA wheels)
+.venv/
+__pycache__/
+*.pyc
+
 .vercel
 
 # Personal hackathon committee submissions / source renders (kept local only)
