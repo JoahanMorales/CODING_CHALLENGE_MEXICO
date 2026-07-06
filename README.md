@@ -107,6 +107,7 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 | 19 | **Calibración de Platt + punto de operación** | La salida del ensemble no era probabilidad calibrada (Brier 0.060 eval) y Kelly la consume como probabilidad. Capa `survival = sigmoid(a·margen + b)` ajustada por MLE en fold disjunto, adjuntada solo si mejora el Brier out-of-sample: 0.060 → 0.023 (−61%) en el tape real de 6h, ranking intacto. El barrido de umbrales (`--opOut`) mide el P&L contrafactual de las señales seleccionadas a cada nivel de confianza vs el gate actual | Platt (1999) |
 | 20 | **Calibración isotónica en competencia + validación walk-forward + transferencia** | La isotónica (PAV) compite con Platt en el mismo fold de calibración y solo se adjunta la que gana en el fold de evaluación intocado. `--split temporal` hace la validación walk-forward (entrena < calibra < evalúa en orden cronológico estricto); `--evalTape` liquida un tape ajeno con el modelo congelado (transferencia de régimen); IC95 de Wilson en cada win-rate del barrido | Zadrozny & Elkan (2002), Wilson (1927) |
 | 21 | **Features temporales v3 (el modelo ve el tiempo)** | Los 19 features eran fotos de una sola ronda; OFI se define sobre intervalos. `observeBook()` mantiene historia rodante por venue (throttle 400ms, ventana ~8s) y deriva 5 features nuevos: momentum del mid por venue, delta de imbalance por venue y volatilidad realizada — una dislocación que aparece CON momentum hacia la convergencia muere rápido; una que aparece mientras los libros se separan persiste | Cont-Kukanov-Stoikov (2014) |
+| 22 | **NeuralEdge: segundo modelo deep + comité de dos familias** | Junto al ensemble de árboles corre una **red neuronal** (MLP `24→32→16→1`, ReLU, sigmoid) escrita en **TypeScript puro** — backprop + Adam a mano, cero dependencias, misma inferencia en browser y gateway. Los árboles parten fronteras alineadas a los ejes; la red las curva, así que discrepan de forma útil y se promedian en un **comité**. Entrenada en la Jetson: `npm run train:neural`; `npm run study:neural` puntúa árbol vs red vs comité sobre un held-out fresco (la red gana: AUC 0.998 vs 0.983, Brier 0.019 vs 0.032) y `/resultados` lo muestra. La ruta GPU (PyTorch/CUDA en la Jetson) queda lista para habilitar | Rumelhart et al. (backprop, 1986), Kingma & Ba (Adam, 2015) |
 
 <p align="center">
   <img alt="Innovaciones implementadas" src="recursos/11mejoras.png" width="820" />
@@ -190,6 +191,9 @@ npm run train               # 45s, generador sintético enriquecido (camino 2)
 npm run train -- 90         # entrena 90s
 npm run train:search                      # busca el mejor modelo entre 12 seeds x 90s (~18 min)
 npm run train:search -- 20 120            # 20 seeds x 120s (~40 min) — solo promueve si mejora el actual
+npm run train:search:max                  # Jetson: 36 seeds x 180s en paralelo sobre todos los cores
+npm run train:neural                      # entrena la red neuronal (NeuralEdge MLP) -> public/model/neural-edge.json
+npm run study:neural                      # árbol vs red vs comité en held-out -> public/data/neural-study.json
 npm run record -- 120       # graba 120s de los 7 exchanges reales -> data/tape-*.jsonl (camino 1)
 npm run train -- --tape data/tape-XXXX.jsonl   # entrena sobre datos reales grabados
 npm run analyze:tape data/tape-XXXX.jsonl      # analiza el tape -> public/data/tape-analysis.json
