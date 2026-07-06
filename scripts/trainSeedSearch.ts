@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { promisify } from "node:util";
 
 // Best-of-N seed search for the warm-start ML model. A single `npm run train` run
@@ -10,16 +11,43 @@ import { promisify } from "node:util";
 // it BEATS the current one -- so a long run can only improve (or hold steady)
 // public/model/edge-model.json, never regress it with a lucky-bad seed.
 //
-//   npm run train:search                      # 12 seeds x 90s (~18 min)
-//   npm run train:search -- 20 120             # 20 seeds x 120s (~40 min)
+// Each seed is an independent, single-threaded child process, so the search is
+// embarrassingly parallel. We run up to `concurrency` seeds at once (default: all
+// available CPU cores, e.g. the Jetson Orin Nano's 6) instead of one at a time --
+// so a 6-core box evaluates ~6x more seeds per unit wall-clock, which means a
+// better warm-start in the same time (or the same result ~6x faster). The
+// promote-only-if-it-beats-baseline guarantee is unchanged; ordering of completion
+// is nondeterministic but the set of seeds and their scores are not.
+//
+//   npm run train:search                       # 12 seeds x 90s, all cores
+//   npm run train:search -- 20 120             # 20 seeds x 120s, all cores
+//   npm run train:search -- 24 150 4           # cap concurrency at 4 workers
+//   SEED_SEARCH_CONCURRENCY=3 npm run train:search   # or via env
+//   npm run train:search:max                   # Jetson: 36 seeds x 180s, all cores
 
 const run = promisify(execFile);
 
 const numSeeds = Number(process.argv[2] ?? 12);
 const perRunSec = Number(process.argv[3] ?? 90);
+const maxCores = os.availableParallelism?.() ?? os.cpus().length;
+// Concurrency: CLI arg 3 or env override, else every core. Never more workers than
+// seeds, never below 1.
+const requestedConcurrency = Number(process.env.SEED_SEARCH_CONCURRENCY ?? process.argv[4] ?? maxCores);
+const concurrency = Math.max(1, Math.min(Number.isFinite(requestedConcurrency) ? requestedConcurrency : maxCores, numSeeds));
 const finalOut = "public/model/edge-model.json";
 const workDir = "data/seed-search";
 mkdirSync(workDir, { recursive: true });
+
+// Invoke the local tsx binary directly (avoids a per-seed `npx` resolution and any
+// network round-trip); fall back to `npx tsx` only if it isn't present.
+const localTsx = "node_modules/.bin/tsx";
+const useLocalTsx = existsSync(localTsx);
+function spawnSeed(perRunSec: number, seed: number, outPath: string): Promise<unknown> {
+  const scriptArgs = ["scripts/trainModel.ts", String(perRunSec), "--seed", String(seed), "--out", outPath];
+  return useLocalTsx
+    ? run(localTsx, scriptArgs, { maxBuffer: 1024 * 1024 * 16 })
+    : run("npx", ["tsx", ...scriptArgs], { maxBuffer: 1024 * 1024 * 16, shell: true });
+}
 
 interface Bundle {
   seed?: number;
@@ -61,33 +89,38 @@ if (baselineOutdated) {
   console.log(`\n  AVISO: el modelo actual es de esquema v${baselineRaw?.ml?.version} (actual v${ML_MODEL_VERSION}) -> baseline inválido, se promoverá el mejor candidato.`);
 }
 
-console.log(`\nArbitrAI - busqueda de semillas para el modelo ML | ${numSeeds} seeds x ${perRunSec}s (~${Math.round((numSeeds * perRunSec) / 60)} min)\n`);
+const wallMin = Math.round((numSeeds * perRunSec) / concurrency / 60);
+console.log(`\nArbitrAI - busqueda de semillas para el modelo ML | ${numSeeds} seeds x ${perRunSec}s | ${concurrency} en paralelo de ${maxCores} cores (~${wallMin} min de reloj)\n`);
 console.log(`  Baseline actual: auc=${baseline?.auc ?? "n/d"} demoSafety=${baseline?.demoSafety ?? "n/d"} trees=${baseline?.ml?.trees?.length ?? 0} score=${baselineScore.toFixed(2)}\n`);
-console.log(["  seed".padEnd(12), "auc", "demoSafety", "trees", "valSamples", "score"].join("  "));
-console.log("-".repeat(70));
+console.log(["  seed".padEnd(12), "auc", "demoSafety", "trees", "valSamples", "score", "progreso"].join("  "));
+console.log("-".repeat(80));
 
 let best = baseline;
 let bestScore = baselineScore;
 let bestPath: string | null = null;
+let completed = 0;
 const allResults: Array<{ seed: number; auc: number; demoSafety: number; trees: number; score: number }> = [];
 
-for (let i = 0; i < numSeeds; i += 1) {
+// Run a single seed to completion: train in a child process, score the resulting
+// bundle, log a row, and fold it into the running best. Safe to run many of these
+// concurrently -- the shared-state updates below execute on the single JS thread
+// between awaits, so there is no race on `best`/`bestScore`.
+async function runSeed(i: number): Promise<void> {
   // Spread seeds well across the 32-bit space (golden-ratio stride) so runs are
   // independent draws, not nearby/correlated PRNG states.
   const seed = (0x9e3779b9 + i * 0x2545f491) >>> 0;
   const outPath = `${workDir}/model-seed-${seed}.json`;
   try {
-    await run("npx", ["tsx", "scripts/trainModel.ts", String(perRunSec), "--seed", String(seed), "--out", outPath], {
-      maxBuffer: 1024 * 1024 * 16,
-      shell: true
-    });
+    await spawnSeed(perRunSec, seed, outPath);
   } catch (error) {
-    console.log(`  seed ${seed} failed: ${(error as Error).message.slice(0, 80)}`);
-    continue;
+    completed += 1;
+    console.log(`  seed ${seed} failed: ${(error as Error).message.slice(0, 80)}  [${completed}/${numSeeds}]`);
+    return;
   }
   const bundle = readBundle(outPath);
   const s = score(bundle);
   const trees = bundle?.ml?.trees?.length ?? 0;
+  completed += 1;
   allResults.push({ seed, auc: bundle?.auc ?? 0, demoSafety: bundle?.demoSafety ?? 0, trees, score: s });
   console.log([
     String(seed).padEnd(12),
@@ -95,7 +128,8 @@ for (let i = 0; i < numSeeds; i += 1) {
     `${((bundle?.demoSafety ?? 0) * 100).toFixed(1)}%`.padStart(9),
     String(trees).padStart(5),
     String(bundle?.valSamples ?? 0).padStart(10),
-    s.toFixed(2).padStart(7)
+    s.toFixed(2).padStart(7),
+    `[${completed}/${numSeeds}]`.padStart(9)
   ].join("  "));
   if (s > bestScore) {
     bestScore = s;
@@ -103,6 +137,21 @@ for (let i = 0; i < numSeeds; i += 1) {
     bestPath = outPath;
   }
 }
+
+// Bounded worker pool: `concurrency` workers pull the next seed index off a shared
+// counter until the queue drains. This saturates every core without ever exceeding
+// the concurrency cap (unbounded Promise.all would spawn all N children at once and
+// thrash memory on a many-seed run).
+let nextIndex = 0;
+async function worker(): Promise<void> {
+  for (;;) {
+    const i = nextIndex;
+    nextIndex += 1;
+    if (i >= numSeeds) return;
+    await runSeed(i);
+  }
+}
+await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
 console.log("\n=== Resultado de la búsqueda ===");
 if (bestPath && best) {

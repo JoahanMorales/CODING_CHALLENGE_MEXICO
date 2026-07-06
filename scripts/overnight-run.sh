@@ -1,6 +1,7 @@
 #!/bin/bash
 set -uo pipefail
-cd "C:\Users\chump\OneDrive\Escritorio\Progra\react\hackChallenge"
+# Run from the repo root regardless of where the script is invoked from.
+cd "$(dirname "$0")/.." || exit 1
 mkdir -p data/overnight-logs
 
 echo "[$(date)] Starting overnight pipeline"
@@ -14,7 +15,9 @@ PID1=$!
 (npm run study:triangular -- 21600 public/data/triangular-study-overnight.json > data/overnight-logs/triangular.log 2>&1; echo "[$(date)] study:triangular exited $?") &
 PID2=$!
 
-(npm run train:search -- 30 180 > data/overnight-logs/seedsearch.log 2>&1; echo "[$(date)] train:search exited $?") &
+# The seed search is internally parallel now; cap it so it leaves cores for the two
+# capture jobs above (record:ws + study:triangular) instead of grabbing all 6.
+(SEED_SEARCH_CONCURRENCY=4 npm run train:search -- 30 180 > data/overnight-logs/seedsearch.log 2>&1; echo "[$(date)] train:search exited $?") &
 PID3=$!
 
 wait $PID1
