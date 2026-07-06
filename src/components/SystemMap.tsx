@@ -77,6 +77,13 @@ const COL_X = [140, 328, 516, 704, 892, 1080];
 const ROW_CENTER = 340;
 const ROW_GAP = 64;
 
+// Every distinct node colour, so we can pre-declare one glossy "bead" radial
+// gradient and one soft glow per colour instead of inlining fills.
+const PALETTE = [SKY, CYAN, INDIGO, EMERALD, AMBER, ROSE];
+function colorId(hex: string): string {
+  return hex.replace("#", "");
+}
+
 function nodeY(count: number, index: number): number {
   return ROW_CENTER + (index - (count - 1) / 2) * ROW_GAP;
 }
@@ -116,7 +123,44 @@ export function SystemMap() {
         <filter height="240%" id="softBlur" width="240%" x="-70%" y="-70%">
           <feGaussianBlur stdDeviation="10" />
         </filter>
+        <filter height="320%" id="pulseGlow" width="320%" x="-110%" y="-110%">
+          <feGaussianBlur stdDeviation="5" />
+        </filter>
+        <filter id="auraBlur" x="-60%" y="-60%" height="220%" width="220%">
+          <feGaussianBlur stdDeviation="60" />
+        </filter>
+        {/* Soft column-to-column colour transition: signal edges flow from the
+            source layer's colour into the next layer's, left to right. */}
+        {LAYERS.slice(0, -1).map((layer, i) => (
+          <linearGradient gradientUnits="userSpaceOnUse" id={`edge-${i}`} key={i} x1={COL_X[i]} x2={COL_X[i + 1]} y1="0" y2="0">
+            <stop offset="0%" stopColor={layer.color} />
+            <stop offset="100%" stopColor={LAYERS[i + 1].color} />
+          </linearGradient>
+        ))}
+        {/* Glossy bead: a light specular highlight up-left fading into the node
+            colour, so nodes read as lit glass rather than flat discs. */}
+        {PALETTE.map((color) => (
+          <radialGradient cx="35%" cy="30%" id={`bead-${colorId(color)}`} key={color} r="75%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity={0.92} />
+            <stop offset="42%" stopColor={color} stopOpacity={0.98} />
+            <stop offset="100%" stopColor={color} stopOpacity={1} />
+          </radialGradient>
+        ))}
       </defs>
+
+      {/* Colour depth behind the network -- three soft drifting auras tracing the
+          pipeline's palette so the card reads as a lit space. Reduced-motion safe. */}
+      <g opacity={0.18}>
+        <circle cx={360} cy={250} fill={SKY} filter="url(#auraBlur)" r={165}>
+          {animated && <animate attributeName="cy" dur="13s" repeatCount="indefinite" values="250;325;250" />}
+        </circle>
+        <circle cx={720} cy={430} fill={INDIGO} filter="url(#auraBlur)" r={175}>
+          {animated && <animate attributeName="cy" dur="17s" repeatCount="indefinite" values="430;355;430" />}
+        </circle>
+        <circle cx={1050} cy={300} fill={EMERALD} filter="url(#auraBlur)" r={150}>
+          {animated && <animate attributeName="cy" dur="15s" repeatCount="indefinite" values="300;370;300" />}
+        </circle>
+      </g>
 
       {LAYERS.slice(0, -1).map((layer, layerIndex) => (
         <EdgeGroup animated={animated} hovered={hovered} key={layerIndex} layerIndex={layerIndex} />
@@ -143,6 +187,8 @@ export function SystemMap() {
           )}
           {layer.nodes.map((node, nodeIndex) => (
             <Node
+              animated={animated}
+              focal={node.label === "Ejecutar" || node.label === "Descartar"}
               hovered={hovered?.layer === layerIndex && hovered.index === nodeIndex}
               key={nodeIndex}
               labelSide={layer.labelSide}
@@ -164,17 +210,27 @@ function EdgeGroup({ animated, hovered, layerIndex }: { animated: boolean; hover
   const fromX = COL_X[layerIndex];
   const toX = COL_X[layerIndex + 1];
 
-  const edges: Array<{ x1: number; y1: number; x2: number; y2: number; fromIdx: number; toIdx: number }> = [];
+  const edges: Array<{ x1: number; y1: number; x2: number; y2: number; fromIdx: number; toIdx: number; weight: number }> = [];
   from.nodes.forEach((_, i) => {
     to.nodes.forEach((__, j) => {
-      edges.push({ x1: fromX, y1: nodeY(from.nodes.length, i), x2: toX, y2: nodeY(to.nodes.length, j), fromIdx: i, toIdx: j });
+      edges.push({
+        x1: fromX,
+        y1: nodeY(from.nodes.length, i),
+        x2: toX,
+        y2: nodeY(to.nodes.length, j),
+        fromIdx: i,
+        toIdx: j,
+        weight: hash(i, j + layerIndex * 11)
+      });
     });
   });
 
-  // Keep this small: each pulse is one SMIL animation, and too many running at
-  // once (e.g. one per edge) is enough concurrent SMIL work to keep the tab from
-  // ever reaching an idle frame, which breaks headless screenshot capture.
-  const activePulses = animated ? [edges[Math.floor(edges.length * 0.22)], edges[Math.floor(edges.length * 0.68)]] : [];
+  // Send signal pulses down the three heaviest-weight edges of each layer, staggered
+  // in time. Bounded per layer (not one-per-edge) so total concurrent SMIL stays
+  // modest and the animation reads as deliberate signal flow, not noise.
+  const pulseEdges = animated
+    ? [...edges].sort((a, b) => b.weight - a.weight).slice(0, 3)
+    : [];
 
   return (
     <g>
@@ -182,13 +238,13 @@ function EdgeGroup({ animated, hovered, layerIndex }: { animated: boolean; hover
         const touchesHover =
           hovered && ((hovered.layer === layerIndex && hovered.index === edge.fromIdx) || (hovered.layer === layerIndex + 1 && hovered.index === edge.toIdx));
         const dimmed = hovered && !touchesHover;
-        const baseOpacity = 0.08 + hash(edge.fromIdx, edge.toIdx + layerIndex * 11) * 0.22;
+        const baseOpacity = 0.1 + edge.weight * 0.24;
         return (
           <line
             key={i}
-            opacity={dimmed ? 0.03 : touchesHover ? 0.85 : baseOpacity}
-            stroke={touchesHover ? to.color : from.color}
-            strokeWidth={touchesHover ? 2.2 : 0.9}
+            opacity={dimmed ? 0.035 : touchesHover ? 0.9 : baseOpacity}
+            stroke={touchesHover ? to.color : `url(#edge-${layerIndex})`}
+            strokeWidth={touchesHover ? 2.4 : 1}
             style={{ transition: "opacity 160ms ease, stroke-width 160ms ease" }}
             x1={edge.x1}
             x2={edge.x2}
@@ -197,23 +253,25 @@ function EdgeGroup({ animated, hovered, layerIndex }: { animated: boolean; hover
           />
         );
       })}
-      {activePulses.map((edge, i) => (
-        <circle fill={to.color} key={i} r={2.6}>
-          <animateMotion
-            begin={`${i * 1.1}s`}
-            dur="2.8s"
-            keyPoints="0;1;1"
-            keyTimes="0;0.85;1"
-            path={`M ${edge.x1} ${edge.y1} L ${edge.x2} ${edge.y2}`}
-            repeatCount="indefinite"
-          />
-        </circle>
-      ))}
+      {pulseEdges.map((edge, i) => {
+        const path = `M ${edge.x1} ${edge.y1} L ${edge.x2} ${edge.y2}`;
+        return (
+          // One animateMotion carries the whole spark (soft coloured halo + bright
+          // white core) down the wire -- a signal travelling the network.
+          <g key={`pulse-${i}`} opacity={hovered ? 0.35 : 1}>
+            <animateMotion begin={`${i * 0.9 + layerIndex * 0.25}s`} dur="2.6s" keyPoints="0;1;1" keyTimes="0;0.82;1" path={path} repeatCount="indefinite" />
+            <circle fill={to.color} filter="url(#pulseGlow)" r={7} />
+            <circle fill="#ffffff" r={2.8} />
+          </g>
+        );
+      })}
     </g>
   );
 }
 
 function Node({
+  animated,
+  focal,
   hovered,
   labelSide,
   node,
@@ -221,6 +279,8 @@ function Node({
   x,
   y
 }: {
+  animated: boolean;
+  focal: boolean;
   hovered: boolean;
   labelSide: Layer["labelSide"];
   node: NetNode;
@@ -228,7 +288,7 @@ function Node({
   x: number;
   y: number;
 }) {
-  const r = node.label === "Ejecutar" || node.label === "Descartar" ? 21 : 15;
+  const r = focal ? 21 : 15;
   const labelX = labelSide === "left" ? x - r - 11 : labelSide === "right" ? x + r + 11 : x;
   const labelY = labelSide === "below" ? y + r + 20 : y + 5;
   const anchor = labelSide === "left" ? "end" : labelSide === "right" ? "start" : "middle";
@@ -239,12 +299,16 @@ function Node({
       onMouseLeave={() => onHover(false)}
       style={{ cursor: node.label ? "pointer" : "default" }}
     >
-      {hovered && <circle cx={x} cy={y} fill={node.color} filter="url(#softBlur)" opacity={0.5} r={r + 14} />}
+      {/* Always-on soft glow so every node reads as lit; hover intensifies it.
+          The two decision nodes breathe gently as the focal points of the graph. */}
+      <circle cx={x} cy={y} fill={node.color} filter="url(#softBlur)" opacity={hovered ? 0.55 : focal ? 0.32 : 0.2} r={hovered ? r + 14 : r + 6}>
+        {animated && focal && !hovered && <animate attributeName="opacity" dur="2.4s" repeatCount="indefinite" values="0.22;0.5;0.22" />}
+      </circle>
       <circle
         cx={x}
         cy={y}
-        fill={node.color}
-        opacity={hovered ? 1 : 0.88}
+        fill={`url(#bead-${colorId(node.color)})`}
+        opacity={hovered ? 1 : 0.96}
         r={hovered ? r + 3 : r}
         stroke="white"
         strokeWidth={1.5}
