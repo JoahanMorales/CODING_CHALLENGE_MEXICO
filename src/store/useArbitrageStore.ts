@@ -183,6 +183,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
     if (mode === get().mode) return;
     stopGateway();
     stopLocalKernel();
+    resetPending();
     set({ mode, connected: false, connectionError: mode === "LIVE" ? "Conectando con el gateway de mercado..." : "", books: {}, opportunities: [], executionQueue: [], executionTransitions: [], trades: [], priceSeries: [], metrics: defaultMetrics, learning: defaultLearning });
     if (mode === "LIVE") startGateway(set, get().walletSeed);
     else startDemo(set, get().walletSeed);
@@ -203,6 +204,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   applyWalletSeed: () => {
     if (get().mode === "LIVE") return;
     stopLocalKernel();
+    resetPending();
     set({ connected: false, books: {}, opportunities: [], executionQueue: [], executionTransitions: [], trades: [], priceSeries: [], metrics: defaultMetrics, learning: defaultLearning });
     startDemo(set, get().walletSeed);
   },
@@ -449,13 +451,15 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
   }
 
   if (message.type === "BOOK") {
-    applyBookBatch(set, [message.book]);
+    pendingBooks.push(message.book);
+    scheduleFlush(set);
     return;
   }
 
   if (message.type === "BOOK_BATCH") {
     if (typeof document !== "undefined" && document.hidden) return;
-    applyBookBatch(set, message.books);
+    for (const book of message.books) pendingBooks.push(book);
+    scheduleFlush(set);
     return;
   }
 
@@ -465,10 +469,9 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
   }
 
   if (message.type === "OPPORTUNITY") {
-    set((state) => ({
-      opportunities: [message.opportunity, ...state.opportunities.filter((item) => item.id !== message.opportunity.id)].slice(0, 50),
-      executionQueue: message.queue
-    }));
+    pendingOpportunities.push(message.opportunity);
+    pendingQueue = message.queue;
+    scheduleFlush(set);
     return;
   }
 
@@ -489,7 +492,8 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
   }
 
   if (message.type === "LEARNING") {
-    set({ learning: message.summary });
+    pendingLearning = message.summary;
+    scheduleFlush(set);
     return;
   }
 
@@ -522,6 +526,69 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
 
   if (message.type === "RISK") set({ risk: message.risk });
   if (message.type === "METRICS") set({ metrics: message.metrics });
+}
+
+// Coalesce high-frequency store writes into a single flush per animation frame.
+// One demo tick (every 220ms) synchronously emits ~7 BTC book updates, ~24
+// opportunity updates AND ~33 learning-summary updates -- measured ~62 store
+// writes/second, and with the terminal's no-selector subscription that is ~62
+// full re-renders/second of the 84KB tree + its recharts panels. Every message in
+// one tick arrives in a single synchronous burst (EventBus.emit is synchronous),
+// so buffering them and flushing once per frame collapses a tick to at most two
+// store writes with no visible loss: the eye can't resolve 62fps updates from a
+// 220ms data cadence, and none of these payloads are individually meaningful
+// (books/queue/learning are latest-wins; opportunities accumulate in order).
+let pendingBooks: NormalizedOrderBook[] = [];
+let pendingOpportunities: Opportunity[] = [];
+let pendingQueue: Opportunity[] | null = null;
+let pendingLearning: LearningSummary | null = null;
+let flushScheduled = false;
+
+function scheduleFlush(set: StoreSet): void {
+  if (flushScheduled) return;
+  flushScheduled = true;
+  const schedule =
+    typeof requestAnimationFrame !== "undefined"
+      ? requestAnimationFrame
+      : (callback: (time: number) => void) => setTimeout(() => callback(Date.now()), 16);
+  schedule(() => {
+    flushScheduled = false;
+    const books = pendingBooks;
+    const opportunities = pendingOpportunities;
+    const queue = pendingQueue;
+    const learning = pendingLearning;
+    pendingBooks = [];
+    pendingOpportunities = [];
+    pendingQueue = null;
+    pendingLearning = null;
+    // Book side effects (flash direction, latency, price series) live in their
+    // own writer; run it first so a tick that carries both is at most two writes.
+    if (books.length) applyBookBatch(set, books);
+    if (opportunities.length || queue || learning) {
+      set((state) => {
+        const next: Partial<ArbitrageState> = {};
+        if (opportunities.length) {
+          // Replay the per-message dedup (newest-first, unique by id, cap 50) so a
+          // coalesced batch yields the exact list the un-batched path would have.
+          let list = state.opportunities;
+          for (const opportunity of opportunities) {
+            list = [opportunity, ...list.filter((item) => item.id !== opportunity.id)];
+          }
+          next.opportunities = list.slice(0, 50);
+        }
+        if (queue) next.executionQueue = queue;
+        if (learning) next.learning = learning;
+        return next;
+      });
+    }
+  });
+}
+
+function resetPending(): void {
+  pendingBooks = [];
+  pendingOpportunities = [];
+  pendingQueue = null;
+  pendingLearning = null;
 }
 
 function applyBookBatch(set: StoreSet, incomingBooks: NormalizedOrderBook[]): void {
