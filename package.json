@@ -19,6 +19,8 @@
     "train": "tsx scripts/trainModel.ts",
     "train:search": "tsx scripts/trainSeedSearch.ts",
     "train:search:max": "tsx scripts/trainSeedSearch.ts 36 180",
+    "train:neural": "tsx scripts/trainNeural.ts",
+    "study:neural": "tsx scripts/neuralStudy.ts",
     "record": "tsx scripts/recordTape.ts",
     "record:ws": "tsx scripts/recordTapeWs.ts",
     "analyze:tape": "tsx scripts/analyzeTape.ts",
