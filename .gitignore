@@ -23,6 +23,11 @@ scripts/railway_keepalive.py
 __pycache__/
 *.pyc
 
+# GPU trainer working data + run outputs (regenerable; large CSVs / logs).
+# The exported candidate model (public/model/neural-edge-gpu.json) IS tracked.
+scripts/gpu/data/
+scripts/gpu/out/
+
 .vercel
 
 # Personal hackathon committee submissions / source renders (kept local only)
