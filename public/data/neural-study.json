@@ -1,20 +1,20 @@
 {
-  "generatedAt": "2026-07-06T19:43:10.279Z",
+  "generatedAt": "2026-07-07T22:13:37.560Z",
   "source": "generator",
-  "heldOutSamples": 12001,
-  "winners": 4172,
-  "winRatePct": 34.8,
+  "heldOutSamples": 15001,
+  "winners": 5241,
+  "winRatePct": 34.9,
   "tree": {
-    "auc": 0.9832,
+    "auc": 0.9827,
     "brier": 0.0324
   },
   "neural": {
-    "auc": 0.9977,
-    "brier": 0.0194
+    "auc": 0.9976,
+    "brier": 0.0196
   },
   "committee": {
-    "auc": 0.9974,
-    "brier": 0.022
+    "auc": 0.9971,
+    "brier": 0.0224
   },
   "neuralArch": [
     24,
@@ -22,5 +22,5 @@
     16,
     1
   ],
-  "takeaway": "Árbol y red neuronal discriminan casi idéntico (AUC 0.9832 vs 0.9977); el comité queda entre ambos. La diversidad de modelo está disponible como segunda opinión aunque en esta distribución el árbol ya domina."
+  "takeaway": "En este held-out la red neuronal es el modelo individual más fuerte (AUC 0.9976, Brier 0.0196); el comité promedia ambas opiniones como segunda voz robusta. Dos modelos independientes de arquitectura distinta reducen el riesgo de que una sola familia se equivoque en conjunto."
 }

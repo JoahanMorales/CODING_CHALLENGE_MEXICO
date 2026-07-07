@@ -19,7 +19,8 @@ import type { ExchangeId, NormalizedOrderBook } from "../src/lib/types";
 const tapePath = process.argv[2];
 if (!tapePath) { console.error("Uso: npx tsx scripts/dumpReversionData.ts <tape.jsonl>"); process.exit(1); }
 const outBin = process.argv[3] ?? "scripts/gpu/data/reversion-samples.f32";
-const outMeta = "scripts/gpu/data/reversion-meta.json";
+// Derive the meta path from the binary so per-horizon dumps don't clobber each other.
+const outMeta = outBin.replace(/\.[^.]+$/, "") + ".meta.json";
 
 const { MlEdgeTensor } = await import("../src/lib/services/MlEdgeTensor");
 const { EXCHANGE_IDS } = await import("../src/lib/config/exchanges");
@@ -35,7 +36,7 @@ const FEATURE_KEYS = [
 const NF = FEATURE_KEYS.length;
 const COLS = NF + 2; // features + label + round
 
-const WINDOW = 24, LOOKAHEAD = 8, Z_ENTRY = 1.0, REVERT_FRAC = 0.4; // identical to reversionStudy
+const WINDOW = 24, LOOKAHEAD = Number(process.env.LOOKAHEAD ?? 8), Z_ENTRY = 1.0, REVERT_FRAC = 0.4; // LOOKAHEAD overridable for horizon sweeps
 
 function midFromLevels(book: NormalizedOrderBook): number {
   const bid = Number(book.bids[0]?.price ?? 0);

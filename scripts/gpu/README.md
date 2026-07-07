@@ -37,9 +37,39 @@ training on CUDA with val AUC climbing past 0.85 in a fraction of a second.
 
 Full power for training: `sudo nvpmodel -m 2 && sudo jetson_clocks` (MAXN_SUPER).
 
-## Next step (not done yet)
+## Done: PyTorch port + real-tape study
 
-Port `scripts/trainNeural.ts` to PyTorch here: reuse the same 24-feature
-synthetic generator + real-tape features, train on GPU, and export weights back
-to the `public/model/neural-edge.json` schema the TS inference reads so the
-committee stays a drop-in. `verify_torch.py` is the working skeleton to build on.
+`scripts/trainNeural.ts` is ported to PyTorch here. See `FINDINGS.md` for the full
+results; the honest bottom line is that the deep model matches the shipped one on
+the synthetic task (and is more robust), while on real tape the reversion signal it
+finds is mechanical and untradeable at retail fees.
+
+Pipeline:
+
+```bash
+# Synthetic task (drop-in for the committee):
+npm run train:neural:gpu              # dump -> GPU sweep -> verify export
+npm run verify:neural:gpu             # re-check the export via real TS inference
+
+# Real-tape spread reversion:
+npm run dump:reversion data/tape-XXXX.jsonl        # streaming, observeBook live, float32 binary
+DATA=scripts/gpu/data/reversion-samples.f32 META=scripts/gpu/data/reversion-meta.json \
+  OUT_MODEL=public/model/neural-edge-reversion-gpu.json TAG=reversion \
+  COMPARE_COMMITTED=0 SWEEP=small EPOCHS=120 BATCH=2048 \
+  .venv/bin/python scripts/gpu/train_neural_gpu.py
+npx tsx scripts/reversionBacktest.ts data/tape-XXXX.jsonl   # tradeability vs fees
+```
+
+- `train_neural_gpu.py`: CUDA trainer, hyperparam sweep, honest round-disjoint
+  train/val/**test** split, drop-in export. Reads CSV or fast float32 binary. Env:
+  `DATA META OUT_MODEL TAG EPOCHS BATCH SWEEP(full|small|quick) COMPARE_COMMITTED`.
+- `verify_torch.py`: the original GPU smoke test.
+
+**Key gotcha:** TS `matVec` uses `out[j]+=x[i]*W[i][j]`, so exported `W` is `[in][out]`
+= the transpose of `nn.Linear.weight`. And floor near-zero-variance features before
+z-scoring (`std<1e-8 → 1`) or the net fits amplified floating-point dust and turns
+fragile.
+
+## Next
+
+A bigger sequence model (GRU / temporal-CNN) for spread reversion on the real tape.

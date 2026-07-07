@@ -349,7 +349,7 @@ def main():
     if baseline:
         print(f"  committed test   : {baseline[0]:.4f}  -> beats: {report['beatsCommitted']}")
     print(f"  model exported   : {OUT_MODEL}")
-    print(f"  report           : {os.path.join(OUT_DIR, 'sweep-report.md')}")
+    print(f"  report           : {os.path.join(OUT_DIR, f'{TAG}-report.md')}")
 
 
 if __name__ == "__main__":

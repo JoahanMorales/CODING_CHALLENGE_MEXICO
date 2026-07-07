@@ -141,7 +141,12 @@ const std = new Array(NF).fill(0);
 for (const s of samples) for (let j = 0; j < NF; j += 1) mean[j] += s.x[j];
 for (let j = 0; j < NF; j += 1) mean[j] /= samples.length;
 for (const s of samples) for (let j = 0; j < NF; j += 1) std[j] += (s.x[j] - mean[j]) ** 2;
-for (let j = 0; j < NF; j += 1) std[j] = Math.sqrt(std[j] / samples.length) || 1;
+// Floor NEAR-zero variance, not just exact-zero: features that are effectively
+// constant (e.g. buy/sellImbalance == 1/24) otherwise get std ~1e-14, and z-scoring
+// then divides floating-point dust by it -- the amplified noise dominates and the
+// net becomes fragile (a tiny input perturbation flips predictions). Treating them
+// as std=1 neutralises the constant instead of amplifying its noise.
+for (let j = 0; j < NF; j += 1) { const s = Math.sqrt(std[j] / samples.length); std[j] = s < 1e-8 ? 1 : s; }
 const norm = (x: number[]) => x.map((v, j) => (v - mean[j]) / std[j]);
 
 // Round-disjoint split: last 20% of rounds held out (never trained on).

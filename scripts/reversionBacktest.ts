@@ -19,7 +19,7 @@ const outPath = process.argv[3] ?? "scripts/gpu/out/reversion-backtest.json";
 const { EXCHANGE_IDS, EXCHANGE_FEES } = await import("../src/lib/config/exchanges");
 const takerBps = (e: ExchangeId) => Number(EXCHANGE_FEES[e].taker) * 10000;
 
-const WINDOW = 24, LOOKAHEAD = 8, Z_ENTRY = 1.0, REVERT_FRAC = 0.4;
+const WINDOW = 24, LOOKAHEAD = Number(process.env.LOOKAHEAD ?? 8), Z_ENTRY = 1.0, REVERT_FRAC = 0.4;
 
 function midFromLevels(book: NormalizedOrderBook): number {
   const bid = Number(book.bids[0]?.price ?? 0);

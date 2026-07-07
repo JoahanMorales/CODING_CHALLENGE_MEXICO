@@ -65,7 +65,19 @@ export function NeuralHero() {
     scene.fog = new THREE.FogExp2(0x070b16, 0.055);
 
     const camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 100);
-    camera.position.set(0, 0.1, 9.6);
+    // Frame the whole network for ANY aspect ratio: on narrow/portrait screens
+    // (mobile) a fixed camera distance clips the outer columns off the sides, so
+    // pull the camera back far enough that the full width *and* height fit. Called
+    // again on every resize.
+    const HALF_W = X_SPAN / 2 + 0.9; // horizontal extent incl. glow margin
+    const HALF_H = 3 * Y_GAP + 0.9; // tallest layer (7 nodes) half-height + margin
+    function fitCamera(): void {
+      const tan = Math.tan(((camera.fov * Math.PI) / 180) / 2);
+      const dForWidth = HALF_W / (tan * camera.aspect);
+      const dForHeight = HALF_H / tan;
+      camera.position.set(0, 0.1, Math.max(dForWidth, dForHeight) + 0.9);
+    }
+    fitCamera();
 
     // WebGL context creation throws ("Error creating WebGL context.") when the
     // browser can't give us a GPU context -- headless/VNC/software-render setups
@@ -252,8 +264,10 @@ export function NeuralHero() {
       width = mount!.clientWidth || width;
       height = mount!.clientHeight || height;
       camera.aspect = width / height;
+      fitCamera();
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
+      if (reduce) renderer.render(scene, camera);
     };
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
