@@ -54,6 +54,25 @@ Even a perfect crystal ball capturing every reversion nets deeply negative after
 model — whatever its AUC — makes this profitable at retail taker fees. This is the concrete,
 model-independent proof of why execution stays gated.
 
+## 5. Horizon sweep — predictability vs profitability (`horizon_sweep.sh`)
+Does a different markout horizon (LOOKAHEAD, in rounds) rescue the signal? Ran
+dump → GPU train → backtest for LOOKAHEAD ∈ {4, 8, 16, 32} on the full real tape.
+
+| horizon | test AUC | base rate | gross (perfect foresight) | net vs fee | % beat fee |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 0.649 | 31.9% | 1.33 bps | **−83.9 bps** | 0% |
+| 8 | 0.648 | 36.8% | 1.30 bps | −83.4 bps | 0% |
+| 16 | 0.667 | 39.4% | 1.28 bps | −83.0 bps | 0% |
+| 32 | 0.683 | 40.4% | 1.32 bps | −82.9 bps | 0% |
+
+**Predictability ≠ profitability.** Longer horizons are *more* learnable (AUC 0.65 → 0.68,
+base rate 32% → 40%), yet the capturable edge stays ~1.3 bps — an order of magnitude under
+the 40 bps cheapest round-trip fee, at every horizon. No horizon makes it tradeable.
+
+(Gotcha learned here: the Orin GPU shares system RAM, so CUDA init fails with a browser
+open — `NvMapMemAlloc error 12` — and torch silently crawls on CPU. Run GPU jobs with
+Chromium closed.)
+
 ## Honest bottom line
 The deep model genuinely learns real market structure (a step up from the tree's ~0.5), but
 that structure is **mechanical mean-reversion, untradeable at retail fees**. This **refines**
