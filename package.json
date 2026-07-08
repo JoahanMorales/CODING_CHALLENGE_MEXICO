@@ -31,7 +31,8 @@
     "study:reversion": "tsx scripts/reversionStudy.ts",
     "study:triangular": "tsx scripts/triangularStudy.ts",
     "study:portfolio": "tsx scripts/portfolioStudy.ts",
-    "backtest": "tsx scripts/backtest.ts"
+    "backtest": "tsx scripts/backtest.ts",
+    "study:fee": "tsx scripts/feeThresholdSweep.ts"
   },
   "dependencies": {
     "decimal.js": "^10.4.3",

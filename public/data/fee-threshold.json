@@ -1,0 +1,119 @@
+{
+  "generatedAt": "2026-07-08T04:53:38.094Z",
+  "tape": "data/tape-jetson-overnight-20260705-233226.jsonl",
+  "rounds": 61915,
+  "crossDislocations": 2502278,
+  "grossSpreadBps": {
+    "min": 0,
+    "p50": 1.4,
+    "p95": 15.05,
+    "max": 45.18
+  },
+  "meanRetailRoundTripFeeBps": 65.73,
+  "breakEvenFeeBps": {
+    "forHalfProfitable": 1.4,
+    "forTop5Profitable": 15.05
+  },
+  "feeTiers": [
+    {
+      "name": "Retail taker (peor par)",
+      "roundTripBps": 120,
+      "profitablePct": 0
+    },
+    {
+      "name": "Retail taker (mejor par)",
+      "roundTripBps": 20,
+      "profitablePct": 0.24
+    },
+    {
+      "name": "VIP taker (~4 bps/leg)",
+      "roundTripBps": 8,
+      "profitablePct": 28.93
+    },
+    {
+      "name": "Maker-maker (~1 bps/leg)",
+      "roundTripBps": 2,
+      "profitablePct": 40.24
+    },
+    {
+      "name": "Rebate venue (~-2 bps/leg)",
+      "roundTripBps": -4,
+      "profitablePct": 100
+    }
+  ],
+  "curve": [
+    {
+      "roundTripFeeBps": -5,
+      "profitablePct": 100,
+      "netPnlUsd": 2388162,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": -2,
+      "profitablePct": 100,
+      "netPnlUsd": 1662943,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 0,
+      "profitablePct": 99.85,
+      "netPnlUsd": 1179464,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 1,
+      "profitablePct": 59.75,
+      "netPnlUsd": 991593,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 2,
+      "profitablePct": 40.24,
+      "netPnlUsd": 874566,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 4,
+      "profitablePct": 30.75,
+      "netPnlUsd": 701946,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 8,
+      "profitablePct": 28.93,
+      "netPnlUsd": 388044,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 12,
+      "profitablePct": 17.94,
+      "netPnlUsd": 117728,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 20,
+      "profitablePct": 0.24,
+      "netPnlUsd": 1246,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 30,
+      "profitablePct": 0,
+      "netPnlUsd": 21,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 40,
+      "profitablePct": 0,
+      "netPnlUsd": 0,
+      "grossPnlUsd": 1179464
+    },
+    {
+      "roundTripFeeBps": 60,
+      "profitablePct": 0,
+      "netPnlUsd": 0,
+      "grossPnlUsd": 1179464
+    }
+  ],
+  "verdict": "Se necesitaría un fee round-trip <= 1.4 bps para que la mitad de las dislocaciones sean rentables -- por debajo del retail taker (>=20 bps) y solo alcanzable como maker/VIP; a fees retail el arbitraje es estructuralmente ruinoso."
+}
