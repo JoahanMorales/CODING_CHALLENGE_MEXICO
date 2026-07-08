@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AetPipelineDiagram } from "@/components/AetPipelineDiagram";
+import { DecisionNetworkCard } from "@/components/DecisionNetworkCard";
 import { IntelligenceCalibration } from "@/components/IntelligenceCalibration";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
 import { PublicSiteHeader } from "@/components/PublicSiteHeader";
@@ -92,9 +93,22 @@ export default function IntelligencePage() {
                 El resultado es una decisión trazable: ejecutar, reducir tamaño, observar o descartar.
               </p>
             </div>
-            <div className="h-[460px] overflow-hidden rounded-3xl border border-sky-100 bg-white/85 backdrop-blur elev-lift sm:h-[560px] lg:h-[640px]">
-              <SystemMap />
-            </div>
+            <DecisionNetworkCard className="fade-up h-[460px] sm:h-[560px] lg:h-[640px]" />
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-sky-100 px-5 py-12">
+        <div className="mx-auto max-w-7xl">
+          <p className="font-mono text-[10px] font-black uppercase text-sky-700">La red de decisión, anotada</p>
+          <h2 className="mt-2 max-w-3xl text-3xl font-black text-zinc-950">Las mismas capas, ahora etiquetadas nodo por nodo</h2>
+          <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-zinc-500">
+            El diagrama de arriba muestra el flujo; este lo abre: qué venue, qué feature, qué estrategia y qué gate vive en cada columna,
+            hasta el veredicto final —{" "}
+            <span className="font-black text-emerald-600">ejecutar</span> o <span className="font-black text-rose-500">descartar</span>.
+          </p>
+          <div className="mt-6 h-[420px] overflow-hidden rounded-3xl border border-sky-100 bg-white/85 backdrop-blur elev-lift sm:h-[520px]">
+            <SystemMap />
           </div>
         </div>
       </section>
