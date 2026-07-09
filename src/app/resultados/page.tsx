@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { FeeThresholdPanel } from "@/components/FeeThresholdPanel";
+import { MakerEdgePanel } from "@/components/MakerEdgePanel";
 import { NeuralCommitteePanel } from "@/components/NeuralCommitteePanel";
 import { OperatingPointPanel } from "@/components/OperatingPointPanel";
 import { PortfolioSynthesis } from "@/components/PortfolioSynthesis";
@@ -29,6 +30,7 @@ export default function ResultsPage() {
           <NeuralCommitteePanel />
           <RealMarketEvidence />
           <FeeThresholdPanel />
+          <MakerEdgePanel />
           <OperatingPointPanel />
           <PortfolioSynthesis />
         </div>

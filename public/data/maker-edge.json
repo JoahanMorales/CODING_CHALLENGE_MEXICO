@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-07-09T01:35:55.403Z",
+  "tape": "data/tape-jetson-hackathon-20260707-220253.jsonl",
+  "rounds": 90458,
+  "markoutRounds": 8,
+  "liquidVenues": {
+    "meanHalfSpreadBps": 0.0065,
+    "meanMidMoveBps": 1.211,
+    "ratio": 186
+  },
+  "bestRealRebateBps": 2.5,
+  "perVenue": [
+    {
+      "venue": "binance",
+      "label": "Binance",
+      "samples": 90450,
+      "halfSpreadBps": 0.0008,
+      "midMoveBps": 1.195,
+      "ratio": 1447.6,
+      "breakevenRebateBps": 1.195,
+      "makerFeeBps": 10
+    },
+    {
+      "venue": "coinbase",
+      "label": "Coinbase",
+      "samples": 90450,
+      "halfSpreadBps": 0.0063,
+      "midMoveBps": 1.129,
+      "ratio": 178.6,
+      "breakevenRebateBps": 1.123,
+      "makerFeeBps": 40
+    },
+    {
+      "venue": "okx",
+      "label": "OKX",
+      "samples": 90449,
+      "halfSpreadBps": 0.0082,
+      "midMoveBps": 1.32,
+      "ratio": 161.4,
+      "breakevenRebateBps": 1.312,
+      "makerFeeBps": 8
+    },
+    {
+      "venue": "bybit",
+      "label": "Bybit",
+      "samples": 90449,
+      "halfSpreadBps": 0.0082,
+      "midMoveBps": 1.3,
+      "ratio": 158.3,
+      "breakevenRebateBps": 1.292,
+      "makerFeeBps": 10
+    },
+    {
+      "venue": "gate",
+      "label": "Gate",
+      "samples": 90446,
+      "halfSpreadBps": 0.0091,
+      "midMoveBps": 1.112,
+      "ratio": 122.1,
+      "breakevenRebateBps": 1.103,
+      "makerFeeBps": 10
+    },
+    {
+      "venue": "kraken",
+      "label": "Kraken",
+      "samples": 90450,
+      "halfSpreadBps": 0.1003,
+      "midMoveBps": 0.833,
+      "ratio": 8.3,
+      "breakevenRebateBps": 0.732,
+      "makerFeeBps": 16
+    },
+    {
+      "venue": "bitfinex",
+      "label": "Bitfinex",
+      "samples": 90449,
+      "halfSpreadBps": 1.1568,
+      "midMoveBps": 0.875,
+      "ratio": 0.8,
+      "breakevenRebateBps": 0,
+      "makerFeeBps": 10
+    }
+  ],
+  "verdict": "En las venues líquidas el medio spread es ~0.007 bps (1 tick — casi nada que capturar), pero el mid se mueve ~1.21 bps durante la vida de la quote (~8 rondas): el riesgo es ~186× el spread. O sea el spread NO compensa el riesgo de inventario: el market-making pasivo aquí no es un juego de capturar spread, es un juego de rebate/latencia. Incluso el mejor rebate real (~2.5 bps) queda por debajo del movimiento adverso típico, y si el neto sobrevive depende de la dinámica de fills que los snapshots L2 no pueden resolver — por eso no afirmamos un edge neto único. Honesto: sin ventaja de latencia o rebates agresivos, no hay almuerzo gratis del lado maker tampoco."
+}
