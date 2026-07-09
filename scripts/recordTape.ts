@@ -117,6 +117,10 @@ const fetchers: Record<ExchangeId, () => Promise<NormalizedOrderBook | null>> = 
     const data = await getJson("https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=5");
     return makeBook("binance", levels(isRecord(data) ? data.bids : null), levels(isRecord(data) ? data.asks : null), "USDT", "BTC/USDT", 0);
   },
+  async bitstamp() {
+    const data = await getJson("https://www.bitstamp.net/api/v2/order_book/btcusd/");
+    return makeBook("bitstamp", levels(isRecord(data) ? data.bids : null), levels(isRecord(data) ? data.asks : null), "USD", "BTC/USD", 0);
+  },
   async okx() {
     const data = await getJson("https://www.okx.com/api/v5/market/books?instId=BTC-USDT&sz=5");
     const book = readArray(data, "data")?.find(isRecord);

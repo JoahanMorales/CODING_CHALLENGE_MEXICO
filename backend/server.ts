@@ -349,6 +349,7 @@ class ExchangeConnector {
     this.connectBybit();
     this.connectBitfinex();
     this.connectGate();
+    this.connectBitstamp();
     this.poller = setInterval(() => void this.pollRealRestFallback(), 2500);
     setInterval(() => broadcast({ type: "EXCHANGE_STATUS", statuses: this.statuses() }), 1800);
     void this.pollQuoteBasis();
@@ -409,6 +410,36 @@ class ExchangeConnector {
       this.mark("binance", "websocket", "live");
     });
     this.attachReconnect("binance", socket, () => this.connectBinance());
+  }
+
+  // Bitstamp: a lower-liquidity European venue quoted in USD. Its top-of-book
+  // lags the high-volume venues during fast moves, so it surfaces the widest
+  // cross-exchange divergences -- the real raw material for arbitrage. Simple WS:
+  // subscribe to the full order_book channel, take the top levels each snapshot.
+  private connectBitstamp(): void {
+    this.mark("bitstamp", "websocket", "connecting");
+    const socket = new WebSocket("wss://ws.bitstamp.net");
+    socket.on("open", () => {
+      socket.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "order_book_btcusd" } }));
+    });
+    socket.on("message", (payload) => {
+      const parsed = safeParse(payload.toString());
+      if (readString(parsed, "event") !== "data") return;
+      const data = readRecord(parsed, "data");
+      if (!data) return;
+      const bids = levelsFromUnknown(data.bids).slice(0, 10);
+      const asks = levelsFromUnknown(data.asks).slice(0, 10);
+      if (!bids.length || !asks.length) return;
+      const micro = readStringOrNumber(data, "microtimestamp");
+      const ts = micro ? Math.floor(Number(micro) / 1000) : Date.now();
+      this.ingest(this.makeBook("bitstamp", "BTC/USDT", bids, asks, Number.isFinite(ts) ? ts : Date.now(), {
+        sourceSymbol: "BTC/USD",
+        quoteAsset: "USD",
+        snapshot: true
+      }));
+      this.mark("bitstamp", "websocket", "live");
+    });
+    this.attachReconnect("bitstamp", socket, () => this.connectBitstamp());
   }
 
   private connectKraken(): void {
