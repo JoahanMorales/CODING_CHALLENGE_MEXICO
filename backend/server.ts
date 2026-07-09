@@ -350,6 +350,7 @@ class ExchangeConnector {
     this.connectBitfinex();
     this.connectGate();
     this.connectBitstamp();
+    void this.connectKuCoin();
     this.poller = setInterval(() => void this.pollRealRestFallback(), 2500);
     setInterval(() => broadcast({ type: "EXCHANGE_STATUS", statuses: this.statuses() }), 1800);
     void this.pollQuoteBasis();
@@ -440,6 +441,44 @@ class ExchangeConnector {
       this.mark("bitstamp", "websocket", "live");
     });
     this.attachReconnect("bitstamp", socket, () => this.connectBitstamp());
+  }
+
+  // KuCoin: high-volume BTC/USDT venue. Its public WS needs a token from a REST
+  // handshake (bullet-public) and a periodic ping to stay alive; the level2Depth5
+  // topic then pushes clean top-5 snapshots. Clean USDT quote -> directly comparable.
+  private async connectKuCoin(): Promise<void> {
+    this.mark("kucoin", "websocket", "connecting");
+    try {
+      const res = await fetch("https://api.kucoin.com/api/v1/bullet-public", { method: "POST" });
+      const json = (await res.json()) as { data?: { token?: string; instanceServers?: Array<{ endpoint?: string; pingInterval?: number }> } };
+      const token = json.data?.token;
+      const server = json.data?.instanceServers?.[0];
+      if (!token || !server?.endpoint) throw new Error("kucoin: no ws token");
+      const socket = new WebSocket(`${server.endpoint}?token=${token}&connectId=arbitrai-${Date.now()}`);
+      let ping: ReturnType<typeof setInterval> | null = null;
+      socket.on("open", () => {
+        socket.send(JSON.stringify({ id: Date.now(), type: "subscribe", topic: "/spotMarket/level2Depth5:BTC-USDT", response: true }));
+        ping = setInterval(() => {
+          if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ id: Date.now(), type: "ping" }));
+        }, Math.max(10000, (server.pingInterval ?? 18000) - 2000));
+      });
+      socket.on("message", (payload) => {
+        const parsed = safeParse(payload.toString());
+        if (readString(parsed, "type") !== "message") return;
+        const data = readRecord(parsed, "data");
+        if (!data) return;
+        const bids = levelsFromUnknown(data.bids).slice(0, 5);
+        const asks = levelsFromUnknown(data.asks).slice(0, 5);
+        if (!bids.length || !asks.length) return;
+        this.ingest(this.makeBook("kucoin", "BTC/USDT", bids, asks, Date.now(), { snapshot: true }));
+        this.mark("kucoin", "websocket", "live");
+      });
+      socket.on("close", () => { if (ping) clearInterval(ping); });
+      this.attachReconnect("kucoin", socket, () => void this.connectKuCoin());
+    } catch {
+      this.mark("kucoin", "websocket", "error");
+      setTimeout(() => void this.connectKuCoin(), 5000);
+    }
   }
 
   private connectKraken(): void {
