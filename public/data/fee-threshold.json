@@ -1,18 +1,18 @@
 {
-  "generatedAt": "2026-07-08T04:53:38.094Z",
-  "tape": "data/tape-jetson-overnight-20260705-233226.jsonl",
-  "rounds": 61915,
-  "crossDislocations": 2502278,
+  "generatedAt": "2026-07-09T03:03:55.771Z",
+  "tape": "data/tape-jetson-hackathon-20260707-220253.jsonl",
+  "rounds": 90458,
+  "crossDislocations": 3610216,
   "grossSpreadBps": {
     "min": 0,
-    "p50": 1.4,
-    "p95": 15.05,
-    "max": 45.18
+    "p50": 1.3,
+    "p95": 8.98,
+    "max": 29.08
   },
-  "meanRetailRoundTripFeeBps": 65.73,
+  "meanRetailRoundTripFeeBps": 65.43,
   "breakEvenFeeBps": {
-    "forHalfProfitable": 1.4,
-    "forTop5Profitable": 15.05
+    "forHalfProfitable": 1.3,
+    "forTop5Profitable": 8.98
   },
   "feeTiers": [
     {
@@ -23,17 +23,17 @@
     {
       "name": "Retail taker (mejor par)",
       "roundTripBps": 20,
-      "profitablePct": 0.24
+      "profitablePct": 0
     },
     {
       "name": "VIP taker (~4 bps/leg)",
       "roundTripBps": 8,
-      "profitablePct": 28.93
+      "profitablePct": 10.29
     },
     {
       "name": "Maker-maker (~1 bps/leg)",
       "roundTripBps": 2,
-      "profitablePct": 40.24
+      "profitablePct": 39.23
     },
     {
       "name": "Rebate venue (~-2 bps/leg)",
@@ -45,75 +45,75 @@
     {
       "roundTripFeeBps": -5,
       "profitablePct": 100,
-      "netPnlUsd": 2388162,
-      "grossPnlUsd": 1179464
+      "netPnlUsd": 2532235,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": -2,
       "profitablePct": 100,
-      "netPnlUsd": 1662943,
-      "grossPnlUsd": 1179464
+      "netPnlUsd": 1573374,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 0,
-      "profitablePct": 99.85,
-      "netPnlUsd": 1179464,
-      "grossPnlUsd": 1179464
+      "profitablePct": 99.84,
+      "netPnlUsd": 934134,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 1,
-      "profitablePct": 59.75,
-      "netPnlUsd": 991593,
-      "grossPnlUsd": 1179464
+      "profitablePct": 57.47,
+      "netPnlUsd": 696006,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 2,
-      "profitablePct": 40.24,
-      "netPnlUsd": 874566,
-      "grossPnlUsd": 1179464
+      "profitablePct": 39.23,
+      "netPnlUsd": 552211,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 4,
-      "profitablePct": 30.75,
-      "netPnlUsd": 701946,
-      "grossPnlUsd": 1179464
+      "profitablePct": 29.66,
+      "netPnlUsd": 336693,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 8,
-      "profitablePct": 28.93,
-      "netPnlUsd": 388044,
-      "grossPnlUsd": 1179464
+      "profitablePct": 10.29,
+      "netPnlUsd": 41867,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 12,
-      "profitablePct": 17.94,
-      "netPnlUsd": 117728,
-      "grossPnlUsd": 1179464
+      "profitablePct": 0.38,
+      "netPnlUsd": 1458,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 20,
-      "profitablePct": 0.24,
-      "netPnlUsd": 1246,
-      "grossPnlUsd": 1179464
+      "profitablePct": 0,
+      "netPnlUsd": 18,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 30,
       "profitablePct": 0,
-      "netPnlUsd": 21,
-      "grossPnlUsd": 1179464
+      "netPnlUsd": 0,
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 40,
       "profitablePct": 0,
       "netPnlUsd": 0,
-      "grossPnlUsd": 1179464
+      "grossPnlUsd": 934134
     },
     {
       "roundTripFeeBps": 60,
       "profitablePct": 0,
       "netPnlUsd": 0,
-      "grossPnlUsd": 1179464
+      "grossPnlUsd": 934134
     }
   ],
-  "verdict": "Se necesitaría un fee round-trip <= 1.4 bps para que la mitad de las dislocaciones sean rentables -- por debajo del retail taker (>=20 bps) y solo alcanzable como maker/VIP; a fees retail el arbitraje es estructuralmente ruinoso."
+  "verdict": "Se necesitaría un fee round-trip <= 1.3 bps para que la mitad de las dislocaciones sean rentables -- por debajo del retail taker (>=20 bps) y solo alcanzable como maker/VIP; a fees retail el arbitraje es estructuralmente ruinoso."
 }
