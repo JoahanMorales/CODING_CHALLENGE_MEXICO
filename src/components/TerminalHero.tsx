@@ -1,5 +1,6 @@
 "use client";
 
+import { EXCHANGE_IDS } from "@/lib/config/exchanges";
 import { useArbitrageStore } from "@/store/useArbitrageStore";
 
 // A prominent live scoreboard pinned to the top of the terminal: cumulative net
@@ -55,7 +56,7 @@ export function TerminalHero() {
       ) : (
         <span className="ml-auto flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-white/35">
           <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
-          Escaneando 9 exchanges en vivo…
+          Escaneando {EXCHANGE_IDS.length} exchanges en vivo…
         </span>
       )}
     </div>
