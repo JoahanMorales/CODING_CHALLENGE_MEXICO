@@ -36,7 +36,7 @@ function sleep(ms: number): Promise<void> {
 // Per-fetch timeout: a venue that doesn't answer within the budget is simply
 // absent from this round, so its last book goes stale relative to the venues that
 // did answer -- which is exactly the real staleness LATENCY_ARB looks for.
-async function getJson(url: string, timeoutMs = 600): Promise<unknown> {
+async function getJson(url: string, timeoutMs = 1500): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
