@@ -1,4 +1,4 @@
-export type ExchangeId = "binance" | "kraken" | "coinbase" | "okx" | "bybit" | "bitfinex" | "gate" | "bitstamp" | "kucoin";
+export type ExchangeId = "binance" | "kraken" | "coinbase" | "okx" | "bybit" | "bitfinex" | "gate" | "bitstamp";
 
 export type SymbolId = "BTC/USDT" | "ETH/USDT" | "ETH/BTC";
 
@@ -104,7 +104,6 @@ export interface PricePoint {
   bitfinex?: number;
   gate?: number;
   bitstamp?: number;
-  kucoin?: number;
 }
 
 export interface ExchangeConnectionStatus {

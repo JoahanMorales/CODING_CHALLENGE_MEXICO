@@ -7,7 +7,7 @@ export interface ExchangeFeeConfig {
   reliability: number;
 }
 
-export const EXCHANGE_IDS: ExchangeId[] = ["binance", "kraken", "coinbase", "okx", "bybit", "bitfinex", "gate", "bitstamp", "kucoin"];
+export const EXCHANGE_IDS: ExchangeId[] = ["binance", "kraken", "coinbase", "okx", "bybit", "bitfinex", "gate", "bitstamp"];
 
 export const EXCHANGE_FEES: Record<ExchangeId, ExchangeFeeConfig> = {
   binance: {
@@ -57,12 +57,6 @@ export const EXCHANGE_FEES: Record<ExchangeId, ExchangeFeeConfig> = {
     taker: "0.004",
     withdrawalBtc: "0.0005",
     reliability: 0.9
-  },
-  kucoin: {
-    maker: "0.001",
-    taker: "0.001",
-    withdrawalBtc: "0.0005",
-    reliability: 0.9
   }
 };
 
@@ -74,8 +68,7 @@ export const EXCHANGE_LABELS: Record<ExchangeId, string> = {
   bybit: "Bybit",
   bitfinex: "Bitfinex",
   gate: "Gate",
-  bitstamp: "Bitstamp",
-  kucoin: "KuCoin"
+  bitstamp: "Bitstamp"
 };
 
 export const SYMBOLS: SymbolId[] = ["BTC/USDT", "ETH/USDT", "ETH/BTC"];
@@ -90,8 +83,7 @@ export const INITIAL_WALLETS: WalletSeed = {
   bybit: { btc: "0.8", usdt: "56000" },
   bitfinex: { btc: "0.6", usdt: "42000" },
   gate: { btc: "0.6", usdt: "42000" },
-  bitstamp: { btc: "0.5", usdt: "35000" },
-  kucoin: { btc: "0.8", usdt: "56000" }
+  bitstamp: { btc: "0.5", usdt: "35000" }
 };
 
 export const EXCHANGE_WS_ENDPOINTS = {
@@ -119,8 +111,5 @@ export const EXCHANGE_WS_ENDPOINTS = {
   },
   bitstamp: {
     public: "wss://ws.bitstamp.net"
-  },
-  kucoin: {
-    bullet: "https://api.kucoin.com/api/v1/bullet-public"
   }
 } as const;
