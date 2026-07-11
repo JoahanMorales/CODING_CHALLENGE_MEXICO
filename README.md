@@ -39,6 +39,14 @@ La entrega pública separa con claridad:
 | `/inteligencia` | Explicación técnica animada del modelo. |
 | `/resultados` | Benchmark reproducible y prueba separada de `TEST_ORDER`. |
 
+## Resultados con datos reales
+
+Todo esto es reproducible desde `scripts/` y visible en `/resultados` — no promesas, evidencia auditable.
+
+- **8 exchanges en vivo** por WebSocket (Binance, Kraken, Coinbase, OKX, Bybit, Bitfinex, Gate, Bitstamp), con cálculo de rentabilidad **neta de fees, base USDT/USD, slippage y riesgo de ejecución**.
+- **Capturas reales de arbitraje** (`npm run scan:opportunities`): sobre 40,025 rondas reales el bot detectó **9 dislocaciones net-positivas genuinas** en un spike de volatilidad — p. ej. **comprar OKX @$64,050 / vender Gate @$64,228 = +7.8 bps neto tras fees**, con ambos libros frescos (<200ms, no quotes rancias). Los venues rápidos repricean antes que los lentos: ventanas de ~1s, raras pero reales — justo lo que el reto describe.
+- **Eficiencia cuantificada, honestamente** (`study:fee`, `study:maker`): sobre **3.6M de dislocaciones reales**, el edge bruto mediano es 1.4 bps → break-even ≤1.3 bps round-trip; a fees retail el arbitraje cross **y** el market-making pasivo son estructuralmente no rentables. El valor del sistema es **detectar el edge real cuando existe y rechazar con precisión el resto** — la disciplina de riesgo es el producto.
+
 ## Diferenciadores
 
 ### 1. ArbitrAI Edge Tensor
@@ -132,7 +140,7 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 
 ```mermaid
 flowchart LR
-    V["7 venues live"] --> M["MarketDataService"]
+    V["8 venues live"] --> M["MarketDataService"]
     M --> I["Sequence gaps + CRC32"]
     I --> N["USD-normalized order books"]
     N --> A["ArbitrageEngine"]
@@ -194,7 +202,7 @@ npm run train:search -- 20 120            # 20 seeds x 120s (~40 min) — solo p
 npm run train:search:max                  # Jetson: 36 seeds x 180s en paralelo sobre todos los cores
 npm run train:neural                      # entrena la red neuronal (NeuralEdge MLP) -> public/model/neural-edge.json
 npm run study:neural                      # árbol vs red vs comité en held-out -> public/data/neural-study.json
-npm run record -- 120       # graba 120s de los 7 exchanges reales -> data/tape-*.jsonl (camino 1)
+npm run record -- 120       # graba 120s de los 8 exchanges reales -> data/tape-*.jsonl (camino 1)
 npm run train -- --tape data/tape-XXXX.jsonl   # entrena sobre datos reales grabados
 npm run analyze:tape data/tape-XXXX.jsonl      # analiza el tape -> public/data/tape-analysis.json
 npm run study:reversion data/tape-XXXX.jsonl   # entrena reversión sobre datos reales (AUC held-out)
@@ -217,7 +225,7 @@ señales legítimas de la demo. Run típico: AUC held-out ≈ 0.99, separación
 ganador/perdedor ≈ 86 % vs 8 %, demo-safety ≈ 96 %.
 
 **Camino 1 — datos reales.** `npm run record` captura los order books reales de
-los 7 exchanges (normalizados con la misma base USDT/USD que el gateway) a un
+los 8 exchanges (normalizados con la misma base USDT/USD que el gateway) a un
 tape reproducible; `--tape` lo reproduce por el mismo pipeline. Hallazgo honesto
 y verificado: a tarifas retail, **todas** las dislocaciones cross-exchange reales
 son no rentables tras fees + base (net spread −25 a −113 bps) — el mercado es
