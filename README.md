@@ -43,6 +43,10 @@ La entrega pública separa con claridad:
 
 Todo esto es reproducible desde `scripts/` y visible en `/resultados` — no promesas, evidencia auditable.
 
+<p align="center">
+  <img alt="Captura real de arbitraje net-positivo en /resultados" src="recursos/capturas-reales.png" width="820" />
+</p>
+
 - **8 exchanges en vivo** por WebSocket (Binance, Kraken, Coinbase, OKX, Bybit, Bitfinex, Gate, Bitstamp), con cálculo de rentabilidad **neta de fees, base USDT/USD, slippage y riesgo de ejecución**.
 - **Capturas reales de arbitraje** (`npm run scan:opportunities`): sobre 40,025 rondas reales el bot detectó **9 dislocaciones net-positivas genuinas** en un spike de volatilidad — p. ej. **comprar OKX @$64,050 / vender Gate @$64,228 = +7.8 bps neto tras fees**, con ambos libros frescos (<200ms, no quotes rancias). Los venues rápidos repricean antes que los lentos: ventanas de ~1s, raras pero reales — justo lo que el reto describe.
 - **Eficiencia cuantificada, honestamente** (`study:fee`, `study:maker`): sobre **3.6M de dislocaciones reales**, el edge bruto mediano es 1.4 bps → break-even ≤1.3 bps round-trip; a fees retail el arbitraje cross **y** el market-making pasivo son estructuralmente no rentables. El valor del sistema es **detectar el edge real cuando existe y rechazar con precisión el resto** — la disciplina de riesgo es el producto.

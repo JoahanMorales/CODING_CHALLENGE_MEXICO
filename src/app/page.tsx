@@ -9,7 +9,7 @@ import { EXCHANGE_IDS, EXCHANGE_LABELS } from "@/lib/config/exchanges";
 // The six stages of the decision pipeline the 3D network visualises, left to right.
 // Colours match the NeuralHero layer colours so each label maps to its glowing column.
 const PIPELINE: Array<{ name: string; sub: string; color: string; altColor?: string }> = [
-  { name: "Mercados", sub: "7 exchanges en vivo", color: "#38bdf8" },
+  { name: "Mercados", sub: "8 exchanges en vivo", color: "#38bdf8" },
   { name: "Microestructura", sub: "libros L2 · spread · OFI", color: "#22d3ee" },
   { name: "Estrategias", sub: "cross-venue · triangular", color: "#818cf8" },
   { name: "Comité ML", sub: "árbol + red neuronal", color: "#34d399" },
@@ -30,7 +30,7 @@ export default function Home() {
               <span className="text-gradient">ArbitrAI</span>
             </h1>
             <p className="mt-5 max-w-xl text-lg font-semibold leading-8 text-zinc-600 sm:text-xl">
-              Inteligencia cuantitativa para arbitraje BTC. Siete mercados en vivo, costos
+              Inteligencia cuantitativa para arbitraje BTC. Ocho mercados en vivo, costos
               realistas y una terminal que explica <span className="text-zinc-900">por qué</span> cada
               oportunidad se ejecuta o se descarta.
             </p>
@@ -58,7 +58,7 @@ export default function Home() {
               </Link>
             </div>
             <div className="mt-10 grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-4">
-              <HeroMetric label="Mercados" value="7" tone="sky" />
+              <HeroMetric label="Mercados" value="8" tone="sky" />
               <HeroMetric label="Rutas stat-arb" value="21" tone="violet" />
               <HeroMetric label="Estrategias" value="4" tone="emerald" />
               <HeroMetric label="Latencia obj." value="<5ms" tone="amber" />
@@ -82,7 +82,7 @@ export default function Home() {
                 Pipeline de decisión
               </span>
               <span className="hidden font-mono text-[9px] font-bold uppercase tracking-wider text-white/40 sm:inline">
-                {"7 mercados → 1 verdicto · <5 ms"}
+                {"8 mercados → 1 verdicto · <5 ms"}
               </span>
             </div>
             {/* Bottom legend: one colour-coded label per glowing layer, so each column

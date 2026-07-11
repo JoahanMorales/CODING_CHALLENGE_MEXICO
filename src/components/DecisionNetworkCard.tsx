@@ -5,7 +5,7 @@ import { NeuralHeroMount } from "@/components/NeuralHeroMount";
 // /inteligencia) and always reads as the real pipeline, not abstract eye-candy.
 // Colours match the NeuralHero layer colours so each label maps to its glowing column.
 const PIPELINE: Array<{ name: string; sub: string; color: string; altColor?: string }> = [
-  { name: "Mercados", sub: "7 exchanges en vivo", color: "#38bdf8" },
+  { name: "Mercados", sub: "8 exchanges en vivo", color: "#38bdf8" },
   { name: "Microestructura", sub: "libros L2 · spread · OFI", color: "#22d3ee" },
   { name: "Estrategias", sub: "cross-venue · triangular", color: "#818cf8" },
   { name: "Comité ML", sub: "árbol + red neuronal", color: "#34d399" },
@@ -31,7 +31,7 @@ export function DecisionNetworkCard({ className = "" }: { className?: string }) 
           Pipeline de decisión
         </span>
         <span className="hidden font-mono text-[9px] font-bold uppercase tracking-wider text-white/40 sm:inline">
-          {"7 mercados → 1 verdicto · <5 ms"}
+          {"8 mercados → 1 verdicto · <5 ms"}
         </span>
       </div>
       {/* Bottom legend: one colour-coded label per glowing layer. Reflows 3-up on mobile. */}
