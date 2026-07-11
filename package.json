@@ -33,7 +33,8 @@
     "study:portfolio": "tsx scripts/portfolioStudy.ts",
     "backtest": "tsx scripts/backtest.ts",
     "study:fee": "tsx scripts/feeThresholdSweep.ts",
-    "study:maker": "tsx scripts/makerEdgeStudy.ts"
+    "study:maker": "tsx scripts/makerEdgeStudy.ts",
+    "scan:opportunities": "tsx scripts/opportunityScan.ts"
   },
   "dependencies": {
     "decimal.js": "^10.4.3",
