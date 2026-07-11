@@ -3,6 +3,7 @@ import { BacktestPanel } from "@/components/BacktestPanel";
 import { FeeThresholdPanel } from "@/components/FeeThresholdPanel";
 import { MakerEdgePanel } from "@/components/MakerEdgePanel";
 import { NeuralCommitteePanel } from "@/components/NeuralCommitteePanel";
+import { RealOpportunitiesPanel } from "@/components/RealOpportunitiesPanel";
 import { OperatingPointPanel } from "@/components/OperatingPointPanel";
 import { PortfolioSynthesis } from "@/components/PortfolioSynthesis";
 import { PublicSiteFooter } from "@/components/PublicSiteFooter";
@@ -26,6 +27,7 @@ export default function ResultsPage() {
           <div className="mt-8">
             <ResultsDashboard />
           </div>
+          <RealOpportunitiesPanel />
           <BacktestPanel />
           <NeuralCommitteePanel />
           <RealMarketEvidence />
