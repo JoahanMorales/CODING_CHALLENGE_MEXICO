@@ -134,6 +134,16 @@ export function ControlDeck() {
         })}
       </div>
 
+      {/* Live derived readout: the effective net-edge floor the engine is using
+          right now = min edge × fee-stress. Makes the interaction between two
+          knobs legible instead of implicit. */}
+      <div className="mt-3 flex items-center justify-between rounded-lg bg-zinc-900 px-3 py-1.5">
+        <span className="font-mono text-[9px] font-black uppercase tracking-wider text-zinc-400">Umbral efectivo</span>
+        <span className="font-mono text-[12px] font-black tabular-nums text-emerald-400">
+          {(engineParams.minNetEdgeBps * engineParams.feeStressMultiplier).toFixed(1)} bps
+        </span>
+      </div>
+
       <div className="mt-4 border-t border-zinc-100 pt-3">
         <div className="flex items-center justify-between">
           <span className="font-mono text-[10px] font-black uppercase tracking-wider text-zinc-500">Exchanges activos</span>
@@ -159,6 +169,9 @@ export function ControlDeck() {
             );
           })}
         </div>
+        <p className="mt-2 font-mono text-[9px] font-bold uppercase tracking-wider text-zinc-400">
+          {activeSet.size * (activeSet.size - 1)} rutas dirigidas cross-venue en escaneo
+        </p>
       </div>
 
       {locked && (

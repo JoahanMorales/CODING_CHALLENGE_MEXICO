@@ -148,6 +148,10 @@ La estrategia no está hardcodeada: el operador la sintoniza en tiempo real desd
   <img alt="ControlDeck: parametrización en vivo" src="recursos/parametrizacion.png" width="440" />
 </p>
 
+<p align="center">
+  <img alt="Terminal con parametrización en acción" src="recursos/controldeck.gif" width="820" />
+</p>
+
 | Parámetro | Rango | Qué controla | Dónde impacta |
 |---|---|---|---|
 | **Umbral de ganancia neta** | `0–40 bps` | Edge mínimo, tras fees, para que una ruta sea ejecutable. Bájalo y afloran trades marginales; súbelo y solo pasan las dislocaciones gordas | Gatea las tres ramas (taker / maker / híbrida) en `detectCrossExchange` |
