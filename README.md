@@ -27,7 +27,7 @@ La entrega pública separa con claridad:
 - `Demo`: escenario controlado para mostrar el ciclo completo cuando el mercado está quieto.
 
 <p align="center">
-  <img alt="Landing: red de decisión + 8 exchanges" src="recursos/landing-nuevo.png" width="820" />
+  <img alt="Red de decisión ArbitrAI (8 exchanges) — animada" src="recursos/hero.gif" width="820" />
 </p>
 
 ## Demo web
