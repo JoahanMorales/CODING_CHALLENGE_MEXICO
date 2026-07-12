@@ -1,38 +1,38 @@
 {
   "version": 1,
-  "savedAt": "2026-07-05T23:22:29.591Z",
+  "savedAt": "2026-07-11T20:56:49.262Z",
   "trainedForSec": 180,
   "source": "generator",
-  "seed": 2193941782,
-  "signals": 1391,
-  "winRate": 35.5,
-  "auc": 0.9992,
-  "valSamples": 303,
-  "demoSafety": 0.999,
+  "seed": 2984130965,
+  "signals": 1293,
+  "winRate": 36.6,
+  "auc": 1,
+  "valSamples": 249,
+  "demoSafety": 0.9954,
   "mlValidated": true,
   "operatingPoint": {
     "split": "random",
-    "evalSamples": 152,
+    "evalSamples": 125,
     "aucEval": 1,
     "calibration": {
-      "method": "isotonic",
+      "method": "platt",
       "attached": true,
-      "calibSamples": 151,
-      "evalSamples": 152,
-      "brierPreCalibration": 0.0468,
-      "brierPlatt": 0.0191,
-      "brierIsotonic": 0.0141,
-      "brierPostCalibration": 0.0141,
+      "calibSamples": 124,
+      "evalSamples": 125,
+      "brierPreCalibration": 0.02,
+      "brierPlatt": 0.0009,
+      "brierIsotonic": 0.0055,
+      "brierPostCalibration": 0.0009,
       "platt": {
-        "a": 2.749994,
-        "b": -0.208217
+        "a": 2.301878,
+        "b": 0.5589
       },
-      "isotonicKnots": 3
+      "isotonicKnots": 2
     },
     "importance": [
       {
         "feature": "netEdgeBps",
-        "aucDrop": 0.49
+        "aucDrop": 0.4898
       },
       {
         "feature": "alignment",
@@ -128,648 +128,826 @@
       }
     ],
     "gateBaseline": {
-      "trades": 6,
+      "trades": 10,
       "winRatePct": 100,
-      "winRateCi95LoPct": 61,
-      "totalPnlUsd": 172.71
+      "winRateCi95LoPct": 72.2,
+      "totalPnlUsd": 292.79
     },
     "sweep": [
       {
         "threshold": 0.3,
-        "trades": 52,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 93.1,
-        "totalPnlUsd": 332.49,
-        "meanPnlUsd": 6.394
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.35,
-        "trades": 52,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 93.1,
-        "totalPnlUsd": 332.49,
-        "meanPnlUsd": 6.394
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.4,
-        "trades": 52,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 93.1,
-        "totalPnlUsd": 332.49,
-        "meanPnlUsd": 6.394
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.45,
-        "trades": 52,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 93.1,
-        "totalPnlUsd": 332.49,
-        "meanPnlUsd": 6.394
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.5,
-        "trades": 52,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 93.1,
-        "totalPnlUsd": 332.49,
-        "meanPnlUsd": 6.394
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.55,
-        "trades": 52,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 93.1,
-        "totalPnlUsd": 332.49,
-        "meanPnlUsd": 6.394
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.6,
-        "trades": 52,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 93.1,
-        "totalPnlUsd": 332.49,
-        "meanPnlUsd": 6.394
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.65,
-        "trades": 48,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 92.6,
-        "totalPnlUsd": 328.56,
-        "meanPnlUsd": 6.845
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.7,
-        "trades": 46,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 92.3,
-        "totalPnlUsd": 297.12,
-        "meanPnlUsd": 6.4591
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.75,
-        "trades": 46,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 92.3,
-        "totalPnlUsd": 297.12,
-        "meanPnlUsd": 6.4591
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.8,
-        "trades": 46,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 92.3,
-        "totalPnlUsd": 297.12,
-        "meanPnlUsd": 6.4591
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.85,
-        "trades": 46,
+        "trades": 41,
         "winRatePct": 100,
-        "winRateCi95LoPct": 92.3,
-        "totalPnlUsd": 297.12,
-        "meanPnlUsd": 6.4591
+        "winRateCi95LoPct": 91.4,
+        "totalPnlUsd": 460.93,
+        "meanPnlUsd": 11.2422
       },
       {
         "threshold": 0.9,
-        "trades": 46,
+        "trades": 37,
         "winRatePct": 100,
-        "winRateCi95LoPct": 92.3,
-        "totalPnlUsd": 297.12,
-        "meanPnlUsd": 6.4591
+        "winRateCi95LoPct": 90.6,
+        "totalPnlUsd": 458.77,
+        "meanPnlUsd": 12.3992
       },
       {
         "threshold": 0.95,
-        "trades": 43,
+        "trades": 36,
         "winRatePct": 100,
-        "winRateCi95LoPct": 91.8,
-        "totalPnlUsd": 295.59,
-        "meanPnlUsd": 6.8742
+        "winRateCi95LoPct": 90.4,
+        "totalPnlUsd": 432.58,
+        "meanPnlUsd": 12.0161
       },
       {
         "threshold": 0.99,
-        "trades": 43,
+        "trades": 25,
         "winRatePct": 100,
-        "winRateCi95LoPct": 91.8,
-        "totalPnlUsd": 295.59,
-        "meanPnlUsd": 6.8742
+        "winRateCi95LoPct": 86.7,
+        "totalPnlUsd": 316.25,
+        "meanPnlUsd": 12.65
       }
     ],
     "best": {
       "threshold": 0.3,
-      "trades": 52,
+      "trades": 41,
       "winRatePct": 100,
-      "winRateCi95LoPct": 93.1,
-      "totalPnlUsd": 332.49,
-      "meanPnlUsd": 6.394
+      "winRateCi95LoPct": 91.4,
+      "totalPnlUsd": 460.93,
+      "meanPnlUsd": 11.2422
     },
-    "takeaway": "Existe un punto de operación con P&L contrafactual positivo out-of-sample: umbral 0.3 -> 52 trades, 100% ganadores (IC95 inferior 93.1%), +$332.49. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (34.21% de las señales) muestra lo raro que es el edge."
+    "takeaway": "Existe un punto de operación con P&L contrafactual positivo out-of-sample: umbral 0.3 -> 41 trades, 100% ganadores (IC95 inferior 91.4%), +$460.93. Importante: es liquidación contrafactual bajo el modelo de costos del simulador sobre dislocaciones reales, no trading en vivo — y la selectividad extrema (32.80% de las señales) muestra lo raro que es el edge."
   },
   "ml": {
     "version": 3,
     "trees": [
       {
         "featureIndex": 0,
-        "threshold": 3.94,
-        "leftScore": -1.9349593489642407,
-        "rightScore": 1.8840579699222852
+        "threshold": 2.255,
+        "leftScore": -1.9677419348491154,
+        "rightScore": 1.8947368411080332
       },
       {
         "featureIndex": 0,
-        "threshold": 2.465,
-        "leftScore": -1.1444301390519946,
-        "rightScore": 0.9745423091981178
+        "threshold": 4.73,
+        "leftScore": -1.0997495642344568,
+        "rightScore": 1.1503578964119585
       },
       {
         "featureIndex": 0,
-        "threshold": 6.805,
-        "leftScore": -0.9289200167089319,
-        "rightScore": 1.057348973118287
+        "threshold": 0.415,
+        "leftScore": -1.0465377464737518,
+        "rightScore": 0.843485515837428
       },
       {
         "featureIndex": 21,
-        "threshold": 37.78215057633663,
-        "leftScore": 0.11818062699201319,
-        "rightScore": -5.67585430617646
+        "threshold": 5.396786421029269,
+        "leftScore": 3.9004791144952082,
+        "rightScore": -0.4435847010302613
       },
       {
         "featureIndex": 0,
-        "threshold": 2.465,
-        "leftScore": -1.0204410061083937,
-        "rightScore": 0.8140275334883602
+        "threshold": 3.6050000000000004,
+        "leftScore": -1.2916578165029733,
+        "rightScore": 0.7355366292099476
       },
       {
-        "featureIndex": 19,
-        "threshold": -62.59803716686828,
-        "leftScore": -5.270240173988196,
-        "rightScore": 0.10526750287565924
+        "featureIndex": 21,
+        "threshold": 8.703456837861484,
+        "leftScore": -1.166161871557799,
+        "rightScore": 0.4597598210498442
+      },
+      {
+        "featureIndex": 12,
+        "threshold": 329,
+        "leftScore": 1.4735290920471558,
+        "rightScore": -0.5292771403930208
+      },
+      {
+        "featureIndex": 9,
+        "threshold": 0.41879566292372183,
+        "leftScore": 0.6468737073372333,
+        "rightScore": -0.738721798512455
+      },
+      {
+        "featureIndex": 5,
+        "threshold": 0.0035696817313263015,
+        "leftScore": 1.551067669090171,
+        "rightScore": -0.3790319446753241
+      },
+      {
+        "featureIndex": 0,
+        "threshold": 4.73,
+        "leftScore": -0.6062192692586803,
+        "rightScore": 1.0298762936305723
+      },
+      {
+        "featureIndex": 0,
+        "threshold": 0.415,
+        "leftScore": -1.018501977453879,
+        "rightScore": 0.5852474151096834
+      },
+      {
+        "featureIndex": 6,
+        "threshold": 0.2263489838822705,
+        "leftScore": 0.47204611141482783,
+        "rightScore": -0.5879421987783786
+      },
+      {
+        "featureIndex": 5,
+        "threshold": 0.0035696817313263015,
+        "leftScore": 1.07985253164763,
+        "rightScore": -0.4277933088203557
       }
     ],
     "learningRate": 0.3,
     "calibration": {
-      "Bitfinex -> Okx": {
-        "observations": 5,
-        "brierScore": 0.06474491487999998,
-        "wins": 2
-      },
-      "Gate -> Binance": {
-        "observations": 12,
-        "brierScore": 0.10982252946870756,
-        "wins": 5
-      },
-      "Bybit -> Kraken": {
-        "observations": 9,
-        "brierScore": 0.1005638786352837,
-        "wins": 3
-      },
-      "Bybit -> Bitfinex": {
-        "observations": 14,
-        "brierScore": 0.13619639982226747,
-        "wins": 5
-      },
-      "Bitfinex -> Gate": {
-        "observations": 8,
-        "brierScore": 0.11370864295570035,
-        "wins": 6
-      },
-      "Bybit -> Coinbase": {
-        "observations": 8,
-        "brierScore": 0.0932608856438912,
-        "wins": 3
-      },
-      "Gate -> Bitfinex": {
-        "observations": 4,
-        "brierScore": 0.11379898572800001,
-        "wins": 2
-      },
-      "Gate -> Bybit": {
-        "observations": 8,
-        "brierScore": 0.14046799622177247,
-        "wins": 2
-      },
-      "Binance -> Gate": {
-        "observations": 9,
-        "brierScore": 0.14860673477935524,
-        "wins": 2
-      },
-      "Kraken -> Binance": {
-        "observations": 4,
-        "brierScore": 0.11180691711999999,
-        "wins": 3
-      },
-      "Bybit -> Gate": {
-        "observations": 6,
-        "brierScore": 0.139013617814016,
-        "wins": 1
-      },
-      "Binance -> Bitfinex": {
-        "observations": 4,
-        "brierScore": 0.128263624576,
-        "wins": 1
-      },
-      "Bybit -> Binance": {
-        "observations": 2,
-        "brierScore": 0.0662992,
-        "wins": 0
-      },
-      "Kraken -> Bybit": {
-        "observations": 3,
-        "brierScore": 0.11438135680000003,
-        "wins": 1
-      },
-      "Coinbase -> Bybit": {
-        "observations": 4,
-        "brierScore": 0.16951397792000003,
-        "wins": 2
-      },
-      "Bitfinex -> Bybit": {
-        "observations": 8,
-        "brierScore": 0.10035821664566152,
-        "wins": 2
-      },
-      "Kraken -> Okx": {
-        "observations": 4,
-        "brierScore": 0.24602969292800006,
-        "wins": 2
-      },
-      "Kraken -> Gate": {
-        "observations": 6,
-        "brierScore": 0.12972731359395842,
-        "wins": 1
-      },
-      "Coinbase -> Okx": {
-        "observations": 4,
-        "brierScore": 0.14551241779200003,
-        "wins": 0
-      },
-      "Binance -> Kraken": {
-        "observations": 8,
-        "brierScore": 0.12029856444426833,
-        "wins": 3
-      },
-      "Binance -> Okx": {
-        "observations": 4,
-        "brierScore": 0.13880646649599998,
-        "wins": 3
-      },
-      "Coinbase -> Binance": {
-        "observations": 3,
-        "brierScore": 0.1223241712,
-        "wins": 2
-      },
-      "Okx -> Coinbase": {
-        "observations": 2,
-        "brierScore": 0.12958364,
-        "wins": 1
-      },
       "Kraken -> Coinbase": {
-        "observations": 4,
-        "brierScore": 0.12569728620800003,
-        "wins": 1
-      },
-      "Coinbase -> Kraken": {
-        "observations": 5,
-        "brierScore": 0.10250218873600002,
-        "wins": 0
-      },
-      "Gate -> Kraken": {
-        "observations": 4,
-        "brierScore": 0.09387798790400002,
-        "wins": 1
-      },
-      "Okx -> Bitfinex": {
-        "observations": 4,
-        "brierScore": 0.154921611648,
-        "wins": 1
-      },
-      "Coinbase -> Gate": {
-        "observations": 4,
-        "brierScore": 0.12916335552,
+        "observations": 6,
+        "brierScore": 0.060400839674368025,
         "wins": 2
       },
-      "Bitfinex -> Kraken": {
-        "observations": 2,
-        "brierScore": 0.17988832000000005,
-        "wins": 1
-      },
-      "Bitfinex -> Binance": {
-        "observations": 6,
-        "brierScore": 0.08837983490734082,
-        "wins": 0
+      "Bitstamp -> Coinbase": {
+        "observations": 8,
+        "brierScore": 0.10346929579225222,
+        "wins": 3
       },
       "Okx -> Gate": {
-        "observations": 2,
-        "brierScore": 0.1267736,
+        "observations": 6,
+        "brierScore": 0.12268767668684802,
+        "wins": 5
+      },
+      "Bitstamp -> Bybit": {
+        "observations": 4,
+        "brierScore": 0.12022033696000003,
         "wins": 2
       },
-      "Binance -> Bybit": {
-        "observations": 3,
-        "brierScore": 0.1182781536,
-        "wins": 1
+      "Bybit -> Bitstamp": {
+        "observations": 1,
+        "brierScore": 0.042849,
+        "wins": 0
       },
-      "Coinbase -> Bitfinex": {
-        "observations": 2,
-        "brierScore": 0.128494,
-        "wins": 1
+      "Bybit -> Bitfinex": {
+        "observations": 8,
+        "brierScore": 0.12253599039680925,
+        "wins": 3
+      },
+      "Bybit -> Kraken": {
+        "observations": 8,
+        "brierScore": 0.11399165188278683,
+        "wins": 3
       },
       "Okx -> Binance": {
         "observations": 4,
-        "brierScore": 0.16446022086400008,
+        "brierScore": 0.12429248659200001,
         "wins": 2
       },
-      "Gate -> Okx": {
-        "observations": 3,
-        "brierScore": 0.12888346239999998,
-        "wins": 0
+      "Kraken -> Bitstamp": {
+        "observations": 8,
+        "brierScore": 0.1254497237130175,
+        "wins": 2
+      },
+      "Binance -> Okx": {
+        "observations": 4,
+        "brierScore": 0.129218618688,
+        "wins": 1
+      },
+      "Okx -> Coinbase": {
+        "observations": 5,
+        "brierScore": 0.11558020382976002,
+        "wins": 1
+      },
+      "Okx -> Bitstamp": {
+        "observations": 4,
+        "brierScore": 0.19951845651199998,
+        "wins": 2
       },
       "Kraken -> Bitfinex": {
-        "observations": 2,
-        "brierScore": 0.12870136,
+        "observations": 6,
+        "brierScore": 0.1330811255954432,
         "wins": 1
       },
       "Okx -> Bybit": {
-        "observations": 2,
-        "brierScore": 0.13713032,
-        "wins": 1
+        "observations": 12,
+        "brierScore": 0.13453876048160193,
+        "wins": 5
       },
-      "Bitfinex -> Coinbase": {
+      "Gate -> Okx": {
+        "observations": 8,
+        "brierScore": 0.07479216377976161,
+        "wins": 2
+      },
+      "Binance -> Kraken": {
+        "observations": 10,
+        "brierScore": 0.13676408456595113,
+        "wins": 4
+      },
+      "Binance -> Gate": {
+        "observations": 5,
+        "brierScore": 0.15080414110976,
+        "wins": 2
+      },
+      "Bitstamp -> Okx": {
         "observations": 4,
-        "brierScore": 0.09566275948800002,
+        "brierScore": 0.097575939136,
         "wins": 3
       },
-      "Binance -> Coinbase": {
+      "Kraken -> Binance": {
         "observations": 2,
-        "brierScore": 0.1629856,
+        "brierScore": 0.12810680000000002,
         "wins": 0
+      },
+      "Bitstamp -> Gate": {
+        "observations": 9,
+        "brierScore": 0.1141526031306219,
+        "wins": 5
+      },
+      "Kraken -> Gate": {
+        "observations": 6,
+        "brierScore": 0.14197921457233922,
+        "wins": 2
+      },
+      "Bitstamp -> Bitfinex": {
+        "observations": 10,
+        "brierScore": 0.10554297229775228,
+        "wins": 3
+      },
+      "Kraken -> Okx": {
+        "observations": 6,
+        "brierScore": 0.1312721431124992,
+        "wins": 1
+      },
+      "Gate -> Kraken": {
+        "observations": 2,
+        "brierScore": 0.13451356,
+        "wins": 0
+      },
+      "Gate -> Bitfinex": {
+        "observations": 3,
+        "brierScore": 0.08124645440000001,
+        "wins": 1
+      },
+      "Binance -> Coinbase": {
+        "observations": 8,
+        "brierScore": 0.11498958419564186,
+        "wins": 1
+      },
+      "Bitstamp -> Kraken": {
+        "observations": 4,
+        "brierScore": 0.08983710118400001,
+        "wins": 0
+      },
+      "Bitstamp -> Binance": {
+        "observations": 14,
+        "brierScore": 0.12919684458877118,
+        "wins": 7
+      },
+      "Bybit -> Gate": {
+        "observations": 2,
+        "brierScore": 0.12567484,
+        "wins": 0
+      },
+      "Binance -> Bitfinex": {
+        "observations": 4,
+        "brierScore": 0.12824172896,
+        "wins": 2
+      },
+      "Bybit -> Coinbase": {
+        "observations": 3,
+        "brierScore": 0.0664836672,
+        "wins": 2
+      },
+      "Coinbase -> Bybit": {
+        "observations": 3,
+        "brierScore": 0.08834383520000001,
+        "wins": 0
+      },
+      "Gate -> Bybit": {
+        "observations": 9,
+        "brierScore": 0.10807912573145531,
+        "wins": 4
+      },
+      "Binance -> Bybit": {
+        "observations": 3,
+        "brierScore": 0.1397733984,
+        "wins": 1
+      },
+      "Coinbase -> Kraken": {
+        "observations": 6,
+        "brierScore": 0.12182873650688004,
+        "wins": 2
+      },
+      "Coinbase -> Okx": {
+        "observations": 8,
+        "brierScore": 0.14260504882335617,
+        "wins": 4
+      },
+      "Bitfinex -> Okx": {
+        "observations": 4,
+        "brierScore": 0.272565304448,
+        "wins": 2
+      },
+      "Coinbase -> Binance": {
+        "observations": 2,
+        "brierScore": 0.04996384000000001,
+        "wins": 0
+      },
+      "Kraken -> Bybit": {
+        "observations": 4,
+        "brierScore": 0.11178161785599999,
+        "wins": 2
+      },
+      "Coinbase -> Gate": {
+        "observations": 4,
+        "brierScore": 0.14317453504000005,
+        "wins": 0
+      },
+      "Gate -> Binance": {
+        "observations": 4,
+        "brierScore": 0.098089066752,
+        "wins": 2
+      },
+      "Bybit -> Binance": {
+        "observations": 3,
+        "brierScore": 0.11676832320000001,
+        "wins": 1
+      },
+      "Bitfinex -> Kraken": {
+        "observations": 2,
+        "brierScore": 0.11126020000000002,
+        "wins": 0
+      },
+      "Bitfinex -> Bybit": {
+        "observations": 2,
+        "brierScore": 0.09050275999999999,
+        "wins": 1
+      },
+      "Bitfinex -> Binance": {
+        "observations": 2,
+        "brierScore": 0.06369028,
+        "wins": 0
+      },
+      "Bitfinex -> Gate": {
+        "observations": 3,
+        "brierScore": 0.10627809440000002,
+        "wins": 1
+      },
+      "Okx -> Kraken": {
+        "observations": 1,
+        "brierScore": 0.10692900000000001,
+        "wins": 0
+      },
+      "Binance -> Bitstamp": {
+        "observations": 2,
+        "brierScore": 0.13316188,
+        "wins": 2
+      },
+      "Gate -> Bitstamp": {
+        "observations": 4,
+        "brierScore": 0.139764470272,
+        "wins": 2
+      },
+      "Bitfinex -> Bitstamp": {
+        "observations": 4,
+        "brierScore": 0.10835876192000002,
+        "wins": 2
+      },
+      "Coinbase -> Bitstamp": {
+        "observations": 2,
+        "brierScore": 0.09401636,
+        "wins": 1
       }
     },
-    "isotonic": {
-      "x": [
-        -1.7176798060880074,
-        0.31729417989727227,
-        1.4860274746784168
-      ],
-      "y": [
-        0.001,
-        0.8888888888888888,
-        0.999
-      ]
+    "platt": {
+      "a": 2.3018780568479387,
+      "b": 0.5588998097149046
     },
-    "trainedAt": "2026-07-05T23:22:29.591Z",
-    "observations": 192
+    "trainedAt": "2026-07-11T20:56:49.262Z",
+    "observations": 256
   },
   "aet": {
-    "Bitfinex -> Okx": {
-      "bias": 0.012768376188462521,
-      "brierScore": 0.1269860981844381,
-      "observations": 27,
-      "wins": 12
-    },
-    "Gate -> Binance": {
-      "bias": -0.03890060792301185,
-      "brierScore": 0.1315522902717296,
-      "observations": 34,
-      "wins": 10
-    },
-    "Bybit -> Kraken": {
-      "bias": -0.03251307942454279,
-      "brierScore": 0.14308420810355796,
-      "observations": 24,
-      "wins": 9
-    },
-    "Bybit -> Bitfinex": {
-      "bias": -0.0245056231821851,
-      "brierScore": 0.15069119782235377,
-      "observations": 50,
-      "wins": 23
-    },
-    "Bitfinex -> Gate": {
-      "bias": 0.013737298384969992,
-      "brierScore": 0.12817478779182678,
-      "observations": 43,
-      "wins": 18
-    },
-    "Bybit -> Coinbase": {
-      "bias": -0.001922511125795055,
-      "brierScore": 0.12283640923862604,
-      "observations": 26,
-      "wins": 11
-    },
-    "Gate -> Bitfinex": {
-      "bias": -0.028736568561965443,
-      "brierScore": 0.1134340519745464,
-      "observations": 36,
-      "wins": 11
-    },
-    "Gate -> Bybit": {
-      "bias": -0.05028366446117257,
-      "brierScore": 0.11636125861494032,
-      "observations": 18,
-      "wins": 4
-    },
-    "Binance -> Gate": {
-      "bias": -0.03959120993140587,
-      "brierScore": 0.13099608870529628,
-      "observations": 21,
-      "wins": 5
-    },
-    "Kraken -> Binance": {
-      "bias": 0.04342595507827246,
-      "brierScore": 0.11360720991047328,
-      "observations": 26,
-      "wins": 14
-    },
-    "Bybit -> Gate": {
-      "bias": -0.006721179136109841,
-      "brierScore": 0.14419057465285498,
-      "observations": 26,
-      "wins": 10
-    },
-    "Binance -> Bitfinex": {
-      "bias": 0.016320767959003127,
-      "brierScore": 0.1383016717531654,
-      "observations": 18,
-      "wins": 7
-    },
-    "Bybit -> Binance": {
-      "bias": -0.03559662724295452,
-      "brierScore": 0.0955146425983154,
-      "observations": 20,
-      "wins": 6
-    },
-    "Kraken -> Bybit": {
-      "bias": -0.011687622041060882,
-      "brierScore": 0.12318562402492683,
-      "observations": 17,
-      "wins": 5
-    },
-    "Coinbase -> Bybit": {
-      "bias": -0.036877434397408815,
-      "brierScore": 0.1324262933088214,
-      "observations": 24,
-      "wins": 9
-    },
-    "Bitfinex -> Bybit": {
-      "bias": -0.02054687526618998,
-      "brierScore": 0.13025928435294556,
-      "observations": 16,
-      "wins": 5
-    },
-    "Kraken -> Okx": {
-      "bias": -0.03168484090473713,
-      "brierScore": 0.15814024702280347,
-      "observations": 30,
+    "Kraken -> Coinbase": {
+      "bias": -0.04349351133991523,
+      "brierScore": 0.12261341689850595,
+      "observations": 41,
       "wins": 13
     },
-    "Kraken -> Gate": {
-      "bias": -0.03876184175628408,
-      "brierScore": 0.1327684848915161,
-      "observations": 21,
-      "wins": 6
-    },
-    "Coinbase -> Okx": {
-      "bias": -0.04960465406745383,
-      "brierScore": 0.12141914800783742,
-      "observations": 38,
-      "wins": 10
-    },
-    "Binance -> Kraken": {
-      "bias": -0.06406871679147663,
-      "brierScore": 0.12339370332338181,
-      "observations": 38,
-      "wins": 12
-    },
-    "Binance -> Okx": {
-      "bias": -0.0326439682877237,
-      "brierScore": 0.1443190398527077,
-      "observations": 31,
-      "wins": 11
-    },
-    "Coinbase -> Binance": {
-      "bias": -0.02098366236241721,
-      "brierScore": 0.12120782892567653,
-      "observations": 23,
-      "wins": 8
-    },
-    "Okx -> Coinbase": {
-      "bias": 0.009031126427326164,
-      "brierScore": 0.11953054868274289,
-      "observations": 18,
+    "Bitstamp -> Coinbase": {
+      "bias": -0.04812581837429779,
+      "brierScore": 0.12158624596611324,
+      "observations": 26,
       "wins": 7
-    },
-    "Kraken -> Coinbase": {
-      "bias": -0.05401357055518376,
-      "brierScore": 0.11517933149564984,
-      "observations": 46,
-      "wins": 11
-    },
-    "Coinbase -> Kraken": {
-      "bias": -0.03246728243991294,
-      "brierScore": 0.11170520021441087,
-      "observations": 25,
-      "wins": 5
-    },
-    "Gate -> Kraken": {
-      "bias": -0.004437559306056122,
-      "brierScore": 0.12741373136392775,
-      "observations": 25,
-      "wins": 12
-    },
-    "Okx -> Bitfinex": {
-      "bias": 0.016232004126291468,
-      "brierScore": 0.15202344872772156,
-      "observations": 28,
-      "wins": 14
-    },
-    "Coinbase -> Gate": {
-      "bias": -0.07590620123961722,
-      "brierScore": 0.12663542536808572,
-      "observations": 22,
-      "wins": 5
-    },
-    "Bitfinex -> Kraken": {
-      "bias": -0.04949675833381868,
-      "brierScore": 0.12725630083202774,
-      "observations": 21,
-      "wins": 5
-    },
-    "Bitfinex -> Binance": {
-      "bias": 0.012725536356995155,
-      "brierScore": 0.11898001989537663,
-      "observations": 25,
-      "wins": 10
     },
     "Okx -> Gate": {
-      "bias": -0.00882919449488258,
-      "brierScore": 0.15314356502886362,
+      "bias": 0.023914854213006074,
+      "brierScore": 0.13715777775371313,
       "observations": 18,
-      "wins": 8
-    },
-    "Binance -> Bybit": {
-      "bias": 0.028159908474072622,
-      "brierScore": 0.1353106985784927,
-      "observations": 23,
       "wins": 12
     },
-    "Coinbase -> Bitfinex": {
-      "bias": -0.028626987956675592,
-      "brierScore": 0.12018940015149941,
-      "observations": 20,
-      "wins": 7
+    "Bitstamp -> Bybit": {
+      "bias": -0.016385364332453065,
+      "brierScore": 0.12174386699845652,
+      "observations": 12,
+      "wins": 5
+    },
+    "Bybit -> Bitstamp": {
+      "bias": -0.03260799659200262,
+      "brierScore": 0.12253060219492194,
+      "observations": 21,
+      "wins": 10
+    },
+    "Bybit -> Bitfinex": {
+      "bias": -0.03648919255316205,
+      "brierScore": 0.15361106098740485,
+      "observations": 50,
+      "wins": 22
+    },
+    "Bybit -> Kraken": {
+      "bias": -0.04272025153813769,
+      "brierScore": 0.10338450954375926,
+      "observations": 12,
+      "wins": 3
     },
     "Okx -> Binance": {
-      "bias": 0.010340546456904026,
-      "brierScore": 0.13373418880882962,
-      "observations": 22,
-      "wins": 13
+      "bias": -0.01536186793171321,
+      "brierScore": 0.12469092709247084,
+      "observations": 14,
+      "wins": 6
     },
-    "Gate -> Okx": {
-      "bias": 0.019213113587047075,
-      "brierScore": 0.11677715724174945,
-      "observations": 22,
-      "wins": 12
+    "Kraken -> Bitstamp": {
+      "bias": -0.023138338285386417,
+      "brierScore": 0.12148469090586878,
+      "observations": 20,
+      "wins": 6
+    },
+    "Binance -> Okx": {
+      "bias": -0.010250935347482417,
+      "brierScore": 0.1456475959457528,
+      "observations": 13,
+      "wins": 5
+    },
+    "Okx -> Coinbase": {
+      "bias": -0.010751550173736774,
+      "brierScore": 0.13682159760255594,
+      "observations": 23,
+      "wins": 6
+    },
+    "Okx -> Bitstamp": {
+      "bias": -0.030548886241482304,
+      "brierScore": 0.16559721780803113,
+      "observations": 18,
+      "wins": 7
     },
     "Kraken -> Bitfinex": {
-      "bias": -0.044483062782357245,
-      "brierScore": 0.13180847086872666,
-      "observations": 10,
+      "bias": -0.04292822975663496,
+      "brierScore": 0.1331789671500454,
+      "observations": 14,
       "wins": 3
     },
     "Okx -> Bybit": {
-      "bias": -0.018488069934782473,
-      "brierScore": 0.12378968632189656,
-      "observations": 44,
-      "wins": 16
+      "bias": -0.026385675539093066,
+      "brierScore": 0.12934996994269218,
+      "observations": 40,
+      "wins": 15
     },
-    "Bitfinex -> Coinbase": {
-      "bias": -0.05567181203301494,
-      "brierScore": 0.12480574476203207,
-      "observations": 24,
-      "wins": 9
-    },
-    "Binance -> Coinbase": {
-      "bias": -0.00886259514327776,
-      "brierScore": 0.13856132093830045,
-      "observations": 32,
-      "wins": 12
-    },
-    "Bybit -> Okx": {
-      "bias": -0.022552406758293397,
-      "brierScore": 0.134707522181564,
-      "observations": 18,
+    "Gate -> Okx": {
+      "bias": -0.016317484281050315,
+      "brierScore": 0.12033569203720722,
+      "observations": 17,
       "wins": 5
     },
-    "Gate -> Coinbase": {
-      "bias": -0.02706649051438781,
-      "brierScore": 0.1287099887738794,
+    "Binance -> Kraken": {
+      "bias": -0.04969626576131234,
+      "brierScore": 0.11020204578007556,
+      "observations": 28,
+      "wins": 7
+    },
+    "Binance -> Gate": {
+      "bias": 0.02774927034232566,
+      "brierScore": 0.13897417073629095,
+      "observations": 11,
+      "wins": 6
+    },
+    "Bitstamp -> Okx": {
+      "bias": -0.0171004212112073,
+      "brierScore": 0.12311174901281681,
+      "observations": 17,
+      "wins": 7
+    },
+    "Kraken -> Binance": {
+      "bias": 0.011458341462467304,
+      "brierScore": 0.12572044020294754,
+      "observations": 17,
+      "wins": 8
+    },
+    "Bitstamp -> Gate": {
+      "bias": -0.010809110494919744,
+      "brierScore": 0.1309622535716644,
+      "observations": 23,
+      "wins": 10
+    },
+    "Kraken -> Gate": {
+      "bias": 0.0031013613871407053,
+      "brierScore": 0.1579903318579034,
+      "observations": 18,
+      "wins": 8
+    },
+    "Bitstamp -> Bitfinex": {
+      "bias": -0.013424574479942226,
+      "brierScore": 0.11394739733610006,
+      "observations": 23,
+      "wins": 9
+    },
+    "Kraken -> Okx": {
+      "bias": 0.04077113741776532,
+      "brierScore": 0.14582695383873903,
+      "observations": 24,
+      "wins": 12
+    },
+    "Gate -> Kraken": {
+      "bias": -0.030009355251226246,
+      "brierScore": 0.1373274622742922,
+      "observations": 10,
+      "wins": 3
+    },
+    "Gate -> Bitfinex": {
+      "bias": 0.023712596679475204,
+      "brierScore": 0.09432826085312104,
+      "observations": 7,
+      "wins": 4
+    },
+    "Binance -> Coinbase": {
+      "bias": -0.02473176943108414,
+      "brierScore": 0.12159114313916826,
+      "observations": 20,
+      "wins": 5
+    },
+    "Bitstamp -> Kraken": {
+      "bias": -0.00449291186562931,
+      "brierScore": 0.12005675034781173,
       "observations": 18,
       "wins": 6
     },
-    "Okx -> Kraken": {
-      "bias": 0.026033412439598825,
-      "brierScore": 0.1347813314396004,
-      "observations": 20,
+    "Bitstamp -> Binance": {
+      "bias": -0.001821131937011146,
+      "brierScore": 0.1127232110452239,
+      "observations": 37,
+      "wins": 15
+    },
+    "Bybit -> Gate": {
+      "bias": -0.053383471991808006,
+      "brierScore": 0.11653725448816642,
+      "observations": 6,
+      "wins": 0
+    },
+    "Binance -> Bitfinex": {
+      "bias": 0.05091551025350641,
+      "brierScore": 0.13658253505828147,
+      "observations": 16,
+      "wins": 10
+    },
+    "Bybit -> Coinbase": {
+      "bias": -0.008772356739376177,
+      "brierScore": 0.10387326211978937,
+      "observations": 13,
+      "wins": 5
+    },
+    "Coinbase -> Bybit": {
+      "bias": -0.006543285534021507,
+      "brierScore": 0.12502653457010196,
+      "observations": 19,
+      "wins": 7
+    },
+    "Gate -> Bybit": {
+      "bias": 0.0012916305949138025,
+      "brierScore": 0.12121114389954785,
+      "observations": 17,
       "wins": 8
+    },
+    "Binance -> Bybit": {
+      "bias": -0.004834671269887788,
+      "brierScore": 0.1457139999485057,
+      "observations": 18,
+      "wins": 6
+    },
+    "Coinbase -> Kraken": {
+      "bias": -0.05769765674432155,
+      "brierScore": 0.10745069827606894,
+      "observations": 23,
+      "wins": 5
+    },
+    "Coinbase -> Okx": {
+      "bias": -0.04368728617124157,
+      "brierScore": 0.13495473823806106,
+      "observations": 29,
+      "wins": 8
+    },
+    "Bitfinex -> Okx": {
+      "bias": -0.04552730102654008,
+      "brierScore": 0.1715201463878765,
+      "observations": 16,
+      "wins": 4
+    },
+    "Coinbase -> Binance": {
+      "bias": -0.05074752866531647,
+      "brierScore": 0.1304244032282167,
+      "observations": 19,
+      "wins": 4
+    },
+    "Kraken -> Bybit": {
+      "bias": 0.0032298468137695827,
+      "brierScore": 0.13862930678482308,
+      "observations": 16,
+      "wins": 9
+    },
+    "Coinbase -> Gate": {
+      "bias": -0.05369037879727072,
+      "brierScore": 0.12410679820314241,
+      "observations": 10,
+      "wins": 1
+    },
+    "Gate -> Binance": {
+      "bias": 0.007655387513514533,
+      "brierScore": 0.12106822909511664,
+      "observations": 20,
+      "wins": 9
+    },
+    "Bybit -> Binance": {
+      "bias": 0.020473319243053064,
+      "brierScore": 0.13010074891004433,
+      "observations": 16,
+      "wins": 10
+    },
+    "Bitfinex -> Kraken": {
+      "bias": -0.05829632706914523,
+      "brierScore": 0.10870210087613552,
+      "observations": 14,
+      "wins": 3
+    },
+    "Bitfinex -> Bybit": {
+      "bias": -0.03152346366629473,
+      "brierScore": 0.12183525627528916,
+      "observations": 12,
+      "wins": 4
+    },
+    "Bitfinex -> Binance": {
+      "bias": -0.04283225446451447,
+      "brierScore": 0.07876699404584843,
+      "observations": 15,
+      "wins": 3
+    },
+    "Bitfinex -> Gate": {
+      "bias": 0.01185129117413296,
+      "brierScore": 0.15174645199558295,
+      "observations": 32,
+      "wins": 14
+    },
+    "Okx -> Kraken": {
+      "bias": -0.07611131897616509,
+      "brierScore": 0.10308342165877654,
+      "observations": 13,
+      "wins": 1
+    },
+    "Binance -> Bitstamp": {
+      "bias": -0.023528513004547284,
+      "brierScore": 0.1491814970244932,
+      "observations": 14,
+      "wins": 7
+    },
+    "Gate -> Bitstamp": {
+      "bias": 0.007658681557738729,
+      "brierScore": 0.15028555304918864,
+      "observations": 20,
+      "wins": 10
+    },
+    "Bitfinex -> Bitstamp": {
+      "bias": -0.028992354062404815,
+      "brierScore": 0.13232865807476413,
+      "observations": 8,
+      "wins": 3
+    },
+    "Coinbase -> Bitstamp": {
+      "bias": -0.001610899522227963,
+      "brierScore": 0.1299360973316907,
+      "observations": 14,
+      "wins": 6
+    },
+    "Coinbase -> Bitfinex": {
+      "bias": -0.014774211252535441,
+      "brierScore": 0.1292580783979733,
+      "observations": 17,
+      "wins": 6
+    },
+    "Bitfinex -> Coinbase": {
+      "bias": -0.05184778992912062,
+      "brierScore": 0.1092169379017287,
+      "observations": 18,
+      "wins": 3
+    },
+    "Gate -> Coinbase": {
+      "bias": -0.0238646270967704,
+      "brierScore": 0.15879439611577195,
+      "observations": 13,
+      "wins": 4
+    },
+    "Bybit -> Okx": {
+      "bias": 0.024912234433721002,
+      "brierScore": 0.13481329803956718,
+      "observations": 18,
+      "wins": 9
+    },
+    "Okx -> Bitfinex": {
+      "bias": 0.0026081637370879984,
+      "brierScore": 0.22793950444288003,
+      "observations": 6,
+      "wins": 3
     }
   }
 }
