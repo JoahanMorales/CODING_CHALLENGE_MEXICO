@@ -117,6 +117,10 @@ wss.on("connection", (socket) => {
   const context: SocketContext = { socket, adminAuthenticated: false, authAttempts: [] };
   clients.set(socket, context);
   socket.send(JSON.stringify(snapshotWithStatuses(false)));
+  // Sync the newcomer with the live tuning so its ControlDeck sliders match what
+  // detection is actually using, not the compiled defaults.
+  sendTo(socket, { type: "SCANNER_UNIVERSE", exchanges: [...scannerUniverse] });
+  sendTo(socket, { type: "ENGINE_PARAMS", params: kernel.engine.params });
   socket.on("message", (message) => {
     handleSocketCommand(context, message.toString());
   });
@@ -236,6 +240,12 @@ function handleSocketCommand(context: SocketContext, raw: string): void {
     return;
   }
 
+  if (parsed.type === "SET_ENGINE_PARAMS" && parsed.params && typeof parsed.params === "object") {
+    const applied = kernel.engine.setParams(parsed.params);
+    broadcast({ type: "ENGINE_PARAMS", params: applied });
+    return;
+  }
+
   if (parsed.type === "RUN_SCENARIO" && isScenario(parsed.scenario)) {
     kernel.runScenario(parsed.scenario);
     return;
@@ -298,6 +308,7 @@ function knownCommandType(type: string): GatewayCommand["type"] | "UNKNOWN" {
     "SET_SCANNER_UNIVERSE",
     "RUN_SCENARIO",
     "SET_EXECUTION_MODE",
+    "SET_ENGINE_PARAMS",
     "REFRESH_SANDBOX_BALANCES",
     "RECONCILE_SANDBOX",
     "SET_SANDBOX_KILL_SWITCH",

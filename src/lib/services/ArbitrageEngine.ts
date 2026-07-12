@@ -1,12 +1,49 @@
 import { CROSS_EXCHANGE_THRESHOLD_PCT, EXCHANGE_FEES, EXCHANGE_IDS } from "../config/exchanges";
 import { Decimal, d, pct, usd, ZERO } from "../math/decimal";
-import type { ExchangeId, NormalizedOrderBook, Opportunity, SymbolId } from "../types";
+import type { EngineParams, ExchangeId, NormalizedOrderBook, Opportunity, SymbolId } from "../types";
 import { EdgeTensor, serializeEdgeTensor } from "./EdgeTensor";
 import { calculateNetProfit, midPrice, simulateVwap, topAsk, topBid } from "./feeMath";
 import { MlEdgeTensor } from "./MlEdgeTensor";
 import { RollingWindow } from "./RollingWindow";
 
+// User-tunable strategy knobs (EngineParams lives in types.ts to share one
+// source of truth with the gateway protocol). They flow all the way into
+// detection: the min net edge gates every branch, the size cap bounds every
+// position, and the fee-stress multiplier lets the operator demand a wider
+// safety margin without touching code. Wired end to end via SET_ENGINE_PARAMS.
+export const DEFAULT_ENGINE_PARAMS: EngineParams = {
+  minNetEdgeBps: 5,
+  maxTradeSizeBtc: 0.1,
+  feeStressMultiplier: 1
+};
+
 export class ArbitrageEngine {
+  readonly params: EngineParams = { ...DEFAULT_ENGINE_PARAMS };
+
+  /** Apply a partial parameter update (clamped to sane bounds). */
+  setParams(partial: Partial<EngineParams>): EngineParams {
+    if (partial.minNetEdgeBps !== undefined && Number.isFinite(partial.minNetEdgeBps)) {
+      this.params.minNetEdgeBps = Math.min(200, Math.max(0, partial.minNetEdgeBps));
+    }
+    if (partial.maxTradeSizeBtc !== undefined && Number.isFinite(partial.maxTradeSizeBtc)) {
+      this.params.maxTradeSizeBtc = Math.min(5, Math.max(0.0001, partial.maxTradeSizeBtc));
+    }
+    if (partial.feeStressMultiplier !== undefined && Number.isFinite(partial.feeStressMultiplier)) {
+      this.params.feeStressMultiplier = Math.min(5, Math.max(0.25, partial.feeStressMultiplier));
+    }
+    return { ...this.params };
+  }
+
+  // Active venue universe for detection. null = every venue. Books outside the
+  // set are still ingested and streamed to the UI, but never enter a route, so
+  // the operator can watch the whole market while the bot only trades the chosen
+  // exchanges — mirrors the gateway's server-side scanner universe.
+  private activeExchanges: Set<ExchangeId> | null = null;
+
+  setActiveExchanges(ids: ExchangeId[]): void {
+    this.activeExchanges = ids.length ? new Set(ids) : null;
+  }
+
   private readonly books = new Map<string, NormalizedOrderBook>();
   private readonly spreadWindows = new Map<string, RollingWindow>();
   private readonly lastStatSampleAt = new Map<string, number>();
@@ -117,7 +154,7 @@ export class ArbitrageEngine {
         const sellBidDepth5 = sellBook.bids.slice(0, 5).reduce((s, l) => s.plus(d(l.size)), ZERO);
         const depth5Total = Decimal.min(buyAskDepth5, sellBidDepth5);
         const depthBasedSize = depth5Total.mul("0.18");
-        const uncappedQty = Decimal.min(d("0.1"), depthBasedSize);
+        const uncappedQty = Decimal.min(d(this.params.maxTradeSizeBtc), depthBasedSize);
         const rawImpactRatio = depth5Total.greaterThan(0) ? uncappedQty.div(Decimal.min(ask.size, bid.size)) : d(1);
         const desiredQty = rawImpactRatio.greaterThan("0.2") ? Decimal.min(uncappedQty, depth5Total.mul("0.2")) : uncappedQty;
         const takerNet = calculateNetProfit({
@@ -207,7 +244,11 @@ export class ArbitrageEngine {
         });
         const effectiveVolatilityBps = (takerEdge.volatilityBps + makerEdge.volatilityBps) / 2;
         const volatilityMultiplier = Math.max(1.0, Math.min(2, 1 + (effectiveVolatilityBps - 1.5) / 5));
-        const threshold = baseThreshold.mul(volatilityMultiplier);
+        const threshold = baseThreshold.mul(volatilityMultiplier).mul(this.params.feeStressMultiplier);
+        // Operator-set net-edge floor (bps -> decimal), applied uniformly to every
+        // execution branch so lowering it surfaces more (marginal) trades and
+        // raising it keeps only the fat dislocations. Fee-stress widens it too.
+        const minEdgeFrac = d(this.params.minNetEdgeBps).div(10000).mul(this.params.feeStressMultiplier);
         // Hybrid: buy leg as maker (better price, lower fee), sell leg as taker (guaranteed fill)
         const hybridNet = calculateNetProfit({
           buyExchange: buyBook.exchange,
@@ -246,9 +287,9 @@ export class ArbitrageEngine {
         });
 
         const booksHealthy = buyBook.integrity.status !== "DEGRADED" && sellBook.integrity.status !== "DEGRADED";
-        const takerExecutable = quotesSynchronized && booksHealthy && takerEdge.expectedValueUsd.greaterThan(threshold) && takerEdge.survivalProbability > 0.5;
-        const makerExecutable = quotesSynchronized && booksHealthy && !takerExecutable && makerEdge.expectedValueUsd.greaterThan("0.25") && makerNetSpreadPct.greaterThan("0.000025") && makerEdge.survivalProbability > 0.54;
-        const hybridExecutable = quotesSynchronized && booksHealthy && !takerExecutable && !makerExecutable && hybridEdge.expectedValueUsd.greaterThan("0.25") && hybridNetSpreadPct.greaterThan("0.000025") && hybridEdge.survivalProbability > 0.54;
+        const takerExecutable = quotesSynchronized && booksHealthy && takerEdge.expectedValueUsd.greaterThan(threshold) && takerNet.netSpreadPct.greaterThanOrEqualTo(minEdgeFrac) && takerEdge.survivalProbability > 0.5;
+        const makerExecutable = quotesSynchronized && booksHealthy && !takerExecutable && makerEdge.expectedValueUsd.greaterThan("0.25") && makerNetSpreadPct.greaterThanOrEqualTo(minEdgeFrac) && makerEdge.survivalProbability > 0.54;
+        const hybridExecutable = quotesSynchronized && booksHealthy && !takerExecutable && !makerExecutable && hybridEdge.expectedValueUsd.greaterThan("0.25") && hybridNetSpreadPct.greaterThanOrEqualTo(minEdgeFrac) && hybridEdge.survivalProbability > 0.54;
         const status = takerExecutable || makerExecutable || hybridExecutable ? "DETECTED" : "REJECTED";
         const executionStyle = takerExecutable ? "INSTANT_TAKER" : makerExecutable ? "MAKER_ASSISTED" : "INSTANT_TAKER";
         const selectedNet = makerExecutable ? makerNetRaw : hybridExecutable ? hybridNet : takerNet;
@@ -771,7 +812,12 @@ export class ArbitrageEngine {
 
   private booksForSymbol(symbol: SymbolId, maxAgeMs = 2800): NormalizedOrderBook[] {
     const now = Date.now();
-    return [...this.books.values()].filter((book) => book.symbol === symbol && now - book.receivedAt <= maxAgeMs);
+    return [...this.books.values()].filter(
+      (book) =>
+        book.symbol === symbol &&
+        now - book.receivedAt <= maxAgeMs &&
+        (!this.activeExchanges || this.activeExchanges.has(book.exchange))
+    );
   }
 }
 

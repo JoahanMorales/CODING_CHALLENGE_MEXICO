@@ -21,6 +21,7 @@ import type {
   WalletSeed
 } from "@/lib/types";
 import { btcBookKey, useArbitrageStore } from "@/store/useArbitrageStore";
+import { ControlDeck } from "./ControlDeck";
 
 // recharts is the terminal's heaviest dependency; load it as a lazy client chunk
 // after the shell paints (charts show a skeleton until ready) so it stays out of
@@ -207,6 +208,7 @@ function TerminalSidebar() {
       <div className="flex-shrink-0">
         <MemoPerformancePanel metrics={metrics} mode={mode} risk={risk} />
       </div>
+      <ControlDeck />
       <details className="flex-shrink-0 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-sky-100/70">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
           <span className="font-mono text-[10px] font-black uppercase text-sky-700">Shadow Learning</span>

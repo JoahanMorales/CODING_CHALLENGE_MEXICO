@@ -1,4 +1,4 @@
-import type { ExecutionRuntimeMode, ExecutionState, GatewayMessage, GatewaySnapshot, LearningSummary, NormalizedOrderBook, Opportunity, ScenarioKind, WalletSeed } from "../types";
+import type { ExchangeId, ExecutionRuntimeMode, ExecutionState, GatewayMessage, GatewaySnapshot, LearningSummary, NormalizedOrderBook, Opportunity, ScenarioKind, WalletSeed } from "../types";
 import { ArbitrageEngine } from "./ArbitrageEngine";
 import { CounterfactualLearner } from "./CounterfactualLearner";
 import { EventBus } from "./EventBus";
@@ -60,6 +60,11 @@ export class ArbitrAIKernel {
   replayHistory(): void {
     const replay = this.recorder.replay();
     this.publish({ type: "REPLAY", opportunities: replay.opportunities, trades: replay.trades, events: replay.events });
+  }
+
+  setScannerUniverse(exchanges: ExchangeId[]): void {
+    this.engine.setActiveExchanges(exchanges);
+    this.publish({ type: "SCANNER_UNIVERSE", exchanges });
   }
 
   setExecutionMode(mode: ExecutionRuntimeMode): void {

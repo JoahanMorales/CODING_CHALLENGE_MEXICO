@@ -3,7 +3,9 @@
 import { create } from "zustand";
 import { EXCHANGE_IDS, INITIAL_WALLETS } from "@/lib/config/exchanges";
 import { ArbitrAIKernel } from "@/lib/services/ArbitrAIKernel";
+import { DEFAULT_ENGINE_PARAMS } from "@/lib/services/ArbitrageEngine";
 import type {
+  EngineParams,
   ExchangeId,
   GatewayCommand,
   GatewayMessage,
@@ -40,6 +42,7 @@ interface ArbitrageState {
   adminAuthenticated: boolean;
   adminMessage: string;
   scannerUniverse: ExchangeId[];
+  engineParams: EngineParams;
   books: Record<string, NormalizedOrderBook>;
   exchangeStatuses: ExchangeConnectionStatus[];
   flashes: Record<string, FlashState>;
@@ -63,6 +66,7 @@ interface ArbitrageState {
   runScenario: (scenario: ScenarioKind) => void;
   authenticateAdmin: (token: string) => void;
   setScannerUniverse: (exchanges: ExchangeId[]) => void;
+  setEngineParams: (params: Partial<EngineParams>) => void;
   setExecutionRuntimeMode: (mode: ExecutionRuntimeMode) => void;
   refreshSandboxBalances: () => void;
   reconcileSandbox: () => void;
@@ -156,6 +160,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   adminAuthenticated: false,
   adminMessage: "",
   scannerUniverse: EXCHANGE_IDS,
+  engineParams: { ...DEFAULT_ENGINE_PARAMS },
   books: {},
   exchangeStatuses: [],
   flashes: {},
@@ -227,7 +232,24 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   },
 
   setScannerUniverse: (exchanges) => {
-    sendGatewayCommand({ type: "SET_SCANNER_UNIVERSE", exchanges });
+    // Optimistic so the toggle is instant, then apply to whichever engine runs:
+    // the demo kernel filters detection locally; LIVE routes through the gateway.
+    set({ scannerUniverse: exchanges });
+    localKernel?.setScannerUniverse(exchanges);
+    if (get().mode === "LIVE") sendGatewayCommand({ type: "SET_SCANNER_UNIVERSE", exchanges });
+  },
+
+  setEngineParams: (params) => {
+    // Optimistic local update so the sliders feel instant, then push into
+    // whichever engine is actually running: the in-browser demo kernel and/or
+    // the live gateway. Both apply the same clamped params, so the number on
+    // screen is exactly what detection uses.
+    const next = { ...get().engineParams, ...params };
+    set({ engineParams: next });
+    localKernel?.engine.setParams(params);
+    if (get().mode === "LIVE" && gateway?.readyState === WebSocket.OPEN) {
+      sendGatewayCommand({ type: "SET_ENGINE_PARAMS", params });
+    }
   },
 
   setExecutionRuntimeMode: (mode) => {
@@ -510,6 +532,11 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
 
   if (message.type === "SCANNER_UNIVERSE") {
     set({ scannerUniverse: message.exchanges });
+    return;
+  }
+
+  if (message.type === "ENGINE_PARAMS") {
+    set({ engineParams: message.params });
     return;
   }
 

@@ -32,11 +32,21 @@ export type ExecutionState =
   | "UNWIND_REQUIRED"
   | "EXPIRED";
 
+// User-tunable strategy parameters (see ArbitrageEngine). Defined here so the
+// gateway protocol and the engine share one source of truth without an import
+// cycle.
+export interface EngineParams {
+  minNetEdgeBps: number;
+  maxTradeSizeBtc: number;
+  feeStressMultiplier: number;
+}
+
 export type GatewayCommand =
   | { type: "ADMIN_AUTH"; token: string }
   | { type: "SET_SCANNER_UNIVERSE"; exchanges: ExchangeId[] }
   | { type: "RUN_SCENARIO"; scenario: ScenarioKind }
   | { type: "SET_EXECUTION_MODE"; mode: ExecutionRuntimeMode }
+  | { type: "SET_ENGINE_PARAMS"; params: Partial<EngineParams> }
   | { type: "REFRESH_SANDBOX_BALANCES" }
   | { type: "RECONCILE_SANDBOX" }
   | { type: "SET_SANDBOX_KILL_SWITCH"; active: boolean }
@@ -466,4 +476,5 @@ export type GatewayMessage =
   | { type: "METRICS"; metrics: PerformanceMetrics }
   | { type: "ADMIN_STATE"; authenticated: boolean; reason: string }
   | { type: "SCANNER_UNIVERSE"; exchanges: ExchangeId[] }
+  | { type: "ENGINE_PARAMS"; params: EngineParams }
   | { type: "COMMAND_ERROR"; command: GatewayCommand["type"] | "UNKNOWN"; reason: string };
