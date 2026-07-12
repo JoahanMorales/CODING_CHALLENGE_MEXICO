@@ -22,6 +22,7 @@ import type {
 } from "@/lib/types";
 import { btcBookKey, useArbitrageStore } from "@/store/useArbitrageStore";
 import { ControlDeck } from "./ControlDeck";
+import { RebalancePanel } from "./RebalancePanel";
 
 // recharts is the terminal's heaviest dependency; load it as a lazy client chunk
 // after the shell paints (charts show a skeleton until ready) so it stays out of
@@ -241,6 +242,7 @@ function TerminalSidebar() {
           wallets={wallets}
         />
       </div>
+      <RebalancePanel />
     </aside>
   );
 }

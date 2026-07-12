@@ -1,6 +1,6 @@
 import { EXCHANGE_FEES, INITIAL_WALLETS } from "../config/exchanges";
 import { Decimal, d, usd, ZERO } from "../math/decimal";
-import type { ExchangeId, ExecutionPlan, Opportunity, OrderBookLevel, Trade, WalletBalance, WalletSeed } from "../types";
+import type { ExchangeId, ExecutionPlan, Opportunity, OrderBookLevel, RebalanceAction, Trade, WalletBalance, WalletSeed } from "../types";
 
 interface WalletInternal {
   exchange: ExchangeId;
@@ -71,6 +71,67 @@ export class ExecutionSimulator {
 
   exposureBtc(): Decimal {
     return [...this.wallets.values()].reduce((sum, wallet) => sum.plus(wallet.btc), ZERO);
+  }
+
+  // Automated inventory rebalancing. As trades skew balances, a venue can drift
+  // below its operating band while another accumulates a surplus of the same
+  // asset. This pulls the asset from the richest donor into the neediest venue
+  // to restore each toward its seed target, paying the donor's real on-chain
+  // withdrawal fee (BTC) or a network fee (USDT). Idempotent and bounded: it
+  // moves only what both sides can support, a few transfers per call, and never
+  // drains a donor below its own target. Returns the transfers it performed.
+  rebalance(btcRefPrice: Decimal, band = 0.18, maxTransfers = 3): RebalanceAction[] {
+    const price = btcRefPrice.greaterThan(0) ? btcRefPrice : d("70000");
+    const actions: RebalanceAction[] = [];
+
+    for (const asset of ["USDT", "BTC"] as const) {
+      const get = (w: WalletInternal) => (asset === "BTC" ? w.btc : w.usdt);
+      const set = (w: WalletInternal, v: Decimal) => {
+        if (asset === "BTC") w.btc = v;
+        else w.usdt = v;
+      };
+      const target = (ex: ExchangeId) => d(asset === "BTC" ? this.seed[ex].btc : this.seed[ex].usdt);
+
+      for (let i = 0; i < maxTransfers; i += 1) {
+        const list = [...this.wallets.values()];
+        // Neediest = furthest below its target (and under the lower band).
+        const needy = list
+          .filter((w) => get(w).lessThan(target(w.exchange).mul(1 - band)))
+          .sort((a, b) => get(a).div(target(a.exchange)).minus(get(b).div(target(b.exchange))).toNumber())[0];
+        if (!needy) break;
+        // Donor = most surplus above its target (and over the upper band).
+        const donor = list
+          .filter((w) => w.exchange !== needy.exchange && get(w).greaterThan(target(w.exchange).mul(1 + band)))
+          .sort((a, b) => get(b).minus(target(b.exchange)).minus(get(a).minus(target(a.exchange))).toNumber())[0];
+        if (!donor) break;
+
+        const needyGap = target(needy.exchange).minus(get(needy));
+        const donorSurplus = get(donor).minus(target(donor.exchange));
+        const amount = Decimal.min(needyGap, donorSurplus);
+        if (amount.lessThanOrEqualTo(0)) break;
+
+        const feeAsset = asset === "BTC"
+          ? d(EXCHANGE_FEES[donor.exchange].withdrawalBtc)
+          : amount.mul("0.0005"); // ~5 bps USDT network/withdraw fee
+        const costUsd = asset === "BTC" ? feeAsset.mul(price) : feeAsset;
+
+        set(donor, get(donor).minus(amount).minus(feeAsset));
+        set(needy, get(needy).plus(amount));
+
+        actions.push({
+          id: `rb-${Date.now()}-${actions.length}`,
+          timestamp: Date.now(),
+          asset,
+          fromExchange: donor.exchange,
+          toExchange: needy.exchange,
+          amount: asset === "BTC" ? amount.toFixed(6) : amount.toFixed(2),
+          costUsd: usd(costUsd),
+          reason: `${needy.exchange} ${asset} bajo banda (${(band * 100).toFixed(0)}%)`
+        });
+      }
+    }
+
+    return actions;
   }
 
   preflight(opportunity: Opportunity): { ok: boolean; reason: string } {

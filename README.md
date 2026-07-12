@@ -86,7 +86,7 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 - Reconstrucción de `order books` con `sequence gaps`; Kraken valida `CRC32` sobre su profundidad suscrita.
 - Trading fees, quote basis, slippage, latency y market impact como `execution cost`.
 - `Withdrawal amortization` separado como `rebalance cost`: `Execution Net P&L` y `Rebalance-adjusted P&L` nunca se mezclan.
-- Fills parciales, wallets prefunded y alerta de rebalancing.
+- Fills parciales, wallets prefunded y **rebalanceo automático**: cuando un venue drifta bajo su banda operativa (±18% del target), el motor jala el excedente del venue más holgado del mismo activo, paga el fee de retiro real (on-chain BTC o red USDT) y registra cada transferencia en un log auditable en la consola.
 - `Execution state machine`: `DETECTED -> PREFLIGHT -> VALIDATED -> RESERVED -> LEG_A -> LEG_B -> RECONCILED`.
 - `Preflight` real de ambas piernas antes de admitir una señal a la queue.
 - `Circuit breaker` tras tres pérdidas materiales.
@@ -332,6 +332,7 @@ Adjuntar un Railway Volume en `/data` para journal y calibración.
 | Velocidad | Feeds live, procesamiento event-driven, `BOOK_BATCH` visual y latency visible. |
 | Precisión | `Decimal.js`, normalización `USD/USDT`, fees por venue, waterfall de costos, quote freshness e impacto. |
 | Robustez | Libros reconstruidos, `CRC32`, sequence gaps, fills parciales, two-leg `preflight`, reconciliation, `circuit breaker` y escenarios de estrés (crash / drenaje / latencia). |
+| Wallets y rebalanceo | Wallets prefunded por venue y **rebalanceo automático por bandas** que mantiene el inventario operativo entre exchanges, con fee de retiro real y log auditable. |
 | Estrategia | Cross-exchange, triangular, stat arb, AET y Shadow Learning. |
 | Arquitectura | Servicios separados, protocolo WebSocket tipado, tests y health checks. |
 | UX | Cuatro rutas enfocadas, filtros locales, explicaciones de rechazo y replay. |

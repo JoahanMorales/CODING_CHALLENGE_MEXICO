@@ -1,4 +1,5 @@
 import type { ExchangeId, ExecutionRuntimeMode, ExecutionState, GatewayMessage, GatewaySnapshot, LearningSummary, NormalizedOrderBook, Opportunity, ScenarioKind, WalletSeed } from "../types";
+import { d } from "../math/decimal";
 import { ArbitrageEngine } from "./ArbitrageEngine";
 import { CounterfactualLearner } from "./CounterfactualLearner";
 import { EventBus } from "./EventBus";
@@ -163,6 +164,14 @@ export class ArbitrAIKernel {
           const metrics = this.pnlTracker.recordTrade(trade);
           this.engine.recordExecutionOutcome(opportunity, Number(trade.pnlUsd));
           this.publish({ type: "TRADE", trade, wallets: this.simulator.balances(), metrics, risk, queue: [...this.executionQueue] });
+          // After the wallet mutation, keep inventory operationally balanced
+          // across venues: pull surplus assets into venues that drifted low.
+          if (trade.status !== "REJECTED") {
+            const rebalanceActions = this.simulator.rebalance(this.currentBtcPrice());
+            if (rebalanceActions.length) {
+              this.publish({ type: "REBALANCE", actions: rebalanceActions, wallets: this.simulator.balances() });
+            }
+          }
           this.transition(opportunity, trade.status === "REJECTED" ? "UNWIND_REQUIRED" : "RECONCILED", trade.status === "REJECTED" ? "Paper fill failed preflight; no wallet mutation applied." : "Both paper legs reconciled.");
           const sandboxReport = await this.sandboxExecution.execute(opportunity);
           if (sandboxReport) this.publish({ type: "EXECUTION_RUNTIME", runtime: this.sandboxExecution.status(), report: sandboxReport });
@@ -174,6 +183,12 @@ export class ArbitrAIKernel {
     } finally {
       this.executing = false;
     }
+  }
+
+  private currentBtcPrice() {
+    const book = this.engine.snapshotBooks().find((b) => b.symbol === "BTC/USDT" && b.asks[0] && b.bids[0]);
+    if (!book) return d("70000");
+    return d(book.asks[0].price).plus(book.bids[0].price).div(2);
   }
 
   private publish(message: GatewayMessage): void {

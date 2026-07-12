@@ -18,6 +18,7 @@ import type {
   LearningSummary,
   PerformanceMetrics,
   PricePoint,
+  RebalanceAction,
   RiskState,
   ScenarioKind,
   Trade,
@@ -52,6 +53,7 @@ interface ArbitrageState {
   trades: Trade[];
   wallets: WalletBalance[];
   walletSeed: WalletSeed;
+  rebalanceActions: RebalanceAction[];
   risk: RiskState;
   metrics: PerformanceMetrics;
   learning: LearningSummary;
@@ -170,6 +172,7 @@ export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
   trades: [],
   wallets: [],
   walletSeed: INITIAL_WALLETS,
+  rebalanceActions: [],
   risk: defaultRisk,
   metrics: defaultMetrics,
   learning: defaultLearning,
@@ -537,6 +540,14 @@ function applyGatewayMessage(set: StoreSet, message: GatewayMessage): void {
 
   if (message.type === "ENGINE_PARAMS") {
     set({ engineParams: message.params });
+    return;
+  }
+
+  if (message.type === "REBALANCE") {
+    set((state) => ({
+      wallets: message.wallets,
+      rebalanceActions: [...message.actions, ...state.rebalanceActions].slice(0, 40)
+    }));
     return;
   }
 

@@ -353,6 +353,20 @@ export interface WalletBalance {
 
 export type WalletSeed = Record<ExchangeId, { btc: string; usdt: string }>;
 
+// One automated transfer emitted by the wallet rebalancer: it pulls an asset
+// from a venue running a surplus into one that drifted below its operating band,
+// paying the donor's real withdrawal fee. Surfaced in the console as an audit log.
+export interface RebalanceAction {
+  id: string;
+  timestamp: number;
+  asset: "BTC" | "USDT";
+  fromExchange: ExchangeId;
+  toExchange: ExchangeId;
+  amount: string;
+  costUsd: string;
+  reason: string;
+}
+
 export interface RiskState {
   status: SystemStatus;
   riskColor: "GREEN" | "AMBER" | "RED";
@@ -477,4 +491,5 @@ export type GatewayMessage =
   | { type: "ADMIN_STATE"; authenticated: boolean; reason: string }
   | { type: "SCANNER_UNIVERSE"; exchanges: ExchangeId[] }
   | { type: "ENGINE_PARAMS"; params: EngineParams }
+  | { type: "REBALANCE"; actions: RebalanceAction[]; wallets: WalletBalance[] }
   | { type: "COMMAND_ERROR"; command: GatewayCommand["type"] | "UNKNOWN"; reason: string };
