@@ -67,7 +67,7 @@ AET estima si un edge visible sobrevivirá el tiempo suficiente para ejecutarse.
 El resultado incluye `survival probability`, `fill probability`, `leg risk`, `adverse selection`, `Expected Value`, `suggested size` y un score explicable de `0-100`. La queue usa `Expected Value`, no el spread bruto.
 
 <p align="center">
-  <img alt="Inteligencia: red de decisión 3D + system map" src="recursos/inteligencia-nuevo.png" width="820" />
+  <img alt="Inteligencia: red de decisión 3D + system map" src="recursos/inteligencia.gif" width="820" />
 </p>
 
 ### 2. Cuatro estrategias
