@@ -27,7 +27,7 @@ La entrega pública separa con claridad:
 - `Demo`: escenario controlado para mostrar el ciclo completo cuando el mercado está quieto.
 
 <p align="center">
-  <img alt="Terminal en vivo" src="recursos/terminalvideo.gif" width="820" />
+  <img alt="Landing: red de decisión + 8 exchanges" src="recursos/landing-nuevo.png" width="820" />
 </p>
 
 ## Demo web
@@ -48,7 +48,7 @@ Todo esto es reproducible desde `scripts/` y visible en `/resultados` — no pro
 </p>
 
 - **8 exchanges en vivo** por WebSocket (Binance, Kraken, Coinbase, OKX, Bybit, Bitfinex, Gate, Bitstamp), con cálculo de rentabilidad **neta de fees, base USDT/USD, slippage y riesgo de ejecución**.
-- **Capturas reales de arbitraje** (`npm run scan:opportunities`): sobre 40,025 rondas reales el bot detectó **9 dislocaciones net-positivas genuinas** en un spike de volatilidad — p. ej. **comprar OKX @$64,050 / vender Gate @$64,228 = +7.8 bps neto tras fees**, con ambos libros frescos (<200ms, no quotes rancias). Los venues rápidos repricean antes que los lentos: ventanas de ~1s, raras pero reales — justo lo que el reto describe.
+- **Capturas reales de arbitraje** (`npm run scan:opportunities`): sobre 60,716 rondas reales el bot detectó **23 dislocaciones net-positivas genuinas** en un spike de volatilidad — p. ej. **comprar Binance @$63,995 / vender Bitfinex @$64,319 = +20.53 bps neto tras fees**, con ambos libros frescos (<200ms, no quotes rancias). Los venues rápidos repricean antes que los lentos: ventanas de ~1s, raras pero reales — justo lo que el reto describe.
 - **Eficiencia cuantificada, honestamente** (`study:fee`, `study:maker`): sobre **3.6M de dislocaciones reales**, el edge bruto mediano es 1.4 bps → break-even ≤1.3 bps round-trip; a fees retail el arbitraje cross **y** el market-making pasivo son estructuralmente no rentables. El valor del sistema es **detectar el edge real cuando existe y rechazar con precisión el resto** — la disciplina de riesgo es el producto.
 
 ## Diferenciadores
@@ -67,7 +67,7 @@ AET estima si un edge visible sobrevivirá el tiempo suficiente para ejecutarse.
 El resultado incluye `survival probability`, `fill probability`, `leg risk`, `adverse selection`, `Expected Value`, `suggested size` y un score explicable de `0-100`. La queue usa `Expected Value`, no el spread bruto.
 
 <p align="center">
-  <img alt="AET pipeline animation" src="recursos/diagrama.gif" width="820" />
+  <img alt="Inteligencia: red de decisión 3D + system map" src="recursos/inteligencia-nuevo.png" width="820" />
 </p>
 
 ### 2. Cuatro estrategias
