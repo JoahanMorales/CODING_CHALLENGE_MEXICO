@@ -164,7 +164,7 @@ flowchart LR
 El backend reconstruye feeds live y coalesce actualizaciones por símbolo antes de recalcular las rutas tocadas. La UI recibe `BOOK_BATCH` throttled, desactiva animaciones costosas en charts y memoiza paneles independientes para mantener React fluido sin convertir el navegador en el cuello de botella.
 
 <p align="center">
-  <img alt="Terminal en vivo" src="recursos/terminal.png" width="820" />
+  <img alt="Terminal en vivo: P&L hero + 8 exchanges + ejecución" src="recursos/terminal-nuevo.png" width="820" />
 </p>
 
 ## Quick start
