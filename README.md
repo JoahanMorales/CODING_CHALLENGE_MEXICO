@@ -90,7 +90,7 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 - `Execution state machine`: `DETECTED -> PREFLIGHT -> VALIDATED -> RESERVED -> LEG_A -> LEG_B -> RECONCILED`.
 - `Preflight` real de ambas piernas antes de admitir una señal a la queue.
 - `Circuit breaker` tras tres pérdidas materiales.
-- Límite diario de pérdida y máximo `0.1 BTC` por trade.
+- Límite diario de pérdida y cap de tamaño por trade (`0.1 BTC` por defecto, **ajustable en vivo** desde la consola — ver [Parametrización en vivo](#parametrización-en-vivo)).
 - `Shadow Learning`: aprende también de señales descartadas.
 - CSV de sesión, journal persistente y calibración recuperable con schema versionado para no reutilizar observaciones incompatibles tras cambiar el modelo.
 
@@ -139,6 +139,25 @@ El resultado incluye `survival probability`, `fill probability`, `leg risk`, `ad
 - Engle y Granger: [Co-integration and Error Correction](https://www.jstor.org/stable/1913236) (1987) · Dickey y Fuller (1979)
 - Kelly: [A New Interpretation of Information Rate](https://ieeexplore.ieee.org/document/6771227) (1956) · Thorp (2006)
 - Kraken API Center: [Spot WebSockets v2 Book Checksum](https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/)
+
+## Parametrización en vivo
+
+La estrategia no está hardcodeada: el operador la sintoniza en tiempo real desde el **ControlDeck** de la terminal, y cada parámetro entra directo al motor de detección — lo que ajustas es exactamente lo que el bot usa para decidir cada operación. Sin redeploy, sin tocar código.
+
+<p align="center">
+  <img alt="ControlDeck: parametrización en vivo" src="recursos/parametrizacion.png" width="440" />
+</p>
+
+| Parámetro | Rango | Qué controla | Dónde impacta |
+|---|---|---|---|
+| **Umbral de ganancia neta** | `0–40 bps` | Edge mínimo, tras fees, para que una ruta sea ejecutable. Bájalo y afloran trades marginales; súbelo y solo pasan las dislocaciones gordas | Gatea las tres ramas (taker / maker / híbrida) en `detectCrossExchange` |
+| **Tamaño máx. de orden** | `0.001–5 BTC` | Techo de posición por operación, independiente de la profundidad disponible | Cap sobre el sizing dinámico por depth |
+| **Estrés de fees** | `0.5–3×` | Margen de seguridad: asume que fees y slippage son este múltiplo peores. `1.0` = fees reales; `2.0` = doble de conservador | Ensancha el umbral USD y el floor de edge |
+| **Universo de exchanges** | `2–8 venues` | Qué mercados participan en el arbitraje. Los apagados se siguen mostrando, pero nunca entran a una ruta | Filtra `booksForSymbol` en el engine |
+
+**Cableado end-to-end (defendible):** `ControlDeck` → acción del store (update optimista para respuesta instantánea) → `engine.setParams()` en el kernel del navegador **y/o** comando `SET_ENGINE_PARAMS` sobre el gateway WebSocket → aplicado (con clamps) dentro del `ArbitrageEngine`. El gateway hace `broadcast` de los parámetros efectivos y **sincroniza a cada cliente nuevo al conectar**, así los sliders siempre reflejan lo que la detección está usando de verdad. Definidos una sola vez como `EngineParams` (`src/lib/types.ts`), compartidos por el protocolo y el engine.
+
+Además, el modo de ejecución (`PAPER` / `SANDBOX`), el `kill switch`, el reset del `circuit breaker`, el `replay` de sesión, el export a CSV y los escenarios de estrés (crash de volatilidad, drenaje de liquidez, latencia elevada) son controlables desde la misma consola.
 
 ## Arquitectura
 
@@ -309,9 +328,10 @@ Adjuntar un Railway Volume en `/data` para journal y calibración.
 
 | Criterio | Evidencia |
 |---|---|
+| **Parametrización** | Umbral de edge, tamaño de orden, estrés de fees y universo de exchanges **ajustables en vivo** desde el ControlDeck, cableados al motor de detección — ver [Parametrización en vivo](#parametrización-en-vivo). |
 | Velocidad | Feeds live, procesamiento event-driven, `BOOK_BATCH` visual y latency visible. |
 | Precisión | `Decimal.js`, normalización `USD/USDT`, fees por venue, waterfall de costos, quote freshness e impacto. |
-| Robustez | Libros reconstruidos, `CRC32`, sequence gaps, fills parciales, two-leg `preflight`, reconciliation y `circuit breaker`. |
+| Robustez | Libros reconstruidos, `CRC32`, sequence gaps, fills parciales, two-leg `preflight`, reconciliation, `circuit breaker` y escenarios de estrés (crash / drenaje / latencia). |
 | Estrategia | Cross-exchange, triangular, stat arb, AET y Shadow Learning. |
 | Arquitectura | Servicios separados, protocolo WebSocket tipado, tests y health checks. |
 | UX | Cuatro rutas enfocadas, filtros locales, explicaciones de rechazo y replay. |
