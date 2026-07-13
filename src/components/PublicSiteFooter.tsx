@@ -7,7 +7,7 @@ export function PublicSiteFooter() {
           <span>ArbitrAI · Joahan Samuel Morales Piña</span>
         </div>
         <div className="flex items-center gap-3">
-          <a className="rounded-lg border border-zinc-200 bg-white/70 px-3 py-1.5 text-xs font-black text-zinc-600 transition hover:border-sky-200 hover:text-sky-700" href="https://github.com/JoahanMorales" rel="noreferrer" target="_blank">GitHub</a>
+          <a className="rounded-lg border border-zinc-200 bg-white/70 px-3 py-1.5 text-xs font-black text-zinc-600 transition hover:border-sky-200 hover:text-sky-700" href="https://github.com/JoahanMorales/CODING_CHALLENGE_MEXICO" rel="noreferrer" target="_blank">GitHub</a>
           <a className="rounded-lg border border-zinc-200 bg-white/70 px-3 py-1.5 text-xs font-black text-zinc-600 transition hover:border-sky-200 hover:text-sky-700" href="https://www.linkedin.com/in/joahan-morales/" rel="noreferrer" target="_blank">LinkedIn</a>
         </div>
       </div>

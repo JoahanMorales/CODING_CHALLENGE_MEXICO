@@ -208,7 +208,7 @@ export default function IntelligencePage() {
           <div className="mt-6 text-center">
             <a
               className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-5 py-3 font-mono text-xs font-black text-sky-700 transition hover:bg-sky-100"
-              href="https://github.com/JoahanMorales"
+              href="https://github.com/JoahanMorales/CODING_CHALLENGE_MEXICO#readme"
               rel="noreferrer"
               target="_blank"
             >
