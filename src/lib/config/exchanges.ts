@@ -89,7 +89,7 @@ export const INITIAL_WALLETS: WalletSeed = {
 export const EXCHANGE_WS_ENDPOINTS = {
   binance: {
     depth:
-      "wss://stream.binance.com:9443/stream?streams=btcusdt@depth5@100ms/ethusdt@depth5@100ms/ethbtc@depth5@100ms"
+      "wss://data-stream.binance.vision:9443/stream?streams=btcusdt@depth5@100ms/ethusdt@depth5@100ms/ethbtc@depth5@100ms"
   },
   kraken: {
     v2: "wss://ws.kraken.com/v2"

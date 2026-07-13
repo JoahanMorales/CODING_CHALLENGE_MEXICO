@@ -154,7 +154,7 @@ let gatewayReconnectTimer: number | null = null;
 let lastGatewayHeartbeatPaintAt = 0;
 
 export const useArbitrageStore = create<ArbitrageState>((set, get) => ({
-  mode: "DEMO",
+  mode: "LIVE",
   connected: false,
   connectionError: "",
   lastGatewayMessageAt: 0,

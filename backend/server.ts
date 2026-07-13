@@ -402,8 +402,12 @@ class ExchangeConnector {
 
   private connectBinance(): void {
     this.mark("binance", "websocket", "connecting");
+    // Binance's public market-data mirror (data-stream.binance.vision). It carries
+    // the identical stream payloads as stream.binance.com but, being a data-only
+    // endpoint, is not geo-restricted for datacenter IPs the way the trading domain
+    // is — so it keeps Binance live even when the gateway runs from a US region.
     const url =
-      "wss://stream.binance.com:9443/stream?streams=btcusdt@depth5@100ms/ethusdt@depth5@100ms/ethbtc@depth5@100ms";
+      "wss://data-stream.binance.vision:9443/stream?streams=btcusdt@depth5@100ms/ethusdt@depth5@100ms/ethbtc@depth5@100ms";
     const socket = new WebSocket(url);
     socket.on("message", (payload) => {
       const parsed = safeParse(payload.toString());
@@ -735,7 +739,7 @@ class ExchangeConnector {
     ];
     await Promise.all(
       symbols.map(async ([restSymbol, symbol]) => {
-        const response = await fetch(`https://api.binance.com/api/v3/depth?symbol=${restSymbol}&limit=5`);
+        const response = await fetch(`https://data-api.binance.vision/api/v3/depth?symbol=${restSymbol}&limit=5`);
         const data = (await response.json()) as unknown;
         if (!isRecord(data)) return;
         const bids = levelsFromUnknown(data.bids);
