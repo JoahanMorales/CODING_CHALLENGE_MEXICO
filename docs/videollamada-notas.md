@@ -45,6 +45,8 @@ Abrir `/terminal` → sidebar derecho → **Parámetros de estrategia**. El sist
 5. **Estilo de ejecución** (Auto/Taker/Maker/Híbrido) → forzar Maker deshabilita la rama taker, etc.
 6. Apagar un exchange → las **rutas dirigidas en escaneo** bajan (n·(n−1)); ese venue se sigue viendo pero ya no entra a ninguna ruta.
 
+**Backtest what-if (el remate):** debajo del ControlDeck hay un panel que aplica los gates actuales sobre **60,716 rondas reales grabadas** y recalcula trades/P&L en vivo. Mover un preset de Conservador (0 trades) a Agresivo (5 trades / +$6.69) **demuestra sobre datos reales** que la parametrización cambia el resultado. Aclarar: aplica los gates económicos, no re-corre el comité ML/AET — es una cota inferior honesta.
+
 **Cableado (si preguntan):** ControlDeck → acción del store (update optimista) → `engine.setParams()` en el kernel del navegador **y/o** comando `SET_ENGINE_PARAMS` sobre el WebSocket → aplicado con clamps dentro del engine → el gateway hace broadcast de los params efectivos y **sincroniza a cada cliente nuevo al conectar**.
 
 ---

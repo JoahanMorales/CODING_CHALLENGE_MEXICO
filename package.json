@@ -34,7 +34,8 @@
     "backtest": "tsx scripts/backtest.ts",
     "study:fee": "tsx scripts/feeThresholdSweep.ts",
     "study:maker": "tsx scripts/makerEdgeStudy.ts",
-    "scan:opportunities": "tsx scripts/opportunityScan.ts"
+    "scan:opportunities": "tsx scripts/opportunityScan.ts",
+    "backtest:sample": "tsx scripts/buildBacktestSample.ts"
   },
   "dependencies": {
     "decimal.js": "^10.4.3",
