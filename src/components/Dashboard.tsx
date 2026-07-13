@@ -456,7 +456,7 @@ function SystemHealth({
         </div>
         <div className="text-right font-mono">
           <div className={`text-2xl font-black ${riskColorClass(risk.riskColor)}`}>{risk.status}</div>
-          <div className="text-[10px] font-bold uppercase text-zinc-500">{mode === "LIVE" ? "ws://localhost:8080" : "gbm simulator"}</div>
+          <div className="text-[10px] font-bold uppercase text-zinc-500">{mode === "LIVE" ? "gateway en vivo" : "gbm simulator"}</div>
         </div>
       </div>
 

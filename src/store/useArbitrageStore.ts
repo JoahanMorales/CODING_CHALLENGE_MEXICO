@@ -416,7 +416,7 @@ function startGateway(set: StoreSet, walletSeed: WalletSeed): void {
   socket.addEventListener("close", () => {
     if (gateway !== socket || generation !== gatewayGeneration) return;
     gateway = null;
-    set({ connected: false, connectionError: "El gateway WebSocket se cerró. Verifica npm run dev:ws o el servicio de Railway." });
+    set({ connected: false, connectionError: "Conexión con el gateway de mercado interrumpida. Reintentando…" });
     gatewayReconnectTimer = window.setTimeout(() => {
       if (generation === gatewayGeneration && useArbitrageStore.getState().mode === "LIVE") {
         startGateway(set, useArbitrageStore.getState().walletSeed);
@@ -425,7 +425,7 @@ function startGateway(set: StoreSet, walletSeed: WalletSeed): void {
   });
   socket.addEventListener("error", () => {
     if (gateway !== socket || generation !== gatewayGeneration) return;
-    set({ connected: false, connectionError: `No se pudo alcanzar ${url}. El backend está apagado o bloqueado.` });
+    set({ connected: false, connectionError: "No se pudo conectar con el gateway de mercado. Reintentando…" });
     socket.close();
   });
 }
