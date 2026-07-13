@@ -35,10 +35,20 @@ export type ExecutionState =
 // User-tunable strategy parameters (see ArbitrageEngine). Defined here so the
 // gateway protocol and the engine share one source of truth without an import
 // cycle.
+export type PreferredExecutionStyle = "AUTO" | "TAKER" | "MAKER" | "HYBRID";
+
 export interface EngineParams {
   minNetEdgeBps: number;
   maxTradeSizeBtc: number;
   feeStressMultiplier: number;
+  /** Reject a route whose modeled slippage exceeds this (bps of notional). */
+  maxSlippageBps: number;
+  /** Require at least this much top-5 depth (BTC) on both legs. */
+  minDepthBtc: number;
+  /** Skew tolerance: both books must be within this age of each other (ms). */
+  maxQuoteAgeMs: number;
+  /** Force an execution style, or AUTO to let the engine pick. */
+  preferredStyle: PreferredExecutionStyle;
 }
 
 export type GatewayCommand =

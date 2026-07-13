@@ -4,24 +4,30 @@ import { useMemo } from "react";
 import { EXCHANGE_IDS, EXCHANGE_LABELS } from "@/lib/config/exchanges";
 import { DEFAULT_ENGINE_PARAMS } from "@/lib/services/ArbitrageEngine";
 import { useArbitrageStore } from "@/store/useArbitrageStore";
-import type { EngineParams, ExchangeId } from "@/lib/types";
+import type { EngineParams, ExchangeId, PreferredExecutionStyle } from "@/lib/types";
 
 // ControlDeck — the strategy command center. Every knob here writes straight into
 // the running ArbitrageEngine (demo kernel + live gateway) via setEngineParams /
 // setScannerUniverse, so what the operator dials is exactly what detection uses.
-// This is the parametrization surface the challenge weighs most heavily: the
-// operator controls the edge threshold, position cap, fee-stress margin and the
-// active venue universe live, with no redeploy.
+// This is the parametrization surface the challenge weighs most heavily.
+
+type NumericKnobKey =
+  | "minNetEdgeBps"
+  | "maxTradeSizeBtc"
+  | "feeStressMultiplier"
+  | "maxSlippageBps"
+  | "minDepthBtc"
+  | "maxQuoteAgeMs";
 
 interface Knob {
-  key: keyof EngineParams;
+  key: NumericKnobKey;
   label: string;
   hint: string;
   min: number;
   max: number;
   step: number;
   format: (v: number) => string;
-  accent: string; // tailwind accent-* colour
+  accent: string;
 }
 
 const KNOBS: Knob[] = [
@@ -29,33 +35,62 @@ const KNOBS: Knob[] = [
     key: "minNetEdgeBps",
     label: "Umbral de ganancia neta",
     hint: "Edge mínimo, tras fees, para ejecutar. Bájalo y aparecen más trades marginales; súbelo y solo pasan las dislocaciones gordas.",
-    min: 0,
-    max: 40,
-    step: 0.5,
-    format: (v) => `${v.toFixed(1)} bps`,
-    accent: "accent-emerald-500"
+    min: 0, max: 40, step: 0.5, format: (v) => `${v.toFixed(1)} bps`, accent: "accent-emerald-500"
   },
   {
     key: "maxTradeSizeBtc",
     label: "Tamaño máx. de orden",
     hint: "Techo de posición por operación, sin importar la profundidad disponible. Controla la exposición por trade.",
-    min: 0.001,
-    max: 1,
-    step: 0.001,
-    format: (v) => `${v.toFixed(3)} BTC`,
-    accent: "accent-sky-500"
+    min: 0.001, max: 1, step: 0.001, format: (v) => `${v.toFixed(3)} BTC`, accent: "accent-sky-500"
   },
   {
     key: "feeStressMultiplier",
     label: "Estrés de fees",
     hint: "Margen de seguridad: asume que fees y slippage son este múltiplo peores. 1.0 = fees reales; 2.0 = doble de conservador.",
-    min: 0.5,
-    max: 3,
-    step: 0.05,
-    format: (v) => `${v.toFixed(2)}×`,
-    accent: "accent-amber-500"
+    min: 0.5, max: 3, step: 0.05, format: (v) => `${v.toFixed(2)}×`, accent: "accent-amber-500"
+  },
+  {
+    key: "maxSlippageBps",
+    label: "Tolerancia de slippage",
+    hint: "Slippage modelado máximo (bps del nocional). Rutas que consuman demasiada profundidad se descartan.",
+    min: 0, max: 50, step: 0.5, format: (v) => `${v.toFixed(1)} bps`, accent: "accent-rose-500"
+  },
+  {
+    key: "minDepthBtc",
+    label: "Profundidad mínima",
+    hint: "Liquidez mínima a 5 niveles requerida en ambas piernas para considerar la ruta.",
+    min: 0, max: 1, step: 0.01, format: (v) => `${v.toFixed(2)} BTC`, accent: "accent-sky-500"
+  },
+  {
+    key: "maxQuoteAgeMs",
+    label: "Frescura máx. de quote",
+    hint: "Ambos libros deben estar dentro de esta ventana de tiempo entre sí; más allá, la señal se considera desincronizada.",
+    min: 200, max: 4000, step: 100, format: (v) => `${v.toFixed(0)} ms`, accent: "accent-violet-500"
   }
 ];
+
+const STYLES: { key: PreferredExecutionStyle; label: string }[] = [
+  { key: "AUTO", label: "Auto" },
+  { key: "TAKER", label: "Taker" },
+  { key: "MAKER", label: "Maker" },
+  { key: "HYBRID", label: "Híbrido" }
+];
+
+const PRESETS: { label: string; params: EngineParams }[] = [
+  {
+    label: "Conservador",
+    params: { minNetEdgeBps: 12, maxTradeSizeBtc: 0.03, feeStressMultiplier: 1.5, maxSlippageBps: 6, minDepthBtc: 0.3, maxQuoteAgeMs: 1000, preferredStyle: "MAKER" }
+  },
+  { label: "Balanceado", params: { ...DEFAULT_ENGINE_PARAMS } },
+  {
+    label: "Agresivo",
+    params: { minNetEdgeBps: 1.5, maxTradeSizeBtc: 0.25, feeStressMultiplier: 0.8, maxSlippageBps: 30, minDepthBtc: 0.02, maxQuoteAgeMs: 2500, preferredStyle: "AUTO" }
+  }
+];
+
+function paramsEqual(a: EngineParams, b: EngineParams): boolean {
+  return (Object.keys(b) as (keyof EngineParams)[]).every((k) => a[k] === b[k]);
+}
 
 export function ControlDeck() {
   const engineParams = useArbitrageStore((state) => state.engineParams);
@@ -67,16 +102,13 @@ export function ControlDeck() {
 
   const locked = mode === "LIVE" && !adminAuthenticated;
   const activeSet = useMemo(() => new Set(scannerUniverse), [scannerUniverse]);
-  const isDefault =
-    engineParams.minNetEdgeBps === DEFAULT_ENGINE_PARAMS.minNetEdgeBps &&
-    engineParams.maxTradeSizeBtc === DEFAULT_ENGINE_PARAMS.maxTradeSizeBtc &&
-    engineParams.feeStressMultiplier === DEFAULT_ENGINE_PARAMS.feeStressMultiplier;
+  const activePreset = PRESETS.find((p) => paramsEqual(engineParams, p.params))?.label ?? null;
 
   function toggleExchange(id: ExchangeId) {
     if (locked) return;
     const next = new Set(activeSet);
     if (next.has(id)) {
-      if (next.size <= 2) return; // engine needs ≥2 venues to cross
+      if (next.size <= 2) return;
       next.delete(id);
     } else {
       next.add(id);
@@ -89,21 +121,33 @@ export function ControlDeck() {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-indigo-500" />
-          <span className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700">
-            Parámetros de estrategia
-          </span>
+          <span className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700">Parámetros de estrategia</span>
         </div>
-        <button
-          type="button"
-          disabled={locked || isDefault}
-          onClick={() => setEngineParams({ ...DEFAULT_ENGINE_PARAMS })}
-          className="rounded-md border border-zinc-200 px-2 py-0.5 font-mono text-[9px] font-black uppercase text-zinc-400 transition enabled:hover:border-indigo-300 enabled:hover:text-indigo-600 disabled:opacity-40"
-        >
-          Reset
-        </button>
+        <span className="font-mono text-[9px] font-black uppercase tracking-wider text-zinc-400">
+          {activePreset ? `preset · ${activePreset}` : "custom"}
+        </span>
       </div>
 
-      <p className="mt-2 text-[11px] font-semibold leading-4 text-zinc-500">
+      {/* Presets: one click loads a coherent strategy profile into the engine. */}
+      <div className="mt-3 grid grid-cols-3 gap-1.5">
+        {PRESETS.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            disabled={locked}
+            onClick={() => setEngineParams(p.params)}
+            className={`rounded-lg border px-2 py-1.5 font-mono text-[10px] font-black uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              activePreset === p.label
+                ? "border-indigo-300 bg-indigo-500 text-white shadow-sm shadow-indigo-200"
+                : "border-zinc-200 bg-white text-zinc-500 hover:border-indigo-300 hover:text-indigo-600"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="mt-3 text-[11px] font-semibold leading-4 text-zinc-500">
         En vivo hacia el motor de detección. Lo que ajustas aquí es exactamente lo que el bot usa para decidir cada operación.
       </p>
 
@@ -135,13 +179,34 @@ export function ControlDeck() {
       </div>
 
       {/* Live derived readout: the effective net-edge floor the engine is using
-          right now = min edge × fee-stress. Makes the interaction between two
-          knobs legible instead of implicit. */}
+          right now = min edge × fee-stress. */}
       <div className="mt-3 flex items-center justify-between rounded-lg bg-zinc-900 px-3 py-1.5">
         <span className="font-mono text-[9px] font-black uppercase tracking-wider text-zinc-400">Umbral efectivo</span>
         <span className="font-mono text-[12px] font-black tabular-nums text-emerald-400">
           {(engineParams.minNetEdgeBps * engineParams.feeStressMultiplier).toFixed(1)} bps
         </span>
+      </div>
+
+      {/* Execution style: AUTO lets the engine pick per-signal; the others force it. */}
+      <div className="mt-4">
+        <span className="font-mono text-[10px] font-black uppercase tracking-wider text-zinc-500">Estilo de ejecución</span>
+        <div className="mt-2 grid grid-cols-4 gap-1">
+          {STYLES.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              disabled={locked}
+              onClick={() => setEngineParams({ preferredStyle: s.key })}
+              className={`rounded-lg border px-1 py-1.5 font-mono text-[10px] font-black uppercase transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                engineParams.preferredStyle === s.key
+                  ? "border-indigo-300 bg-indigo-500 text-white shadow-sm shadow-indigo-200"
+                  : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300"
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-4 border-t border-zinc-100 pt-3">

@@ -36,12 +36,14 @@ Guion para la posible llamada con el comité. Objetivo: transmitir profundidad t
 
 ## 4. La parametrización en vivo (EL diferenciador) — demostrar en pantalla
 
-Abrir `/terminal` → sidebar derecho → **Parámetros de estrategia**.
+Abrir `/terminal` → sidebar derecho → **Parámetros de estrategia**. El sistema controla **10+ variables** (6 sliders numéricos + estilo de ejecución + universo de venues), con **3 presets** de un clic.
 
-1. Mover **Umbral de ganancia neta** hacia abajo → aparecen más señales ejecutables; hacia arriba → solo pasan las gordas. *"El slider entra directo a `detectCrossExchange`; el número que ves es el que el motor usa para decidir."*
-2. **Estrés de fees** a 2× → el "Umbral efectivo" (readout en vivo) se duplica → el bot se vuelve más conservador sin tocar código.
-3. **Tamaño máx. de orden** → cap de exposición por trade.
-4. Apagar un exchange → las **rutas dirigidas en escaneo** bajan (n·(n−1)); ese venue se sigue viendo pero ya no entra a ninguna ruta.
+1. Clic en **Agresivo** → todas las perillas saltan a un perfil coherente (umbral bajo, tamaño alto, estilo Auto); luego **Conservador** → se invierten. *"Un preset carga un perfil completo; desde ahí afino cualquier variable."*
+2. Mover **Umbral de ganancia neta** hacia abajo → aparecen más señales ejecutables; hacia arriba → solo pasan las gordas. *"El slider entra directo a `detectCrossExchange`; el número que ves es el que el motor usa para decidir."*
+3. **Estrés de fees** a 2× → el "Umbral efectivo" (readout en vivo) se duplica → el bot se vuelve más conservador sin tocar código.
+4. **Tolerancia de slippage / Profundidad mínima / Frescura de quote** → gates de calidad: rechazan rutas ilíquidas, con mucho impacto o con libros desincronizados.
+5. **Estilo de ejecución** (Auto/Taker/Maker/Híbrido) → forzar Maker deshabilita la rama taker, etc.
+6. Apagar un exchange → las **rutas dirigidas en escaneo** bajan (n·(n−1)); ese venue se sigue viendo pero ya no entra a ninguna ruta.
 
 **Cableado (si preguntan):** ControlDeck → acción del store (update optimista) → `engine.setParams()` en el kernel del navegador **y/o** comando `SET_ENGINE_PARAMS` sobre el WebSocket → aplicado con clamps dentro del engine → el gateway hace broadcast de los params efectivos y **sincroniza a cada cliente nuevo al conectar**.
 

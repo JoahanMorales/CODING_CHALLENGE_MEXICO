@@ -14,7 +14,11 @@ import { RollingWindow } from "./RollingWindow";
 export const DEFAULT_ENGINE_PARAMS: EngineParams = {
   minNetEdgeBps: 5,
   maxTradeSizeBtc: 0.1,
-  feeStressMultiplier: 1
+  feeStressMultiplier: 1,
+  maxSlippageBps: 15,
+  minDepthBtc: 0.05,
+  maxQuoteAgeMs: 1800,
+  preferredStyle: "AUTO"
 };
 
 export class ArbitrageEngine {
@@ -30,6 +34,18 @@ export class ArbitrageEngine {
     }
     if (partial.feeStressMultiplier !== undefined && Number.isFinite(partial.feeStressMultiplier)) {
       this.params.feeStressMultiplier = Math.min(5, Math.max(0.25, partial.feeStressMultiplier));
+    }
+    if (partial.maxSlippageBps !== undefined && Number.isFinite(partial.maxSlippageBps)) {
+      this.params.maxSlippageBps = Math.min(100, Math.max(0, partial.maxSlippageBps));
+    }
+    if (partial.minDepthBtc !== undefined && Number.isFinite(partial.minDepthBtc)) {
+      this.params.minDepthBtc = Math.min(5, Math.max(0, partial.minDepthBtc));
+    }
+    if (partial.maxQuoteAgeMs !== undefined && Number.isFinite(partial.maxQuoteAgeMs)) {
+      this.params.maxQuoteAgeMs = Math.min(10000, Math.max(200, partial.maxQuoteAgeMs));
+    }
+    if (partial.preferredStyle && ["AUTO", "TAKER", "MAKER", "HYBRID"].includes(partial.preferredStyle)) {
+      this.params.preferredStyle = partial.preferredStyle;
     }
     return { ...this.params };
   }
@@ -149,7 +165,7 @@ export class ArbitrageEngine {
         const bid = topBid(sellBook);
         if (!ask || !bid || bid.price.lessThanOrEqualTo(ask.price)) return;
         const quoteSkewMs = Math.abs(buyBook.receivedAt - sellBook.receivedAt);
-        const quotesSynchronized = quoteSkewMs <= 1800;
+        const quotesSynchronized = quoteSkewMs <= this.params.maxQuoteAgeMs;
         const buyAskDepth5 = buyBook.asks.slice(0, 5).reduce((s, l) => s.plus(d(l.size)), ZERO);
         const sellBidDepth5 = sellBook.bids.slice(0, 5).reduce((s, l) => s.plus(d(l.size)), ZERO);
         const depth5Total = Decimal.min(buyAskDepth5, sellBidDepth5);
@@ -287,9 +303,18 @@ export class ArbitrageEngine {
         });
 
         const booksHealthy = buyBook.integrity.status !== "DEGRADED" && sellBook.integrity.status !== "DEGRADED";
-        const takerExecutable = quotesSynchronized && booksHealthy && takerEdge.expectedValueUsd.greaterThan(threshold) && takerNet.netSpreadPct.greaterThanOrEqualTo(minEdgeFrac) && takerEdge.survivalProbability > 0.5;
-        const makerExecutable = quotesSynchronized && booksHealthy && !takerExecutable && makerEdge.expectedValueUsd.greaterThan("0.25") && makerNetSpreadPct.greaterThanOrEqualTo(minEdgeFrac) && makerEdge.survivalProbability > 0.54;
-        const hybridExecutable = quotesSynchronized && booksHealthy && !takerExecutable && !makerExecutable && hybridEdge.expectedValueUsd.greaterThan("0.25") && hybridNetSpreadPct.greaterThanOrEqualTo(minEdgeFrac) && hybridEdge.survivalProbability > 0.54;
+        // Operator-set liquidity, slippage and style gates. Depth must clear the
+        // floor on both legs; modeled slippage (bps of notional) must stay under
+        // tolerance; and a forced style disables the other branches.
+        const depthOk = depth5Total.greaterThanOrEqualTo(this.params.minDepthBtc);
+        const slippageBps = tradeValue.greaterThan(0) ? takerNet.slippageUsd.div(tradeValue).mul(10000) : d(999);
+        const slippageOk = slippageBps.lessThanOrEqualTo(this.params.maxSlippageBps);
+        const gatesOk = booksHealthy && depthOk && slippageOk;
+        const styleAllows = (s: "TAKER" | "MAKER" | "HYBRID") =>
+          this.params.preferredStyle === "AUTO" || this.params.preferredStyle === s;
+        const takerExecutable = styleAllows("TAKER") && quotesSynchronized && gatesOk && takerEdge.expectedValueUsd.greaterThan(threshold) && takerNet.netSpreadPct.greaterThanOrEqualTo(minEdgeFrac) && takerEdge.survivalProbability > 0.5;
+        const makerExecutable = styleAllows("MAKER") && quotesSynchronized && gatesOk && !takerExecutable && makerEdge.expectedValueUsd.greaterThan("0.25") && makerNetSpreadPct.greaterThanOrEqualTo(minEdgeFrac) && makerEdge.survivalProbability > 0.54;
+        const hybridExecutable = styleAllows("HYBRID") && quotesSynchronized && gatesOk && !takerExecutable && !makerExecutable && hybridEdge.expectedValueUsd.greaterThan("0.25") && hybridNetSpreadPct.greaterThanOrEqualTo(minEdgeFrac) && hybridEdge.survivalProbability > 0.54;
         const status = takerExecutable || makerExecutable || hybridExecutable ? "DETECTED" : "REJECTED";
         const executionStyle = takerExecutable ? "INSTANT_TAKER" : makerExecutable ? "MAKER_ASSISTED" : "INSTANT_TAKER";
         const selectedNet = makerExecutable ? makerNetRaw : hybridExecutable ? hybridNet : takerNet;

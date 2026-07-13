@@ -157,7 +157,13 @@ La estrategia no está hardcodeada: el operador la sintoniza en tiempo real desd
 | **Umbral de ganancia neta** | `0–40 bps` | Edge mínimo, tras fees, para que una ruta sea ejecutable. Bájalo y afloran trades marginales; súbelo y solo pasan las dislocaciones gordas | Gatea las tres ramas (taker / maker / híbrida) en `detectCrossExchange` |
 | **Tamaño máx. de orden** | `0.001–5 BTC` | Techo de posición por operación, independiente de la profundidad disponible | Cap sobre el sizing dinámico por depth |
 | **Estrés de fees** | `0.5–3×` | Margen de seguridad: asume que fees y slippage son este múltiplo peores. `1.0` = fees reales; `2.0` = doble de conservador | Ensancha el umbral USD y el floor de edge |
+| **Tolerancia de slippage** | `0–50 bps` | Slippage modelado máximo (bps del nocional). Rutas que consuman demasiada profundidad se descartan | Gate sobre `slippageUsd / nocional` |
+| **Profundidad mínima** | `0–1 BTC` | Liquidez mínima a 5 niveles requerida en ambas piernas | Gate sobre `depth5Total` |
+| **Frescura máx. de quote** | `200–4000 ms` | Ventana de sincronía entre ambos libros; más allá, la señal se descarta por desincronizada | Reemplaza el `quoteSkew` gate |
+| **Estilo de ejecución** | `Auto / Taker / Maker / Híbrido` | Deja que el motor elija por señal, o fuerza un estilo | Habilita/deshabilita cada rama |
 | **Universo de exchanges** | `2–8 venues` | Qué mercados participan en el arbitraje. Los apagados se siguen mostrando, pero nunca entran a una ruta | Filtra `booksForSymbol` en el engine |
+
+Tres **presets** de un clic (Conservador / Balanceado / Agresivo) cargan un perfil coherente de todas las perillas; a partir de ahí el operador afina cualquier variable. Un readout de **umbral efectivo** (`umbral × estrés`) hace visible la interacción entre perillas.
 
 **Cableado end-to-end (defendible):** `ControlDeck` → acción del store (update optimista para respuesta instantánea) → `engine.setParams()` en el kernel del navegador **y/o** comando `SET_ENGINE_PARAMS` sobre el gateway WebSocket → aplicado (con clamps) dentro del `ArbitrageEngine`. El gateway hace `broadcast` de los parámetros efectivos y **sincroniza a cada cliente nuevo al conectar**, así los sliders siempre reflejan lo que la detección está usando de verdad. Definidos una sola vez como `EngineParams` (`src/lib/types.ts`), compartidos por el protocolo y el engine.
 
