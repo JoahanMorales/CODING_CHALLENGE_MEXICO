@@ -149,8 +149,10 @@ La estrategia no está hardcodeada: el operador la sintoniza en tiempo real desd
 </p>
 
 <p align="center">
-  <img alt="Terminal con parametrización en acción" src="recursos/controldeck.gif" width="820" />
+  <img alt="ControlDeck: presets y sliders recalculando el backtest en vivo" src="recursos/controldeck.gif" width="400" />
 </p>
+
+<p align="center"><sub>Presets y sliders reales: cada ajuste reprograma la detección y recalcula el backtest what-if sobre datos reales al instante.</sub></p>
 
 | Parámetro | Rango | Qué controla | Dónde impacta |
 |---|---|---|---|
